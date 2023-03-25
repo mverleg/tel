@@ -1,7 +1,9 @@
 
-# Steel [under construction]
+# Steel
 
+Steel (Statically-Typed Embedded Expression Language) is a scripting language that can be embedded in other applications.
 
+**Steel is under construction and not ready for use**
 
 It is designed to be:
 
