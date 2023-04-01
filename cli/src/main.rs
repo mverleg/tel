@@ -1,8 +1,8 @@
-use std::path::PathBuf;
+use ::std::path::PathBuf;
+
 use ::clap::Parser;
 use ::clap::Subcommand;
 use ::env_logger;
-use steel::{BuildArgs, steel_build};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -64,10 +64,11 @@ fn test_cli_args() {
 fn main() {
     env_logger::init_from_env(env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "warn"));
     let args = SteelCli::parse();
-    match args.subcommand {
-        SubCmd::Build(build_args) => steel_build(&BuildArgs {
-            path: build_args.path,
-            verbose: build_args.verbose,
-        })
-    }
+    eprintln!("STEEL is under construction");
+    // match args.subcommand {
+    //     SubCmd::Build(build_args) => steel_build(&BuildArgs {
+    //         path: build_args.path,
+    //         verbose: build_args.verbose,
+    //     })
+    // }
 }

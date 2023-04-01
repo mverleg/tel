@@ -7,7 +7,6 @@ authors = ["Mark <mverleg.noreply@gmail.com>"]
 homepage = "https://github.com/mverleg/steel"
 license = "Apache-2.0"
 publish = true
-default-run = "steel"
 
 #build = "build.rs"
 

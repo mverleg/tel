@@ -1,0 +1,8 @@
+[workspace]
+edition = "2021"
+
+members = [
+    "api",
+    "compiler",
+    "cli",
+]
