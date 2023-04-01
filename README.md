@@ -9,7 +9,7 @@ It is designed to be:
 
 * Easy and secure to use from other languages.
 * Simple to use, but with the safety of strict static types.
-* Stable, no need to update runtime to accept new scripts.
+* Feature-complete, no need to update runtimes to run new scripts.
 
 ## Goals
 

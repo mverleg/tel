@@ -1,0 +1,46 @@
+[package]
+name = "steel-lang"
+description = "Steel (Statically-Typed Embedded Expression Language) is a scripting language that can be embedded in other applications."
+version = "0.1.0"
+edition = "2021"
+authors = ["Mark <mverleg.noreply@gmail.com>"]
+homepage = "https://github.com/mverleg/steel"
+license = "Apache-2.0"
+publish = true
+default-run = "steel"
+
+#build = "build.rs"
+
+[lib]
+name = "steel"
+path = "src/lib.rs"
+
+[[bin]]
+name = "steel"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.1.10", default-features = true, features = ["std", "derive", "unicode"] }
+regex = "1.7.1"
+itertools = "0.10.5"
+serde = { version = "1.0.157", features = ["derive"] }
+serde_json = "1.0.94"
+bincode = "2.0.0-rc.2"
+time = { version = "0.3.20", features = ["serde"] }
+log = "0.4.17"
+env_logger = "0.10.0"
+tinyvec = "1.6.0"
+sha2 = "0.10.6"
+dashmap = "5.4.0"
+#TODO @mark: clean up dependencies
+
+[dev-dependencies]
+
+#TODO @mark:
+# [profile.release]
+# opt-level = 3       # Optimize for size.
+# lto = true          # Enable Link Time Optimization
+# codegen-units = 1   # Reduce number of codegen units to increase optimizations.
+# panic = 'abort'     # Abort on panic
+# strip = true        # Strip symbols from binary*
+
