@@ -1,12 +1,13 @@
 [package]
 name = "steel-api"
 description = "Steel (Statically-Typed Embedded Expression Language) is a scripting language that can be embedded in other applications."
-version = "0.1.0"
-edition = "2021"
-authors = ["Mark <mverleg.noreply@gmail.com>"]
-homepage = "https://github.com/mverleg/steel"
-license = "Apache-2.0"
-publish = true
+
+edition.workspace = true
+version.workspace = true
+homepage.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
 
 #build = "build.rs"
 

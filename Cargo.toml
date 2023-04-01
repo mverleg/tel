@@ -1,8 +1,11 @@
 [workspace]
-edition = "2021"
-
 members = [
     "api",
     "compiler",
     "cli",
 ]
+
+[workspace.package]
+version = true
+
+publish = true
