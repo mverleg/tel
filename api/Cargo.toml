@@ -1,0 +1,24 @@
+[package]
+name = "steel-api"
+description = "Steel (Statically-Typed Embedded Expression Language) is a scripting language that can be embedded in other applications."
+version = "0.1.0"
+edition = "2021"
+authors = ["Mark <mverleg.noreply@gmail.com>"]
+homepage = "https://github.com/mverleg/steel"
+license = "Apache-2.0"
+publish = true
+default-run = "steel"
+
+#build = "build.rs"
+
+[lib]
+name = "steel_api"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1.0.157", features = ["derive"] }
+serde_json = "1.0.94"
+bincode = "2.0.0-rc.2"
+log = "0.4.17"
+tinyvec = "1.6.0"
+#TODO @mark: clean up deps

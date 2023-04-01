@@ -1,0 +1,31 @@
+[package]
+name = "steel-cli"
+description = "Steel (Statically-Typed Embedded Expression Language) is a scripting language that can be embedded in other applications."
+version = "0.1.0"
+edition = "2021"
+authors = ["Mark <mverleg.noreply@gmail.com>"]
+homepage = "https://github.com/mverleg/steel"
+license = "Apache-2.0"
+publish = true
+default-run = "steel"
+
+#build = "build.rs"
+
+[[bin]]
+name = "steel"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.1.10", default-features = true, features = ["std", "derive", "unicode"] }
+env_logger = "0.10.0"
+
+[dev-dependencies]
+
+#TODO @mark:
+# [profile.release]
+# opt-level = 3       # Optimize for size.
+# lto = true          # Enable Link Time Optimization
+# codegen-units = 1   # Reduce number of codegen units to increase optimizations.
+# panic = 'abort'     # Abort on panic
+# strip = true        # Strip symbols from binary*
+
