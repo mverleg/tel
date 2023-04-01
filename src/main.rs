@@ -1,6 +1,8 @@
+use std::path::PathBuf;
 use ::clap::Parser;
 use ::clap::Subcommand;
 use ::env_logger;
+use steel::{BuildArgs, steel_build};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -14,6 +16,10 @@ struct SteelCli {
 #[derive(Parser, Debug)]
 #[command(name = "build")]
 struct BuildCli {
+    /// Path of the file to build
+    #[arg(default_value = "./main.steel")]
+    pub path: PathBuf,
+
     // /// Duration the cache should be valid for, e.g. "30 min" or "1 day -1 hour".
     // #[arg(value_parser = parse_dur, short = 'd', long = "duration", default_value = "15 min")]
     // pub duration: Duration,
@@ -37,6 +43,8 @@ struct BuildCli {
     // /// Use exit code 0 if the command is cached, and exit code 255 if it ran successfully.
     // #[arg(short = 'e', long)]
     // pub exit_code: bool,
+
+    /// Print extra debug output
     #[arg(short = 'v', long)]
     pub verbose: bool,
     // #[command(subcommand)]
@@ -50,11 +58,16 @@ enum SubCmd {
 
 #[test]
 fn test_cli_args() {
-    CachedArgs::try_parse_from(&["steel", "buikd", "-v"]).unwrap();
+    CachedArgs::try_parse_from(&["steel", "build", "-v"]).unwrap();
 }
-
 
 fn main() {
     env_logger::init_from_env(env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "warn"));
-    let _args = SteelCli::parse();
+    let args = SteelCli::parse();
+    match args.subcommand {
+        SubCmd::Build(build_args) => steel_build(&BuildArgs {
+            path: build_args.path,
+            verbose: build_args.verbose,
+        })
+    }
 }
