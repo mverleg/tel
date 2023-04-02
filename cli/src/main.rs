@@ -58,17 +58,19 @@ enum SubCmd {
 
 #[test]
 fn test_cli_args() {
-    CachedArgs::try_parse_from(&["steel", "build", "-v"]).unwrap();
+    SteelCli::try_parse_from(&["steel", "build", "-v"]).unwrap();
 }
+
+use ::steel::steel_build;
+use ::steel::BuildArgs;
 
 fn main() {
     env_logger::init_from_env(env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "warn"));
     let args = SteelCli::parse();
-    eprintln!("STEEL is under construction");
-    // match args.subcommand {
-    //     SubCmd::Build(build_args) => steel_build(&BuildArgs {
-    //         path: build_args.path,
-    //         verbose: build_args.verbose,
-    //     })
-    // }
+    match args.subcommand {
+        SubCmd::Build(build_args) => steel_build(&BuildArgs {
+            path: build_args.path,
+            verbose: build_args.verbose,
+        })
+    }
 }

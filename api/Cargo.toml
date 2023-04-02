@@ -7,7 +7,6 @@ version.workspace = true
 homepage.workspace = true
 authors.workspace = true
 license.workspace = true
-publish.workspace = true
 
 #build = "build.rs"
 
