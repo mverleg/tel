@@ -2,8 +2,12 @@ use ::std::fs;
 use ::std::path::PathBuf;
 use std::path::Path;
 
+use pest::Parser;
+
 use ::steel_api::log::debug;
 use ::steel_api::log::warn;
+
+use crate::parser::{parse_str, StructParser};
 
 mod parser;
 
@@ -45,9 +49,4 @@ fn find_main_file(path: &Path) -> Result<PathBuf, SteelErr> {
 pub enum SteelErr {
     FileNotFound(PathBuf),
     CouldNotRead(PathBuf, String),
-}
-
-//TODO @mark:
-pub fn parse_str(code: &str) -> Result<(), SteelErr> {
-    todo!()
 }
