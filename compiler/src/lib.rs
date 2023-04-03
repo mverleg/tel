@@ -1,5 +1,9 @@
 use ::std::fs;
 use ::std::path::PathBuf;
+use std::path::Path;
+
+use ::steel_api::log::debug;
+use ::steel_api::log::warn;
 
 mod parser;
 
@@ -10,21 +14,31 @@ pub struct BuildArgs {
 }
 
 pub fn steel_build(args: &BuildArgs) -> Result<(), SteelErr> {
-    let path = if args.path.exists() {
-        args.path.clone()
-    } else {
-        let pth_ext = args.path.with_extension(".pest");
-        if pth_ext.exists() {
-            pth_ext
-        } else {
-            return Err(SteelErr::FileNotFound(args.path.clone()))
-        }
-    };
+    let path = find_main_file(&args.path)?;
     let source = fs::read_to_string(&path)
         .map_err(|err| SteelErr::CouldNotRead(path, err.to_string()))?;
     let ast = parse_str(&source)?;
     unimplemented!();  //TODO @mark: TEMPORARY! REMOVE THIS!
     Ok(())
+}
+
+fn find_main_file(path: &Path) -> Result<PathBuf, SteelErr> {
+    let path = if path.exists() {
+        let pth = path.to_owned();
+        debug!("select base path as starting point: '{}'", pth.display());
+        pth
+    } else {
+        let pth_ext = path.with_extension("steel");
+        if pth_ext.exists() {
+            debug!("select path with '.steel' extension added as starting point: '{}'", pth_ext.display());
+            pth_ext
+        } else {
+            warn!("did not find file at starting point path '{}' nor at '{}'",
+                path.display(), pth_ext.display());
+            return Err(SteelErr::FileNotFound(path.to_owned()))
+        }
+    };
+    Ok(path)
 }
 
 #[derive(Debug)]
