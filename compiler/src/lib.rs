@@ -1,6 +1,8 @@
 use ::std::fs;
 use ::std::path::PathBuf;
 
+mod parser;
+
 #[derive(Debug)]
 pub struct BuildArgs {
     pub path: PathBuf,
