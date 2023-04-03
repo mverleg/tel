@@ -45,5 +45,5 @@ fn main() {
             path: build_args.path,
             verbose: build_args.verbose,
         })
-    }
+    }.unwrap()  //TODO @mark: do not unwrap
 }
