@@ -5,7 +5,7 @@ use ::std::path::PathBuf;
 use ::steel_api::log::debug;
 use ::steel_api::log::warn;
 
-use crate::parser::{parse_str, StructParser};
+use crate::parser::parse_str;
 
 mod parser;
 
