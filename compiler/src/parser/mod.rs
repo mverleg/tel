@@ -1,9 +1,14 @@
+use ::lalrpop_util::lalrpop_mod;
+
 use crate::SteelErr;
 
-pub struct StructParser;
+lalrpop_mod!(gen_parser, "/grammar/struct_decl.rs");
 
 //TODO @mark:
 pub fn parse_str(code: &str) -> Result<(), SteelErr> {
+    let gp = gen_parser::TermParser::new();
+    let res = gp.parse(code);
+    dbg!(res);
     // let calc = StructParser::parse(Rule::calculation, code).unwrap();
     // dbg!(&calc);  //TODO @mark: TEMPORARY! REMOVE THIS!
     unimplemented!() //TODO @mark:
