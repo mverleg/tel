@@ -1,8 +1,6 @@
 use ::std::fs;
+use ::std::path::Path;
 use ::std::path::PathBuf;
-use std::path::Path;
-
-use pest::Parser;
 
 use ::steel_api::log::debug;
 use ::steel_api::log::warn;
