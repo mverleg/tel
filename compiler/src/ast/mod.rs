@@ -1,6 +1,6 @@
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Op {
+pub enum OpCode {
     Add,
     Sub,
     Mul,
@@ -11,6 +11,6 @@ pub enum Op {
 pub enum Expr {
     Num(f64),
     Text(String),
-    BinOp(Op, Box<Expr>, Box<Expr>),
+    BinOp(OpCode, Box<Expr>, Box<Expr>),
 }
 
