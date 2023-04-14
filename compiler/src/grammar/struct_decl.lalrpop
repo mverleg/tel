@@ -27,19 +27,19 @@ pub Prog: Expr = {
     <e:AddSubExpr> => e
 };
 
-pub AddSubExpr: Expr = {
+AddSubExpr: Expr = {
     <l:AddSubExpr> "+" <r:MulDivExpr> => Expr::BinOp(OpCode::Add, Box::new(l), Box::new(r)),
     <l:AddSubExpr> "-" <r:MulDivExpr> => Expr::BinOp(OpCode::Sub, Box::new(l), Box::new(r)),
     MulDivExpr,
 };
 
-pub MulDivExpr: Expr = {
+MulDivExpr: Expr = {
     <l:MulDivExpr> "*" <r:NullaryExpr> => Expr::BinOp(OpCode::Mul, Box::new(l), Box::new(r)),
     <l:MulDivExpr> "/" <r:NullaryExpr> => Expr::BinOp(OpCode::Div, Box::new(l), Box::new(r)),
     NullaryExpr,
 };
 
-pub NullaryExpr: Expr = {
+NullaryExpr: Expr = {
     <s:STR> => Expr::Text(s.to_string()),
     NumLit => Expr::Num(<>),
     StructDecl
@@ -47,7 +47,7 @@ pub NullaryExpr: Expr = {
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
-pub StructDecl: Expr = {
+StructDecl: Expr = {
     "struct" <n:Iden> "{" "}" => Expr::Struct(n),
     "(" <e:AddSubExpr> ")" => e
 };
