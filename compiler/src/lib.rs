@@ -21,7 +21,6 @@ pub fn steel_build(args: &BuildArgs) -> Result<(), SteelErr> {
     let source = fs::read_to_string(&path)
         .map_err(|err| SteelErr::CouldNotRead(path, err.to_string()))?;
     let ast = parse_str(&source)?;
-    unimplemented!();  //TODO @mark: TEMPORARY! REMOVE THIS!
     Ok(())
 }
 
