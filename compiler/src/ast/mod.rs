@@ -56,10 +56,15 @@ impl Type {
 }
 
 #[derive(Debug)]
+pub enum Block {
+    Expression(Expr),
+    Struct(Identifier, Vec<(Identifier, Type)>),
+}
+
+#[derive(Debug)]
 pub enum Expr {
     Num(f64),
     Text(String),
     BinOp(OpCode, Box<Expr>, Box<Expr>),
-    Struct(Identifier, Vec<(Identifier, Type)>),
 }
 

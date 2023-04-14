@@ -1,9 +1,10 @@
 use ::std::str::FromStr;
 
+use crate::ast::Block;
+use crate::ast::Expr;
+use crate::ast::Identifier;
 use crate::ast::OpCode;
 use crate::ast::Type;
-use crate::ast::Identifier;
-use crate::ast::Expr;
 
 grammar;
 
@@ -24,9 +25,14 @@ match {
     _
 }
 
-pub Prog: Vec<Expr> = {
-    <e:AddSubExpr*> => e
+pub Prog: Vec<Block> = {
+    <bs:BlockNode*> => bs
 };
+
+BlockNode: Block = {
+    <d:StructDecl> => d,
+    <e:AddSubExpr> => Block::Expression(e),
+}
 
 AddSubExpr: Expr = {
     <l:AddSubExpr> "+" <r:MulDivExpr> => Expr::BinOp(OpCode::Add, Box::new(l), Box::new(r)),
@@ -43,14 +49,17 @@ MulDivExpr: Expr = {
 NullaryExpr: Expr = {
     <s:STR> => Expr::Text(s.to_string()),
     NumLit => Expr::Num(<>),
-    StructDecl
+    DeepExpr
 };
+
+DeepExpr: Expr = {
+    "(" <e:AddSubExpr> ")" => e
+}
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
-StructDecl: Expr = {
-    "struct" <n:Iden> "{" <fs:Comma<FieldDecl>> "}" => Expr::Struct(n, fs),
-    DeepExpr
+StructDecl: Block = {
+    "struct" <n:Iden> "{" <fs:Comma<FieldDecl>> "}" => Block::Struct(n, fs),
 };
 
 FieldDecl: (Identifier, Type) = {
@@ -60,10 +69,6 @@ FieldDecl: (Identifier, Type) = {
 TypeUse: Type = {
     <n:Iden> => Type::new(n),
 };
-
-DeepExpr: Expr = {
-    "(" <e:AddSubExpr> ")" => e
-}
 
 Iden: Identifier = <s:r"[a-zA-Z][a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
 

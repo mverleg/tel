@@ -4,7 +4,7 @@ use ::std::fmt::Write;
 
 use ::lalrpop_util::ParseError;
 
-use ::steel_api::log::debug;
+use ::steel_api::log::info;
 
 /// Returns error message and error line (or 0 if unknown)
 pub fn build_error<T, E: fmt::Display>(error: ParseError<usize, T, E>, src_file: &str, code: &str) -> (String, usize) {
@@ -53,7 +53,7 @@ pub fn build_error<T, E: fmt::Display>(error: ParseError<usize, T, E>, src_file:
             )
         }
     };
-    debug!("{}", &msg.0);
+    info!("{}", &msg.0);
     msg
 }
 
