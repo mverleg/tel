@@ -8,6 +8,7 @@ use ::steel_api::log::warn;
 use crate::parser::parse_str;
 
 mod parser;
+mod ast;
 
 #[derive(Debug)]
 pub struct BuildArgs {
