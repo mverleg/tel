@@ -15,9 +15,9 @@ name = "steel_api"
 path = "src/lib.rs"
 
 [dependencies]
-serde = { version = "1.0.157", features = ["derive"] }
-serde_json = "1.0.94"
-bincode = "2.0.0-rc.2"
+serde = { version = "1.0.160", features = ["derive"] }
+serde_json = "1.0.96"
+bincode = "2.0.0-rc.3"
 log = "0.4.17"
 tinyvec = "1.6.0"
 #TODO @mark: clean up deps
