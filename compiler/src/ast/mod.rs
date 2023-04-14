@@ -40,5 +40,6 @@ pub enum Expr {
     Num(f64),
     Text(String),
     BinOp(OpCode, Box<Expr>, Box<Expr>),
+    Struct(Identifier),
 }
 

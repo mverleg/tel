@@ -7,8 +7,8 @@ use crate::ast::Expr;
 grammar;
 
 match {
-    // Turn newlines into a token (they are skipped by default)
-    r"(\r\n|\n|\r)(\s|\r|\n)*" => END,
+    // Skip newlines (not allowed in strings)
+    r"(\r\n|\n|\r)(\s|\r|\n)*" => { },
 } else {
     // Match string literals
     r#"("[^"]*"|([^"]*\\")*)"# => STR,
@@ -24,18 +24,18 @@ match {
 }
 
 pub Prog: Expr = {
-    <e:AddSubExpr> END* => e
+    <e:AddSubExpr> => e
 };
 
 pub AddSubExpr: Expr = {
-    <l:AddSubExpr> "+" END* <r:MulDivExpr> => Expr::BinOp(OpCode::Add, Box::new(l), Box::new(r)),
-    <l:AddSubExpr> "-" END* <r:MulDivExpr> => Expr::BinOp(OpCode::Sub, Box::new(l), Box::new(r)),
+    <l:AddSubExpr> "+" <r:MulDivExpr> => Expr::BinOp(OpCode::Add, Box::new(l), Box::new(r)),
+    <l:AddSubExpr> "-" <r:MulDivExpr> => Expr::BinOp(OpCode::Sub, Box::new(l), Box::new(r)),
     MulDivExpr,
 };
 
 pub MulDivExpr: Expr = {
-    <l:MulDivExpr> "*" END* <r:NullaryExpr> => Expr::BinOp(OpCode::Mul, Box::new(l), Box::new(r)),
-    <l:MulDivExpr> "/" END* <r:NullaryExpr> => Expr::BinOp(OpCode::Div, Box::new(l), Box::new(r)),
+    <l:MulDivExpr> "*" <r:NullaryExpr> => Expr::BinOp(OpCode::Mul, Box::new(l), Box::new(r)),
+    <l:MulDivExpr> "/" <r:NullaryExpr> => Expr::BinOp(OpCode::Div, Box::new(l), Box::new(r)),
     NullaryExpr,
 };
 
