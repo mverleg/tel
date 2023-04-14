@@ -1,0 +1,4 @@
+
+struct Euro {
+    cents: i64,
+}
