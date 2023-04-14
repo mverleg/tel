@@ -18,15 +18,8 @@ match {
     _
 }
 
-pub AddSub: (&'static str, i32, i32) = {
-    <l:Num> "+" <r:Term> => ("add", l, r),
-    <l:Num> "-" <r:Term> => ("sub", l, r),
-    <t:Term> => ("just", t, t),
-};
+NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
-pub Term: i32 = {
-    <n:Num> => n,
-    "(" <t:Term> ")" => t,
-};
-
-Num: i32 = <s:r"[0-9]+"> => i32::from_str(s).unwrap();
+pub Expr = {
+    NumLit
+}
