@@ -60,6 +60,6 @@ pub enum Expr {
     Num(f64),
     Text(String),
     BinOp(OpCode, Box<Expr>, Box<Expr>),
-    Struct(Identifier),
+    Struct(Identifier, Vec<(Identifier, Type)>),
 }
 

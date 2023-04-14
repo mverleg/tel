@@ -49,7 +49,7 @@ NullaryExpr: Expr = {
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
 StructDecl: Expr = {
-    "struct" <n:Iden> "{" <fs:Comma<FieldDecl>> "}" => Expr::Struct(n),
+    "struct" <n:Iden> "{" <fs:Comma<FieldDecl>> "}" => Expr::Struct(n, fs),
     DeepExpr
 };
 
