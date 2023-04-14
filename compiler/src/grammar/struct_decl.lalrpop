@@ -1,6 +1,7 @@
 use ::std::str::FromStr;
 
 use crate::ast::OpCode;
+use crate::ast::Identifier;
 use crate::ast::Expr;
 
 grammar;
@@ -17,6 +18,7 @@ match {
 } else {
     // Ignore any other whitespace (except newlines above)
     r"\s+" => { },
+    //TODO @mark: does this mean keywords can be concatenated? that is not desirable
 } else {
     _
 }
@@ -40,9 +42,14 @@ pub MulDivExpr: Expr = {
 pub NullaryExpr: Expr = {
     <s:STR> => Expr::Text(s.to_string()),
     NumLit => Expr::Num(<>),
-    "(" <e:AddSubExpr> ")" => e
-    //<l:ExprNode> <o:MulDivOp> <r:ExprNode> => Expr::BinOp(o, l, r),
-    //"(" <e:ExprNode> ")" => e,
+    StructDecl
 };
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
+
+pub StructDecl: Expr = {
+    "struct" <n:Iden> "{" "}" => Expr::Struct(n),
+    "(" <e:AddSubExpr> ")" => e
+};
+
+Iden: Identifier = <s:r"[a-zA-Z][a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
