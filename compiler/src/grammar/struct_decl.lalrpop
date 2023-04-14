@@ -23,19 +23,35 @@ match {
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
-FactorOp: OpCode = {
+AddSubOp: OpCode = {
     "+" => OpCode::Add,
     "-" => OpCode::Sub,
+};
+
+MulDivOp: OpCode = {
     "*" => OpCode::Mul,
     "/" => OpCode::Div,
 };
 
-pub ExprNode: Expr = {
+pub NullaryExpr: Expr = {
     <s:STR> => Expr::Text(s.to_string()),
     NumLit => Expr::Num(<>),
+    "(" <e:NullaryExpr> ")" => e
+    //<l:ExprNode> <o:MulDivOp> <r:ExprNode> => Expr::BinOp(o, l, r),
+    //"(" <e:ExprNode> ")" => e,
+};
+
+//pub AddSubExpr: Expr = {
+//    <l:NularyExpr> <o:AddSubOp> <r:NularyExpr> => Expr::BinOp(o, Box::new(l), Box::new(r)),
+//    MulDivExpr,
+//};
+
+pub MulDivExpr: Expr = {
+    <l:NullaryExpr> <o:MulDivOp> <r:NullaryExpr> => Expr::BinOp(o, Box::new(l), Box::new(r)),
+    "(" <e:NullaryExpr> ")" => e
 };
 
 
 pub Prog: Expr = {
-    ExprNode,
+    NullaryExpr,
 };
