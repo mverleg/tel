@@ -2,6 +2,22 @@ use ::std::str::FromStr;
 
 grammar;
 
+match {
+    // Turn newlines into a token (they are skipped by default)
+    r"(\r\n|\n|\r)(\s|\r|\n)*" => END,
+} else {
+    // Match string literals
+    r#"("[^"]*"|([^"]*\\")*)"# => STR,
+} else {
+    // Ignore full-line comments
+    r#"\s*#[^\r\n]*(\r\n|\n|\r)(\s|\r|\n)*"# => { },
+} else {
+    // Ignore any other whitespace (except newlines above)
+    r"\s+" => { },
+} else {
+    _
+}
+
 pub AddSub: (&'static str, i32, i32) = {
     <l:Num> "+" <r:Term> => ("add", l, r),
     <l:Num> "-" <r:Term> => ("sub", l, r),
