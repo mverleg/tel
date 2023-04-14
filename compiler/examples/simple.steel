@@ -3,4 +3,5 @@
 ((5))
 
 struct Euro {
+    cents: i64,
 }

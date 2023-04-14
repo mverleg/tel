@@ -1,3 +1,4 @@
+use steel_api::log::debug;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpCode {
@@ -14,14 +15,18 @@ pub struct Identifier {
 
 impl Identifier {
     pub fn new(name: impl Into<String>) -> Option<Self> {
+        // [a-zA-Z][a-zA-Z0-9_]*
         let name = name.into();
         for ch in name.chars() {
             match ch {
                 '0'..='9' => {},
                 'a'..='z' => {},
-                'Z'..='Z' => {},
+                'A'..='Z' => {},
                 '_' => {},
-                _ => return None,
+                unexpected => {
+                    debug!("reject identifier because '{}' contains '{}'", &name, unexpected);
+                    return None
+                },
             }
         }
         let first = name.chars().next()?;
@@ -29,7 +34,10 @@ impl Identifier {
             'a'..='z' => {},
             'A'..='Z' => {},
             //TODO @mark: allow _ as leading char?
-            _ => return None,
+            unexpected => {
+                debug!("reject identifier because '{}' starts with '{}'", &name, unexpected);
+                return None
+            },
         }
         Some(Identifier { name })
     }
