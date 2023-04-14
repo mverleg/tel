@@ -21,34 +21,28 @@ match {
     _
 }
 
-NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
+pub Prog: Expr = {
+    AddSubExpr,
+};
 
-AddSubOp: OpCode = {
-    "+" => OpCode::Add,
-    "-" => OpCode::Sub,
+pub AddSubExpr: Expr = {
+    <l:AddSubExpr> "+" <r:MulDivExpr> => Expr::BinOp(OpCode::Add, Box::new(l), Box::new(r)),
+    <l:AddSubExpr> "-" <r:MulDivExpr> => Expr::BinOp(OpCode::Sub, Box::new(l), Box::new(r)),
+    MulDivExpr,
+};
+
+pub MulDivExpr: Expr = {
+    <l:MulDivExpr> "*" <r:NullaryExpr> => Expr::BinOp(OpCode::Mul, Box::new(l), Box::new(r)),
+    <l:MulDivExpr> "/" <r:NullaryExpr> => Expr::BinOp(OpCode::Div, Box::new(l), Box::new(r)),
+    NullaryExpr,
 };
 
 pub NullaryExpr: Expr = {
     <s:STR> => Expr::Text(s.to_string()),
     NumLit => Expr::Num(<>),
-    "(" <e:MulDivExpr> ")" => e
+    "(" <e:AddSubExpr> ")" => e
     //<l:ExprNode> <o:MulDivOp> <r:ExprNode> => Expr::BinOp(o, l, r),
     //"(" <e:ExprNode> ")" => e,
 };
 
-pub AddSubExpr: Expr = {
-    <l:AddSubExpr> "+" <r:NullaryExpr> => Expr::BinOp(OpCode::Add, Box::new(l), Box::new(r)),
-    <l:AddSubExpr> "-" <r:NullaryExpr> => Expr::BinOp(OpCode::Sub, Box::new(l), Box::new(r)),
-    NullaryExpr,
-};
-
-pub MulDivExpr: Expr = {
-    <l:MulDivExpr> "*" <r:AddSubExpr> => Expr::BinOp(OpCode::Mul, Box::new(l), Box::new(r)),
-    <l:MulDivExpr> "/" <r:AddSubExpr> => Expr::BinOp(OpCode::Div, Box::new(l), Box::new(r)),
-    AddSubExpr,
-};
-
-
-pub Prog: Expr = {
-    MulDivExpr,
-};
+NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
