@@ -43,6 +43,18 @@ impl Identifier {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct Type {
+    //TODO @mark:
+    iden: Identifier,
+}
+
+impl Type {
+    pub fn new(iden: Identifier) -> Self {
+        Type { iden }
+    }
+}
+
 #[derive(Debug)]
 pub enum Expr {
     Num(f64),

@@ -1,6 +1,7 @@
 use ::std::str::FromStr;
 
 use crate::ast::OpCode;
+use crate::ast::Type;
 use crate::ast::Identifier;
 use crate::ast::Expr;
 
@@ -48,8 +49,16 @@ NullaryExpr: Expr = {
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
 StructDecl: Expr = {
-    "struct" <n:Iden> "{" "}" => Expr::Struct(n),
+    "struct" <n:Iden> "{" <fs:Comma<FieldDecl>> "}" => Expr::Struct(n),
     DeepExpr
+};
+
+FieldDecl: (Identifier, Type) = {
+    <n:Iden> ":" <t:TypeUse> => (n, t),
+};
+
+TypeUse: Type = {
+    <n:Iden> => Type::new(n),
 };
 
 DeepExpr: Expr = {
@@ -57,3 +66,12 @@ DeepExpr: Expr = {
 }
 
 Iden: Identifier = <s:r"[a-zA-Z][a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
+
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => {
+        if let Some(f) = e {
+            v.push(f);
+        }
+        v
+    }
+};
