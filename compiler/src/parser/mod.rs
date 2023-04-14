@@ -10,7 +10,7 @@ mod errors;
 
 lalrpop_mod!(gen_parser, "/grammar/struct_decl.rs");
 
-pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<Expr, SteelErr> {
+pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<Vec<Expr>, SteelErr> {
     let parser = gen_parser::ProgParser::new();
     let res = parser.parse(code);
     dbg!(&res);

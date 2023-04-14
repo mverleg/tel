@@ -4,9 +4,11 @@ use ::std::fmt::Write;
 
 use ::lalrpop_util::ParseError;
 
+use ::steel_api::log::debug;
+
 /// Returns error message and error line (or 0 if unknown)
 pub fn build_error<T, E: fmt::Display>(error: ParseError<usize, T, E>, src_file: &str, code: &str) -> (String, usize) {
-    match error {
+    let msg = match error {
         ParseError::InvalidToken { location } => {
             let (line, col) = source_line_col(code, location);
             (
@@ -50,7 +52,9 @@ pub fn build_error<T, E: fmt::Display>(error: ParseError<usize, T, E>, src_file:
                 0
             )
         }
-    }
+    };
+    debug!("{}", &msg.0);
+    msg
 }
 
 fn fmt_expected_tokens(tokens: &[String]) -> String {
