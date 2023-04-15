@@ -1,5 +1,10 @@
 use steel_api::log::debug;
 
+#[derive(Debug)]
+pub struct AST {
+    pub blocks: Vec<Block>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpCode {
     Add,

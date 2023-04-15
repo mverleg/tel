@@ -1,5 +1,6 @@
 use ::std::str::FromStr;
 
+use crate::ast::AST;
 use crate::ast::AssignmentKw;
 use crate::ast::Block;
 use crate::ast::Expr;
@@ -30,8 +31,8 @@ match {
     _
 }
 
-pub Prog: Vec<Block> = {
-    <bs:BlockNode*> => bs
+pub Prog: AST = {
+    <bs:BlockNode*> => AST { blocks: bs },
 };
 
 BlockNode: Block = {

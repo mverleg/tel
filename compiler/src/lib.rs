@@ -3,6 +3,7 @@ use ::std::path::Path;
 use ::std::path::PathBuf;
 
 use ::steel_api::log::debug;
+use ::steel_api::log::info;
 use ::steel_api::log::warn;
 
 use crate::parser::parse_str;
@@ -20,7 +21,8 @@ pub fn steel_build(args: &BuildArgs) -> Result<(), SteelErr> {
     let path = find_main_file(&args.path)?;
     let source = fs::read_to_string(&path)
         .map_err(|err| SteelErr::CouldNotRead(path.clone(), err.to_string()))?;
-    let _ast = parse_str(path, &source)?;
+    let ast = parse_str(path, &source)?;
+    info!("{:?}", ast);
     Ok(())
 }
 
