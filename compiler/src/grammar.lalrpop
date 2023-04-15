@@ -11,6 +11,9 @@ use crate::ast::Type;
 grammar;
 
 match {
+    // Do not count END token when preceded by ellipsis
+    r"...[ \t]*(\r\n|\n|\r)(\s|\r|\n)+" => {},
+} else {
     // Turn any number of newline into a single token (without this they are skipped)
     r"(\r\n|\n|\r)(\s|\r|\n)*" => END,
 } else {
@@ -32,7 +35,7 @@ match {
 }
 
 pub Prog: AST = {
-    END? <bs:BlockNode*> => AST { blocks: bs },
+    END? <bs:Statements<BlockNode>> => AST { blocks: bs },
 };
 
 BlockNode: Block = {
@@ -71,7 +74,7 @@ DeepExpr: Expr = {
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
 StructDecl: Block = {
-    "struct" <n:Iden> "{" END? <fs:Comma<FieldDecl>> "}" END? => Block::    Struct {
+    "struct" <n:Iden> "{" END? <fs:Comma<FieldDecl>> "}" => Block::    Struct {
         iden: n,
         fields: fs,
     },
@@ -110,6 +113,21 @@ CommaSep = {
 
 Comma<T>: Vec<T> = {
     <mut v:(<T> CommaSep)*> <e:T?> => {
+        if let Some(f) = e {
+            v.push(f);
+        }
+        v
+    }
+};
+
+SemicolonSep = {
+    <";"> END,
+    ";",
+    END,
+}
+
+Statements<T>: Vec<T> = {
+    <mut v:(<T> SemicolonSep)*> <e:T?> => {
         if let Some(f) = e {
             v.push(f);
         }
