@@ -12,8 +12,12 @@ match {
     // Skip newlines (not allowed in strings)
     r"(\r\n|\n|\r)(\s|\r|\n)*" => { },
 } else {
-    // Match string literals
-    r#"("[^"]*"|([^"]*\\")*)"# => STR,
+    // Match double quoted string literals
+    r#"("[^"]*"|([^"]*\\")*)"# => DQSTR,
+    //TODO @mark: is this second half correct?
+} else {
+    // Match single quoted string literals
+    r#"('[^']*')"# => SQSTR,
 } else {
     // Ignore full-line comments
     r#"\s*#[^\r\n]*(\r\n|\n|\r)(\s|\r|\n)*"# => { },
@@ -47,7 +51,8 @@ MulDivExpr: Expr = {
 };
 
 NullaryExpr: Expr = {
-    <s:STR> => Expr::Text(s.to_string()),
+    <s:DQSTR> => Expr::Text(s.to_string()),
+    <s:SQSTR> => Expr::Text(s.to_string()),
     NumLit => Expr::Num(<>),
     DeepExpr
 };
@@ -70,7 +75,7 @@ TypeUse: Type = {
     <n:Iden> => Type::new(n),
 };
 
-Iden: Identifier = <s:r"[a-zA-Z][a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
+Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9_])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
 
 Comma<T>: Vec<T> = {
     <mut v:(<T> ",")*> <e:T?> => {

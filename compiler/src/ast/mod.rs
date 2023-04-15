@@ -33,6 +33,7 @@ impl Identifier {
         match first {
             'a'..='z' => {},
             'A'..='Z' => {},
+            '_' => {},
             //TODO @mark: allow _ as leading char?
             unexpected => {
                 debug!("reject identifier because '{}' starts with '{}'", &name, unexpected);
