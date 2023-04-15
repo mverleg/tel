@@ -32,7 +32,7 @@ match {
 }
 
 pub Prog: AST = {
-    <bs:BlockNode*> => AST { blocks: bs },
+    END? <bs:BlockNode*> => AST { blocks: bs },
 };
 
 BlockNode: Block = {
@@ -71,7 +71,7 @@ DeepExpr: Expr = {
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
 StructDecl: Block = {
-    "struct" <n:Iden> "{" <fs:Comma<FieldDecl>> "}" => Block::    Struct {
+    "struct" <n:Iden> "{" END? <fs:Comma<FieldDecl>> "}" END? => Block::    Struct {
         iden: n,
         fields: fs,
     },
@@ -102,8 +102,14 @@ TypeUse: Type = {
 
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9_])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
 
+CommaSep = {
+    <","> END,
+    ",",
+    END,
+}
+
 Comma<T>: Vec<T> = {
-    <mut v:(<T> ",")*> <e:T?> => {
+    <mut v:(<T> CommaSep)*> <e:T?> => {
         if let Some(f) = e {
             v.push(f);
         }

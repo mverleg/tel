@@ -10,7 +10,7 @@ use crate::SteelErr;
 
 mod errors;
 
-lalrpop_mod!(gen_parser, "/grammar/struct_decl.rs");
+lalrpop_mod!(gen_parser, "/grammar.rs");
 
 pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<AST, SteelErr> {
     let parser = gen_parser::ProgParser::new();
