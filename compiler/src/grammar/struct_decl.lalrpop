@@ -80,14 +80,26 @@ FieldDecl: (Identifier, Type) = {
 };
 
 Assignment: Block = {
-    "mut" <n:Iden> "=" <e:Expression> "}" => Block::Assignment {
+    "mut" <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
          has_mut_kw: true,
          target: n,
          typ: None,
          value: e,
     },
-    "mut" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> "}" => Block::Assignment {
+    "mut" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
          has_mut_kw: true,
+         target: n,
+         typ: Some(t),
+         value: e,
+    },
+    <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
+         has_mut_kw: false,
+         target: n,
+         typ: None,
+         value: e,
+    },
+    <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
+         has_mut_kw: false,
          target: n,
          typ: Some(t),
          value: e,
