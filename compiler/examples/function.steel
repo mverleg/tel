@@ -1,0 +1,7 @@
+
+fun double(arg: i32) -> i32 {
+    print("doubling number {arg}")
+    2 * arg
+}
+
+print(double(3))
