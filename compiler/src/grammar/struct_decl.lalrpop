@@ -35,7 +35,12 @@ pub Prog: Vec<Block> = {
 
 BlockNode: Block = {
     <d:StructDecl> => d,
-    <e:AddSubExpr> => Block::Expression(e),
+    <a:Assignment> => a,
+    <e:Expression> => Block::Expression(e),
+}
+
+Expression: Expr = {
+    AddSubExpr
 }
 
 AddSubExpr: Expr = {
@@ -64,12 +69,30 @@ DeepExpr: Expr = {
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
 StructDecl: Block = {
-    "struct" <n:Iden> "{" <fs:Comma<FieldDecl>> "}" => Block::Struct(n, fs),
+    "struct" <n:Iden> "{" <fs:Comma<FieldDecl>> "}" => Block::    Struct {
+        iden: n,
+        fields: fs,
+    },
 };
 
 FieldDecl: (Identifier, Type) = {
     <n:Iden> ":" <t:TypeUse> => (n, t),
 };
+
+Assignment: Block = {
+    "mut" <n:Iden> "=" <e:Expression> "}" => Block::Assignment {
+         has_mut_kw: true,
+         target: n,
+         typ: None,
+         value: e,
+    },
+    "mut" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> "}" => Block::Assignment {
+         has_mut_kw: true,
+         target: n,
+         typ: Some(t),
+         value: e,
+    },
+}
 
 TypeUse: Type = {
     <n:Iden> => Type::new(n),

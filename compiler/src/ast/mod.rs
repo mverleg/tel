@@ -59,7 +59,17 @@ impl Type {
 #[derive(Debug)]
 pub enum Block {
     Expression(Expr),
-    Struct(Identifier, Vec<(Identifier, Type)>),
+    // even without mut and type, it can be a declaration (with inferred type)
+    Assignment {
+        has_mut_kw: bool,
+        target: Identifier,
+        typ: Option<Type>,
+        value: Expr,
+    },
+    Struct {
+        iden: Identifier,
+        fields: Vec<(Identifier, Type)>,
+    }
 }
 
 #[derive(Debug)]
