@@ -56,12 +56,22 @@ impl Type {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssignmentKw {
+    None,
+    Mut,
+    /// This forces the assignment to be a declaration even if it has no explicit type,
+    /// which only really matters when the name already exists in the outer scope but
+    /// you do not want to reassign it (but shadow it in the local scope instead).
+    Local,
+}
+
 #[derive(Debug)]
 pub enum Block {
     Expression(Expr),
     // even without mut and type, it can be a declaration (with inferred type)
     Assignment {
-        has_mut_kw: bool,
+        kw: AssignmentKw,
         target: Identifier,
         typ: Option<Type>,
         value: Expr,

@@ -1,5 +1,6 @@
 use ::std::str::FromStr;
 
+use crate::ast::AssignmentKw;
 use crate::ast::Block;
 use crate::ast::Expr;
 use crate::ast::Identifier;
@@ -81,25 +82,37 @@ FieldDecl: (Identifier, Type) = {
 
 Assignment: Block = {
     "mut" <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
-         has_mut_kw: true,
+         kw: AssignmentKw::Mut,
          target: n,
          typ: None,
          value: e,
     },
     "mut" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
-         has_mut_kw: true,
+         kw: AssignmentKw::Mut,
+         target: n,
+         typ: Some(t),
+         value: e,
+    },
+    "local" <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
+         kw: AssignmentKw::Local,
+         target: n,
+         typ: None,
+         value: e,
+    },
+    "local" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
+         kw: AssignmentKw::Local,
          target: n,
          typ: Some(t),
          value: e,
     },
     <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
-         has_mut_kw: false,
+         kw: AssignmentKw::None,
          target: n,
          typ: None,
          value: e,
     },
     <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
-         has_mut_kw: false,
+         kw: AssignmentKw::None,
          target: n,
          typ: Some(t),
          value: e,
