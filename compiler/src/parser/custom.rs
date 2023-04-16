@@ -37,6 +37,16 @@ trait Tokenizer: fmt::Debug + Send + Sync {
 #[derive(Debug)]
 struct FixedTokenTokenizer(Regex, Token);
 
+impl FixedTokenTokenizer {
+    fn new_parenthesis_open() -> Box<Self> {
+        Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\(\s*").unwrap(), Token::ParenthesisOpen))
+    }
+
+    fn new_parenthesis_close() -> Box<Self> {
+        Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\)[ \t]*").unwrap(), Token::ParenthesisClose))
+    }
+}
+
 impl Tokenizer for FixedTokenTokenizer {
     fn regex(&self) -> &Regex {
         &self.0
@@ -50,6 +60,12 @@ impl Tokenizer for FixedTokenTokenizer {
 
 #[derive(Debug)]
 struct OpSymbolTokenizer(Regex);
+
+impl OpSymbolTokenizer {
+    fn new() -> Box<Self> {
+        Box::new(OpSymbolTokenizer(Regex::new(r"^\s*([*+\-/])\s*").unwrap()))
+    }
+}
 
 impl Tokenizer for OpSymbolTokenizer {
     fn regex(&self) -> &Regex {
@@ -70,6 +86,12 @@ impl Tokenizer for OpSymbolTokenizer {
 #[derive(Debug)]
 struct NumberTokenizer(Regex);
 
+impl NumberTokenizer {
+    fn new() -> Box<Self> {
+        Box::new(NumberTokenizer(Regex::new(r"^\s*(-?[0-9]+(?:\.[0-9]+)?)[ \t]*").unwrap()))
+    }
+}
+
 impl Tokenizer for NumberTokenizer {
     fn regex(&self) -> &Regex {
         &self.0
@@ -87,10 +109,10 @@ impl Tokenizer for NumberTokenizer {
 static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 4]> = LazyLock::new(|| {
     debug!("start creating tokenizers (compiling regexes)");
     let tokenizers: [Box<dyn Tokenizer>; 4] = [
-        Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\(\s*").unwrap(), Token::ParenthesisOpen)),
-        Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\)[ \t]*").unwrap(), Token::ParenthesisClose)),
-        Box::new(OpSymbolTokenizer(Regex::new(r"^\s*([*+\-/])\s*").unwrap())),
-        Box::new(NumberTokenizer(Regex::new(r"^\s*(-?[0-9]+(?:\.[0-9]+)?)[ \t]*").unwrap())),
+        FixedTokenTokenizer::new_parenthesis_open(),
+        FixedTokenTokenizer::new_parenthesis_close(),
+        OpSymbolTokenizer::new(),
+        NumberTokenizer::new(),
     ];
     debug!("finished creating tokenizers (compiling regexes)");
     tokenizers
