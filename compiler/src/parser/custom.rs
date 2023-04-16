@@ -90,7 +90,7 @@ static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 4]> = LazyLock::new(|| {
         Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\(\s*").unwrap(), Token::ParenthesisOpen)),
         Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\)[ \t]*").unwrap(), Token::ParenthesisClose)),
         Box::new(OpSymbolTokenizer(Regex::new(r"^\s*([*+\-/])\s*").unwrap())),
-        Box::new(NumberTokenizer(Regex::new(r"^\s*\(\s*").unwrap())),
+        Box::new(NumberTokenizer(Regex::new(r"^\s*(-?[0-9]+(?:\.[0-9]+)?)[ \t]*").unwrap())),
     ];
     debug!("finished creating tokenizers (compiling regexes)");
     tokenizers
