@@ -1,12 +1,13 @@
 //TODO @mark: delete either this if lalrpop turns out better, or delete lalrpop if going this way
 
+use ::std::fmt;
 use ::std::path::PathBuf;
 use ::std::sync::LazyLock;
-use std::fmt;
 
+use ::itertools::Itertools;
 use ::regex::Regex;
-use itertools::Itertools;
-use steel_api::log::{debug, trace};
+
+use ::steel_api::log::{debug, trace};
 
 use crate::ast::AST;
 use crate::ast::OpCode;
@@ -36,15 +37,19 @@ trait Tokenizer: fmt::Debug + Send + Sync {
 }
 
 #[derive(Debug)]
-struct FixedTokenTokenizer(Regex, Token);
+struct FixedTokenTokenizer(Regex, Option<Token>);
 
 impl FixedTokenTokenizer {
     fn new_parenthesis_open() -> Box<Self> {
-        Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\(\s*").unwrap(), Token::ParenthesisOpen))
+        Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\(\s*").unwrap(), Some(Token::ParenthesisOpen)))
     }
 
     fn new_parenthesis_close() -> Box<Self> {
-        Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\)[ \t]*").unwrap(), Token::ParenthesisClose))
+        Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\)[ \t]*").unwrap(), Some(Token::ParenthesisClose)))
+    }
+
+    fn new_leftover_whitespace() -> Box<Self> {
+        Box::new(FixedTokenTokenizer(Regex::new(r"^\s*$").unwrap(), None))
     }
 }
 
@@ -55,7 +60,7 @@ impl Tokenizer for FixedTokenTokenizer {
 
     fn token_for(&self, ignored: Option<&str>) -> Option<Token> {
         debug_assert!(ignored.is_none(), "no capture group expected for this tokenizer (got {ignored:?})");
-        Some(self.1.clone())
+        self.1.clone()
     }
 }
 
@@ -147,15 +152,16 @@ impl Tokenizer for TextTokenizer {
 }
 
 //TODO @mark: pity about dyn, see if it gets optimized
-static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 6]> = LazyLock::new(|| {
+static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 7]> = LazyLock::new(|| {
     debug!("start creating tokenizers (compiling regexes)");
-    let tokenizers: [Box<dyn Tokenizer>; 6] = [
+    let tokenizers: [Box<dyn Tokenizer>; 7] = [
         CommentTokenizer::new(),
         FixedTokenTokenizer::new_parenthesis_open(),
         FixedTokenTokenizer::new_parenthesis_close(),
         OpSymbolTokenizer::new(),
         NumberTokenizer::new(),
         TextTokenizer::new(),
+        FixedTokenTokenizer::new_leftover_whitespace(),
     ];
     debug!("finished creating {} tokenizers (compiling regexes)", tokenizers.len());
     tokenizers
@@ -205,8 +211,8 @@ mod tokens {
     }
 
     #[test]
-    fn handle_non_ascii_strings() {
-        let tokens = tokenize(PathBuf::from("test"), "\"你好\"");
+    fn handle_non_ascii_strings_and_comments() {
+        let tokens = tokenize(PathBuf::from("test"), "\"你好\"# 你好");
         assert_eq!(tokens, Ok(vec![Token::Text("你好".to_owned())]));
     }
 
@@ -215,5 +221,11 @@ mod tokens {
         let tokens = tokenize(PathBuf::from("test"), "(3) + (4 / 2)");
         assert_eq!(tokens, Ok(vec![Token::ParenthesisOpen, Token::Number(3.), Token::ParenthesisClose, Token::OpSymbol(OpCode::Add),
                 Token::ParenthesisOpen, Token::Number(4.), Token::OpSymbol(OpCode::Div), Token::Number(2.), Token::ParenthesisClose]));
+    }
+
+    #[test]
+    fn skip_leftover_whitespace_at_end() {
+        let tokens = tokenize(PathBuf::from("test"), "0\n\n");
+        assert_eq!(tokens, Ok(vec![Token::Number(0.)]));
     }
 }
