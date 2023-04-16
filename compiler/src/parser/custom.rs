@@ -2,6 +2,7 @@
 
 use ::std::path::PathBuf;
 use ::std::sync::LazyLock;
+use std::fmt;
 
 use ::regex::Regex;
 use itertools::Itertools;
@@ -25,7 +26,7 @@ pub enum Token {
     Number(f64),
 }
 
-trait Tokenizer: Send + Sync {
+trait Tokenizer: fmt::Debug + Send + Sync {
     #[inline]
     fn regex(&self) -> &Regex;
 
@@ -33,6 +34,7 @@ trait Tokenizer: Send + Sync {
     fn token_for(&self, cap_group: Option<&str>) -> Token;
 }
 
+#[derive(Debug)]
 struct FixedTokenTokenizer(Regex, Token);
 
 impl Tokenizer for FixedTokenTokenizer {
@@ -46,6 +48,7 @@ impl Tokenizer for FixedTokenTokenizer {
     }
 }
 
+#[derive(Debug)]
 struct OpSymbolTokenizer(Regex);
 
 impl Tokenizer for OpSymbolTokenizer {
@@ -64,6 +67,7 @@ impl Tokenizer for OpSymbolTokenizer {
     }
 }
 
+#[derive(Debug)]
 struct NumberTokenizer(Regex);
 
 impl Tokenizer for NumberTokenizer {
@@ -101,6 +105,7 @@ pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelEr
         eprintln!("ix={ix} code='{}'", code.chars().take(40).join(""));  //TODO @mark: TEMPORARY! REMOVE THIS!
         //TODO @mark: unroll:
         for tokenizer in &*TOKENIZERS {
+            eprintln!("ix={ix} tokenizer={tokenizer:?}");  //TODO @mark: TEMPORARY! REMOVE THIS!
             let Some(caps) = tokenizer.regex().captures_iter(code).next() else {
                 continue;
             };
@@ -114,7 +119,8 @@ pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelEr
             debug_assert!(mtch.len() > 0);
             continue 'outer;
         }
-        unreachable!("unexpected end of input at #{ix} ('{}')", code.chars().next().unwrap())
+        unreachable!("unexpected end of input at #{ix} ('{}') after {} tokenizers",
+                code.chars().next().unwrap(), TOKENIZERS.len())
     }
     Ok(tokens)
 }
