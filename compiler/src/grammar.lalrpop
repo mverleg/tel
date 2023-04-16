@@ -12,10 +12,10 @@ grammar;
 
 match {
     // Do not count END token when preceded by ellipsis
-    r"...[ \t]*(\r\n|\n|\r)(\s|\r|\n)+" => {},
+    r"...[ \t]*(\r\n|\n|\r)(\s|\r|\n)" => {},
 } else {
     // Turn any number of newline into a single token (without this they are skipped)
-    r"(\r\n|\n|\r)(\s|\r|\n)*" => END,
+    r"(\r\n|\n|\r)(\s|\r|\n)+" => END,
 } else {
     // Match double quoted string literals
     r#"("[^"]*"|([^"]*\\")*)"# => DQSTR,
@@ -64,12 +64,8 @@ NullaryExpr: Expr = {
     <s:DQSTR> => Expr::Text(s.to_string()),
     <s:SQSTR> => Expr::Text(s.to_string()),
     NumLit => Expr::Num(<>),
-    DeepExpr
+    "(" END? <e:AddSubExpr> ")" => e
 };
-
-DeepExpr: Expr = {
-    "(" END? <e:AddSubExpr> ")" END? => e
-}
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
@@ -105,14 +101,8 @@ TypeUse: Type = {
 
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9_])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
 
-CommaSep = {
-    <","> END,
-    ",",
-    END,
-}
-
 Comma<T>: Vec<T> = {
-    <mut v:(<T> CommaSep)*> <e:T?> => {
+    <mut v:(<T> ",")*> <e:T?> => {
         if let Some(f) = e {
             v.push(f);
         }
@@ -120,6 +110,7 @@ Comma<T>: Vec<T> = {
     }
 };
 
+#[inline]
 SemicolonSep = {
     <";"> END,
     ";",
