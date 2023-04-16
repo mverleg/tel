@@ -21,14 +21,15 @@ pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<AST, SteelErr> {
 pub enum Token {
     ParenthesisOpen,
     ParenthesisClose,
-    Number(f64),
     OpSymbol(OpCode),
+    Number(f64),
 }
 
 struct TokenizerRegexes {
     parenthesis_open_re: Regex,
     parenthesis_close_re: Regex,
     op_symbol_re: Regex,
+    number_re: Regex,
 }
 
 static RE: LazyLock<TokenizerRegexes> = LazyLock::new(|| {
@@ -37,6 +38,8 @@ static RE: LazyLock<TokenizerRegexes> = LazyLock::new(|| {
         parenthesis_open_re: Regex::new(r"^\s*\(\s*").unwrap(),
         parenthesis_close_re: Regex::new(r"^\s*\)[ \t]*").unwrap(),
         op_symbol_re: Regex::new(r"^\s*([*+\-/])\s*").unwrap(),
+        number_re: Regex::new(r"^\s*(-?[0-9]+(?:\.[0-9]+)?)[ \t]*").unwrap(),
+        //TODO @mark: no exponential notation yet
     };
     debug!("finished compilign regexes for tokenizer");
     re
@@ -63,7 +66,6 @@ pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelEr
             let cap = caps.get(0).unwrap().as_str();
             let token = Token::ParenthesisClose;
             eprintln!("match {token:?} in '{cap}' from {ix} to {}", ix + cap.len());
-            //TODO @mark: change to trace ^
             tokens.push(token);
             ix += cap.len();
             debug_assert!(cap.len() > 0);
@@ -82,7 +84,20 @@ pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelEr
             });
             eprintln!("match {token:?} in '{cap}' from {ix} to {}", ix + cap.len());
             tokens.push(token);
-            //TODO @mark: change to trace ^
+            ix += cap.len();
+            debug_assert!(cap.len() > 0);
+            continue;
+        }
+        if let Some(caps) = RE.number_re.captures_iter(code).next() {
+            let cap = caps.get(0).unwrap().as_str();
+            eprintln!("num cap = '{cap}'");  //TODO @mark: TEMPORARY! REMOVE THIS!
+            let num_repr = caps.get(1).unwrap().as_str();
+            let token = match num_repr.parse() {
+                Ok(num) => Token::Number(num),
+                Err(_err) => unimplemented!(),  //TODO @mark: error handling (e.g. too large nr? most invalid input is handled by regex)
+            };
+            eprintln!("match {token:?} in '{cap}' from {ix} to {}", ix + cap.len());
+            tokens.push(token);
             ix += cap.len();
             debug_assert!(cap.len() > 0);
             continue;
