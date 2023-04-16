@@ -9,6 +9,8 @@ use crate::parser::errors::build_error;
 use crate::SteelErr;
 
 mod errors;
+mod custom;
+
 
 lalrpop_mod!(gen_parser, "/grammar.rs");
 
