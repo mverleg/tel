@@ -47,7 +47,7 @@ fn find_main_file(path: &Path) -> Result<PathBuf, SteelErr> {
     Ok(path)
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SteelErr {
     FileNotFound{ file: PathBuf },
     CouldNotRead(PathBuf, String),

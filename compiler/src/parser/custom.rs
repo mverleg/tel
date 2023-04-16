@@ -15,7 +15,7 @@ pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<AST, SteelErr> {
     unimplemented!()  //TODO @mark:
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Token {
     ParenthesisOpen,
     ParenthesisClose,
@@ -46,17 +46,19 @@ pub fn tokenize(src_pth: PathBuf, code: &str) -> Result<Vec<Token>, SteelErr> {
             tokens.push(Token::ParenthesisOpen);
             trace!("match {:?} from {ix} to {}", tokens.last().unwrap(), ix + cap.len());
             ix += cap.len();
-            break;
+            debug_assert!(cap.len() > 0);
+            continue;
         }
         if let Some(cap) = RE.parenthesis_close_re.captures_iter(&code[ix..]).next() {
             trace!("match {:?} from {ix} to {}", tokens.last().unwrap(), ix + cap.len());
             tokens.push(Token::ParenthesisClose);
             ix += cap.len();
-            break;
+            debug_assert!(cap.len() > 0);
+            continue;
         }
         unreachable!("unexpected end of input at #{ix} ('{}')", code[ix..].chars().next().unwrap())
     }
-    unimplemented!()
+    Ok(tokens)
 }
 
 #[cfg(test)]
@@ -66,6 +68,6 @@ mod tokens {
     #[test]
     fn allow_whitespace_after_open_parenthesis() {
         let tokens = tokenize(PathBuf::from("test"), "(\n)");
-        assert_eq!(tokens, Ok(vec![Tokens::ParenthesisOpen, Tokens::ParenthesisClose]));
+        assert_eq!(tokens, Ok(vec![Token::ParenthesisOpen, Token::ParenthesisClose]));
     }
 }
