@@ -41,7 +41,7 @@ impl Tokenizer for FixedTokenTokenizer {
     }
 
     fn token_for(&self, ignored: Option<&str>) -> Token {
-        debug_assert!(ignored.is_none(), "no capture group expected for this tokenizer");
+        debug_assert!(ignored.is_none(), "no capture group expected for this tokenizer (got {ignored:?})");
         self.1.clone()
     }
 }
@@ -95,23 +95,24 @@ static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 4]> = LazyLock::new(|| {
 pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelErr> {
     let mut tokens = Vec::new();
     let mut ix = 0;
-    while ix < full_code.len() {
+    'outer: while ix < full_code.len() {
         //TODO @mark: drop '...\n' continuations
         let code = &full_code[ix..];
         eprintln!("ix={ix} code='{}'", code.chars().take(40).join(""));  //TODO @mark: TEMPORARY! REMOVE THIS!
-        //TODO @mark: encourage unrolling:
+        //TODO @mark: unroll:
         for tokenizer in &*TOKENIZERS {
-            if let Some(caps) = tokenizer.regex().captures_iter(code).next() {
-                let mtch = caps.get(0).unwrap().as_str();
-                let grp = caps.get(0).map(|g| g.as_str());
-                let token = tokenizer.token_for(grp);
-                eprintln!("match {token:?} in '{mtch}' from {ix} to {}", ix + mtch.len());
-                //TODO @mark: change to trace ^
-                tokens.push(token);
-                ix += mtch.len();
-                debug_assert!(mtch.len() > 0);
+            let Some(caps) = tokenizer.regex().captures_iter(code).next() else {
                 continue;
-            }
+            };
+            let mtch = caps.get(0).expect("regex group 0 should always match").as_str();
+            let grp = caps.get(1).map(|g| g.as_str());
+            let token = tokenizer.token_for(grp);
+            eprintln!("match {token:?} in '{mtch}' from {ix} to {}", ix + mtch.len());
+            //TODO @mark: change to trace ^
+            tokens.push(token);
+            ix += mtch.len();
+            debug_assert!(mtch.len() > 0);
+            continue 'outer;
         }
         unreachable!("unexpected end of input at #{ix} ('{}')", code.chars().next().unwrap())
     }
