@@ -24,6 +24,7 @@ pub enum Token {
     ParenthesisClose,
     OpSymbol(OpCode),
     Number(f64),
+    Text(String),
 }
 
 trait Tokenizer: fmt::Debug + Send + Sync {
@@ -105,16 +106,37 @@ impl Tokenizer for NumberTokenizer {
     }
 }
 
+#[derive(Debug)]
+struct TextTokenizer(Regex);
+
+impl TextTokenizer {
+    fn new() -> Box<Self> {
+        //TODO @mark: quote escaping not allowed yet
+        Box::new(TextTokenizer(Regex::new("^\\s*\"([^\"\n]*)\"[ \t]*").unwrap()))
+    }
+}
+
+impl Tokenizer for TextTokenizer {
+    fn regex(&self) -> &Regex {
+        &self.0
+    }
+
+    fn token_for(&self, text: Option<&str>) -> Token {
+        Token::Text(text.expect("regex group must always capture once").to_owned())
+    }
+}
+
 //TODO @mark: pity about dyn, see if it gets optimized
-static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 4]> = LazyLock::new(|| {
+static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 5]> = LazyLock::new(|| {
     debug!("start creating tokenizers (compiling regexes)");
-    let tokenizers: [Box<dyn Tokenizer>; 4] = [
+    let tokenizers: [Box<dyn Tokenizer>; 5] = [
         FixedTokenTokenizer::new_parenthesis_open(),
         FixedTokenTokenizer::new_parenthesis_close(),
         OpSymbolTokenizer::new(),
         NumberTokenizer::new(),
+        TextTokenizer::new(),
     ];
-    debug!("finished creating tokenizers (compiling regexes)");
+    debug!("finished creating {} tokenizers (compiling regexes)", tokenizers.len());
     tokenizers
 });
 
@@ -160,7 +182,7 @@ mod tokens {
     #[test]
     fn handle_non_ascii_strings() {
         let tokens = tokenize(PathBuf::from("test"), "\"你好\"");
-        assert_eq!(tokens, Ok(vec![Token::ParenthesisOpen, Token::ParenthesisClose]));
+        assert_eq!(tokens, Ok(vec![Token::Text("你好".to_owned())]));
     }
 
     #[test]
