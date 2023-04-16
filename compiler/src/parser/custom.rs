@@ -25,24 +25,39 @@ pub enum Token {
     Number(f64),
 }
 
-struct TokenizerRegexes {
-    parenthesis_open_re: Regex,
-    parenthesis_close_re: Regex,
-    op_symbol_re: Regex,
-    number_re: Regex,
+struct ParenthesisOpenTokenizer(Regex);
+
+trait Tokenizer {
+    fn regex(&self) -> &Regex;
+
+    fn capture_handler(&self, cap_group: Option<&str>) -> Token;
 }
 
-static RE: LazyLock<TokenizerRegexes> = LazyLock::new(|| {
-    debug!("start compilign regexes for tokenizer");
-    let re = TokenizerRegexes {
-        parenthesis_open_re: Regex::new(r"^\s*\(\s*").unwrap(),
-        parenthesis_close_re: Regex::new(r"^\s*\)[ \t]*").unwrap(),
-        op_symbol_re: Regex::new(r"^\s*([*+\-/])\s*").unwrap(),
-        number_re: Regex::new(r"^\s*(-?[0-9]+(?:\.[0-9]+)?)[ \t]*").unwrap(),
-        //TODO @mark: no exponential notation yet
-    };
-    debug!("finished compilign regexes for tokenizer");
-    re
+impl Tokenizer for ParenthesisOpenTokenizer {
+    fn regex(&self) -> &Regex {
+        &self.0
+    }
+
+    fn capture_handler(&self, cap_group: Option<&str>) -> Token {
+        todo!()
+    }
+}
+
+//TODO @mark: pity about dyn, see if it gets optimized
+static RE: LazyLock<[dyn Tokenizer; 1]> = LazyLock::new(|| {
+    debug!("start creating tokenizers (compiling regexes)");
+    let tokenizers = [
+        ParenthesisOpenTokenizer(Regex::new(r"^\s*\(\s*").unwrap()),
+    ];
+    // let re = Tokenizers {
+    //     parenthesis_open_re: Regex::new(r"^\s*\(\s*").unwrap(),
+    //     parenthesis_close_re: Regex::new(r"^\s*\)[ \t]*").unwrap(),
+    //     op_symbol_re: Regex::new(r"^\s*([*+\-/])\s*").unwrap(),
+    //     number_re: Regex::new(r"^\s*(-?[0-9]+(?:\.[0-9]+)?)[ \t]*").unwrap(),
+    //     //TODO @mark: no exponential notation yet
+    // };
+    debug!("finished creating tokenizers (compiling regexes)");
+    tokenizers
 });
 
 pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelErr> {
