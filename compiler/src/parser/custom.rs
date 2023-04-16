@@ -45,34 +45,41 @@ pub fn tokenize(src_pth: PathBuf, code: &str) -> Result<Vec<Token>, SteelErr> {
     let mut tokens = Vec::new();
     let mut ix = 0;
     while ix < code.len() {
-        eprintln!("ix={ix}");  //TODO @mark: TEMPORARY! REMOVE THIS!
+        eprintln!("ix={ix} ch='{}'", code[ix..].chars().next().unwrap());  //TODO @mark: TEMPORARY! REMOVE THIS!
         if let Some(caps) = RE.parenthesis_open_re.captures_iter(&code[ix..]).next() {
             let cap = caps.get(0).unwrap().as_str();
-            tokens.push(Token::ParenthesisOpen);
-            trace!("match {:?} from {ix} to {}", tokens.last().unwrap(), ix + cap.len());
+            let token = Token::ParenthesisOpen;
+            eprintln!("match {token:?} from {ix} to {}", ix + cap.len());
+            //TODO @mark: change to trace ^
+            tokens.push(token);
             ix += cap.len();
             debug_assert!(cap.len() > 0);
             continue;
         }
         if let Some(caps) = RE.parenthesis_close_re.captures_iter(&code[ix..]).next() {
             let cap = caps.get(0).unwrap().as_str();
-            tokens.push(Token::ParenthesisClose);
-            trace!("match {:?} from {ix} to {}", tokens.last().unwrap(), ix + cap.len());
+            let token = Token::ParenthesisClose;
+            eprintln!("match {token:?} from {ix} to {}", ix + cap.len());
+            //TODO @mark: change to trace ^
+            tokens.push(token);
             ix += cap.len();
             debug_assert!(cap.len() > 0);
             continue;
         }
         if let Some(caps) = RE.op_symbol_re.captures_iter(&code[ix..]).next() {
             let cap = caps.get(0).unwrap().as_str();
+            eprintln!("sym cap = '{cap}'");  //TODO @mark: TEMPORARY! REMOVE THIS!
             let sym = caps.get(1).unwrap().as_str();
-            tokens.push(Token::OpSymbol(match cap {
+            let token = Token::OpSymbol(match cap {
                 "+" => OpCode::Add,
                 "-" => OpCode::Sub,
                 "*" => OpCode::Mul,
                 "/" => OpCode::Div,
                 _ => unreachable!(),
-            }));
-            trace!("match {:?} from {ix} to {}", tokens.last().unwrap(), ix + cap.len());
+            });
+            eprintln!("match {token:?} from {ix} to {}", ix + cap.len());
+            tokens.push(token);
+            //TODO @mark: change to trace ^
             ix += cap.len();
             debug_assert!(cap.len() > 0);
             continue;
