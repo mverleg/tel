@@ -12,6 +12,7 @@ use crate::SteelErr;
 
 mod errors;
 mod custom;
+mod lexer;
 
 
 // lalrpop_mod!(gen_parser, "/grammar.rs");
