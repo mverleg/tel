@@ -31,8 +31,8 @@ struct TokenizerRegexes {
 static RE: LazyLock<TokenizerRegexes> = LazyLock::new(|| {
     debug!("start compilign regexes for tokenizer");
     let re = TokenizerRegexes {
-        parenthesis_open_re: Regex::new(r"\s*\([\s\n\r]*").unwrap(),
-        parenthesis_close_re: Regex::new(r"\s*\)[\s\n\r]*").unwrap(),
+        parenthesis_open_re: Regex::new(r"\s*\(\s*").unwrap(),
+        parenthesis_close_re: Regex::new(r"\s*\)[ \t]*").unwrap(),
     };
     debug!("finished compilign regexes for tokenizer");
     re
@@ -42,14 +42,17 @@ pub fn tokenize(src_pth: PathBuf, code: &str) -> Result<Vec<Token>, SteelErr> {
     let mut tokens = Vec::new();
     let mut ix = 0;
     while ix < code.len() {
-        if let Some(cap) = RE.parenthesis_open_re.captures_iter(&code[ix..]).next() {
+        eprintln!("ix={ix}");  //TODO @mark: TEMPORARY! REMOVE THIS!
+        if let Some(caps) = RE.parenthesis_open_re.captures_iter(&code[ix..]).next() {
+            let cap = caps.get(0).unwrap().as_str();
             tokens.push(Token::ParenthesisOpen);
             trace!("match {:?} from {ix} to {}", tokens.last().unwrap(), ix + cap.len());
             ix += cap.len();
             debug_assert!(cap.len() > 0);
             continue;
         }
-        if let Some(cap) = RE.parenthesis_close_re.captures_iter(&code[ix..]).next() {
+        if let Some(caps) = RE.parenthesis_close_re.captures_iter(&code[ix..]).next() {
+            let cap = caps.get(0).unwrap().as_str();
             trace!("match {:?} from {ix} to {}", tokens.last().unwrap(), ix + cap.len());
             tokens.push(Token::ParenthesisClose);
             ix += cap.len();
