@@ -73,9 +73,9 @@ pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelEr
         }
         if let Some(caps) = RE.op_symbol_re.captures_iter(code).next() {
             let cap = caps.get(0).unwrap().as_str();
-            eprintln!("sym cap = '{cap}'");  //TODO @mark: TEMPORARY! REMOVE THIS!
             let sym = caps.get(1).unwrap().as_str();
-            let token = Token::OpSymbol(match cap {
+            eprintln!("sym cap = '{sym}'");  //TODO @mark: TEMPORARY! REMOVE THIS!
+            let token = Token::OpSymbol(match sym {
                 "+" => OpCode::Add,
                 "-" => OpCode::Sub,
                 "*" => OpCode::Mul,
@@ -90,8 +90,8 @@ pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelEr
         }
         if let Some(caps) = RE.number_re.captures_iter(code).next() {
             let cap = caps.get(0).unwrap().as_str();
-            eprintln!("num cap = '{cap}'");  //TODO @mark: TEMPORARY! REMOVE THIS!
             let num_repr = caps.get(1).unwrap().as_str();
+            eprintln!("num cap = '{num_repr}'");  //TODO @mark: TEMPORARY! REMOVE THIS!
             let token = match num_repr.parse() {
                 Ok(num) => Token::Number(num),
                 Err(_err) => unimplemented!(),  //TODO @mark: error handling (e.g. too large nr? most invalid input is handled by regex)
@@ -126,6 +126,7 @@ mod tokens {
     #[test]
     fn simple_arithmetic() {
         let tokens = tokenize(PathBuf::from("test"), "(3) + (4 / 2)");
-        assert_eq!(tokens, Ok(vec![Token::ParenthesisOpen, Token::ParenthesisClose]));
+        assert_eq!(tokens, Ok(vec![Token::ParenthesisOpen, Token::Number(3.), Token::ParenthesisClose, Token::OpSymbol(OpCode::Add),
+                Token::ParenthesisOpen, Token::Number(4.), Token::OpSymbol(OpCode::Div), Token::Number(2.), Token::ParenthesisClose]));
     }
 }
