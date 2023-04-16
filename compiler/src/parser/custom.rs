@@ -32,7 +32,7 @@ trait Tokenizer: fmt::Debug + Send + Sync {
     fn regex(&self) -> &Regex;
 
     #[inline]
-    fn token_for(&self, cap_group: Option<&str>) -> Token;
+    fn token_for(&self, cap_group: Option<&str>) -> Option<Token>;
 }
 
 #[derive(Debug)]
@@ -53,9 +53,29 @@ impl Tokenizer for FixedTokenTokenizer {
         &self.0
     }
 
-    fn token_for(&self, ignored: Option<&str>) -> Token {
+    fn token_for(&self, ignored: Option<&str>) -> Option<Token> {
         debug_assert!(ignored.is_none(), "no capture group expected for this tokenizer (got {ignored:?})");
-        self.1.clone()
+        Some(self.1.clone())
+    }
+}
+
+#[derive(Debug)]
+struct CommentTokenizer(Regex);
+
+impl CommentTokenizer {
+    fn new() -> Box<Self> {
+        Box::new(CommentTokenizer(Regex::new(r"^\s*#[^\n\r]+(?:$|\n|\r)+").unwrap()))
+    }
+}
+
+impl Tokenizer for CommentTokenizer {
+    fn regex(&self) -> &Regex {
+        &self.0
+    }
+
+    fn token_for(&self, comment: Option<&str>) -> Option<Token> {
+        debug_assert!(comment.is_none(), "no capture group expected for comment");
+        None
     }
 }
 
@@ -73,14 +93,14 @@ impl Tokenizer for OpSymbolTokenizer {
         &self.0
     }
 
-    fn token_for(&self, op_sym: Option<&str>) -> Token {
-        Token::OpSymbol(match op_sym.expect("regex group must always capture once") {
+    fn token_for(&self, op_sym: Option<&str>) -> Option<Token> {
+        Some(Token::OpSymbol(match op_sym.expect("regex group must always capture once") {
             "+" => OpCode::Add,
             "-" => OpCode::Sub,
             "*" => OpCode::Mul,
             "/" => OpCode::Div,
             _ => unreachable!(),
-        })
+        }))
     }
 }
 
@@ -98,9 +118,9 @@ impl Tokenizer for NumberTokenizer {
         &self.0
     }
 
-    fn token_for(&self, num_repr: Option<&str>) -> Token {
+    fn token_for(&self, num_repr: Option<&str>) -> Option<Token> {
         match num_repr.expect("regex group must always capture once").parse() {
-            Ok(num) => Token::Number(num),
+            Ok(num) => Some(Token::Number(num)),
             Err(_err) => unimplemented!(),  //TODO @mark: error handling (e.g. too large nr? most invalid input is handled by regex)
         }
     }
@@ -121,15 +141,16 @@ impl Tokenizer for TextTokenizer {
         &self.0
     }
 
-    fn token_for(&self, text: Option<&str>) -> Token {
-        Token::Text(text.expect("regex group must always capture once").to_owned())
+    fn token_for(&self, text: Option<&str>) -> Option<Token> {
+        Some(Token::Text(text.expect("regex group must always capture once").to_owned()))
     }
 }
 
 //TODO @mark: pity about dyn, see if it gets optimized
-static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 5]> = LazyLock::new(|| {
+static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 6]> = LazyLock::new(|| {
     debug!("start creating tokenizers (compiling regexes)");
-    let tokenizers: [Box<dyn Tokenizer>; 5] = [
+    let tokenizers: [Box<dyn Tokenizer>; 6] = [
+        CommentTokenizer::new(),
         FixedTokenTokenizer::new_parenthesis_open(),
         FixedTokenTokenizer::new_parenthesis_close(),
         OpSymbolTokenizer::new(),
@@ -155,10 +176,14 @@ pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelEr
             };
             let mtch = caps.get(0).expect("regex group 0 should always match").as_str();
             let grp = caps.get(1).map(|g| g.as_str());
-            let token = tokenizer.token_for(grp);
-            eprintln!("match {token:?} in '{mtch}' from {ix} to {}", ix + mtch.len());
-            //TODO @mark: change to trace ^
-            tokens.push(token);
+            if let Some(token) = tokenizer.token_for(grp) {
+                eprintln!("match {token:?} in '{mtch}' from {ix} to {}", ix + mtch.len());
+                //TODO @mark: change to trace ^
+                tokens.push(token);
+            } else {
+                eprintln!("matched tokenizer {tokenizer:?} from {ix} to {} but it produced no token", ix + mtch.len());
+                //TODO @mark: change to trace ^
+            }
             ix += mtch.len();
             debug_assert!(mtch.len() > 0);
             continue 'outer;
