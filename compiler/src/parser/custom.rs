@@ -4,6 +4,7 @@ use ::std::path::PathBuf;
 use ::std::sync::LazyLock;
 
 use ::regex::Regex;
+use itertools::Itertools;
 use steel_api::log::{debug, trace};
 
 use crate::ast::AST;
@@ -33,9 +34,9 @@ struct TokenizerRegexes {
 static RE: LazyLock<TokenizerRegexes> = LazyLock::new(|| {
     debug!("start compilign regexes for tokenizer");
     let re = TokenizerRegexes {
-        parenthesis_open_re: Regex::new(r"\s*\(\s*").unwrap(),
-        parenthesis_close_re: Regex::new(r"\s*\)[ \t]*").unwrap(),
-        op_symbol_re: Regex::new(r"\s*([*+\-/])\s*").unwrap(),
+        parenthesis_open_re: Regex::new(r"^\s*\(\s*").unwrap(),
+        parenthesis_close_re: Regex::new(r"^\s*\)[ \t]*").unwrap(),
+        op_symbol_re: Regex::new(r"^\s*([*+\-/])\s*").unwrap(),
     };
     debug!("finished compilign regexes for tokenizer");
     re
@@ -47,7 +48,7 @@ pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelEr
     while ix < full_code.len() {
         //TODO @mark: drop '...\n' continuations
         let code = &full_code[ix..];
-        eprintln!("ix={ix} ch='{}'", code.chars().next().unwrap());  //TODO @mark: TEMPORARY! REMOVE THIS!
+        eprintln!("ix={ix} code='{}'", code.chars().take(40).join(""));  //TODO @mark: TEMPORARY! REMOVE THIS!
         if let Some(caps) = RE.parenthesis_open_re.captures_iter(code).next() {
             let cap = caps.get(0).unwrap().as_str();
             let token = Token::ParenthesisOpen;
@@ -86,7 +87,7 @@ pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelEr
             debug_assert!(cap.len() > 0);
             continue;
         }
-        unreachable!("unexpected end of input at #{ix} ('{}')", code[ix..].chars().next().unwrap())
+        unreachable!("unexpected end of input at #{ix} ('{}')", code.chars().next().unwrap())
     }
     Ok(tokens)
 }
