@@ -25,9 +25,11 @@ pub enum Token {
     Number(f64),
 }
 
-trait Tokenizer {
+trait Tokenizer: Send + Sync {
+    #[inline]
     fn regex(&self) -> &Regex;
 
+    #[inline]
     fn token_for(&self, cap_group: Option<&str>) -> Token;
 }
 
@@ -52,7 +54,7 @@ impl Tokenizer for OpSymbolTokenizer {
     }
 
     fn token_for(&self, op_sym: Option<&str>) -> Token {
-        Token::OpSymbol(match op_sym {
+        Token::OpSymbol(match op_sym.expect("regex group must always capture once") {
             "+" => OpCode::Add,
             "-" => OpCode::Sub,
             "*" => OpCode::Mul,
@@ -70,7 +72,7 @@ impl Tokenizer for NumberTokenizer {
     }
 
     fn token_for(&self, num_repr: Option<&str>) -> Token {
-        match num_repr.parse() {
+        match num_repr.expect("regex group must always capture once").parse() {
             Ok(num) => Token::Number(num),
             Err(_err) => unimplemented!(),  //TODO @mark: error handling (e.g. too large nr? most invalid input is handled by regex)
         }
@@ -78,13 +80,13 @@ impl Tokenizer for NumberTokenizer {
 }
 
 //TODO @mark: pity about dyn, see if it gets optimized
-static TOKENIZERS: LazyLock<[dyn Tokenizer; 4]> = LazyLock::new(|| {
+static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 4]> = LazyLock::new(|| {
     debug!("start creating tokenizers (compiling regexes)");
-    let tokenizers = [
-        FixedTokenTokenizer(Regex::new(r"^\s*\(\s*").unwrap(), Token::ParenthesisOpen),
-        FixedTokenTokenizer(Regex::new(r"^\s*\)[ \t]*").unwrap(), Token::ParenthesisClose),
-        OpSymbolTokenizer(Regex::new(r"^\s*([*+\-/])\s*").unwrap()),
-        NumberTokenizer(Regex::new(r"^\s*\(\s*").unwrap()),
+    let tokenizers: [Box<dyn Tokenizer>; 4] = [
+        Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\(\s*").unwrap(), Token::ParenthesisOpen)),
+        Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\)[ \t]*").unwrap(), Token::ParenthesisClose)),
+        Box::new(OpSymbolTokenizer(Regex::new(r"^\s*([*+\-/])\s*").unwrap())),
+        Box::new(NumberTokenizer(Regex::new(r"^\s*\(\s*").unwrap())),
     ];
     debug!("finished creating tokenizers (compiling regexes)");
     tokenizers
@@ -97,16 +99,17 @@ pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelEr
         //TODO @mark: drop '...\n' continuations
         let code = &full_code[ix..];
         eprintln!("ix={ix} code='{}'", code.chars().take(40).join(""));  //TODO @mark: TEMPORARY! REMOVE THIS!
-        for tokenizer in TOKENIZERS {
+        //TODO @mark: encourage unrolling:
+        for tokenizer in &*TOKENIZERS {
             if let Some(caps) = tokenizer.regex().captures_iter(code).next() {
                 let mtch = caps.get(0).unwrap().as_str();
                 let grp = caps.get(0).map(|g| g.as_str());
                 let token = tokenizer.token_for(grp);
-                eprintln!("match {token:?} in '{cap}' from {ix} to {}", ix + grp.len());
+                eprintln!("match {token:?} in '{mtch}' from {ix} to {}", ix + mtch.len());
                 //TODO @mark: change to trace ^
                 tokens.push(token);
-                ix += grp.len();
-                debug_assert!(grp.len() > 0);
+                ix += mtch.len();
+                debug_assert!(mtch.len() > 0);
                 continue;
             }
         }
