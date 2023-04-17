@@ -58,9 +58,11 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
     let mut blocks = Vec::new();
     //TODO @mark: parse multiple blocks
     match token {
-        other => blocks.push(Block::Expression(parse_expression(tokens.fork())?))
+        other => {
+            blocks.push(Block::Expression(parse_expression(tokens.fork())?));
+            //TODO @mark: fail if no newline or ;
+        }
     }
-    //TODO @mark: fail if no newline or ;
     Ok(blocks)
 }
 

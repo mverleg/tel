@@ -19,6 +19,13 @@ use crate::SteelErr;
 pub enum Token {
     ParenthesisOpen,
     ParenthesisClose,
+    //TODO @mark:
+    Identifier(String),
+    Newline,
+    Semicolon,
+    Colon,
+    Assignment(Option<OpCode>),
+    //TODO @mark:
     OpSymbol(OpCode),
     Number(f64),
     Text(String),
@@ -37,11 +44,23 @@ struct FixedTokenTokenizer(Regex, Option<Token>);
 
 impl FixedTokenTokenizer {
     fn new_parenthesis_open() -> Box<Self> {
-        Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\(\s*").unwrap(), Some(Token::ParenthesisOpen)))
+        Box::new(FixedTokenTokenizer(Regex::new(r"^[ \t]*\(\s*").unwrap(), Some(Token::ParenthesisOpen)))
     }
 
     fn new_parenthesis_close() -> Box<Self> {
-        Box::new(FixedTokenTokenizer(Regex::new(r"^\s*\)[ \t]*").unwrap(), Some(Token::ParenthesisClose)))
+        Box::new(FixedTokenTokenizer(Regex::new(r"^[ \t]*\)[ \t]*").unwrap(), Some(Token::ParenthesisClose)))
+    }
+
+    fn new_newline() -> Box<Self> {
+        Box::new(FixedTokenTokenizer(Regex::new(r"^[ \t]*[\n\r]+[ \t]*").unwrap(), Some(Token::Newline)))
+    }
+
+    fn new_semicolon() -> Box<Self> {
+        Box::new(FixedTokenTokenizer(Regex::new(r"^[ \t]*;[ \t]*").unwrap(), Some(Token::Semicolon)))
+    }
+
+    fn new_colon() -> Box<Self> {
+        Box::new(FixedTokenTokenizer(Regex::new(r"^[ \t]*:[ \t]*").unwrap(), Some(Token::Colon)))
     }
 
     fn new_leftover_whitespace() -> Box<Self> {
@@ -65,7 +84,7 @@ struct CommentTokenizer(Regex);
 
 impl CommentTokenizer {
     fn new() -> Box<Self> {
-        Box::new(CommentTokenizer(Regex::new(r"^\s*#[^\n\r]+(?:$|\n|\r)+").unwrap()))
+        Box::new(CommentTokenizer(Regex::new(r"^[ \t]*#[^\n\r]+(?:$|\n|\r)+").unwrap()))
     }
 }
 
@@ -85,7 +104,7 @@ struct OpSymbolTokenizer(Regex);
 
 impl OpSymbolTokenizer {
     fn new() -> Box<Self> {
-        Box::new(OpSymbolTokenizer(Regex::new(r"^\s*([*+\-/])\s*").unwrap()))
+        Box::new(OpSymbolTokenizer(Regex::new(r"^[ \t]*([*+\-/])\s*").unwrap()))
     }
 }
 
@@ -110,7 +129,7 @@ struct NumberTokenizer(Regex);
 
 impl NumberTokenizer {
     fn new() -> Box<Self> {
-        Box::new(NumberTokenizer(Regex::new(r"^\s*(-?[0-9]+(?:\.[0-9]+)?)[ \t]*").unwrap()))
+        Box::new(NumberTokenizer(Regex::new(r"^[ \t]*(-?[0-9]+(?:\.[0-9]+)?)[ \t]*").unwrap()))
     }
 }
 
@@ -133,7 +152,7 @@ struct TextTokenizer(Regex);
 impl TextTokenizer {
     fn new() -> Box<Self> {
         //TODO @mark: quote escaping not allowed yet
-        Box::new(TextTokenizer(Regex::new("^\\s*\"([^\"\n]*)\"[ \t]*").unwrap()))
+        Box::new(TextTokenizer(Regex::new("^[ \t]*\"([^\"\n]*)\"[ \t]*").unwrap()))
     }
 }
 
@@ -148,12 +167,15 @@ impl Tokenizer for TextTokenizer {
 }
 
 //TODO @mark: pity about dyn, see if it gets optimized
-static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 7]> = LazyLock::new(|| {
+static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 11]> = LazyLock::new(|| {
     debug!("start creating tokenizers (compiling regexes)");
-    let tokenizers: [Box<dyn Tokenizer>; 7] = [
+    let tokenizers: [Box<dyn Tokenizer>; 11] = [
         CommentTokenizer::new(),
         FixedTokenTokenizer::new_parenthesis_open(),
         FixedTokenTokenizer::new_parenthesis_close(),
+        FixedTokenTokenizer::new_newline(),
+        FixedTokenTokenizer::new_semicolon(),
+        FixedTokenTokenizer::new_colon(),
         OpSymbolTokenizer::new(),
         NumberTokenizer::new(),
         TextTokenizer::new(),
