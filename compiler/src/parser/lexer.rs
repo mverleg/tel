@@ -20,10 +20,10 @@ use crate::SteelErr;
 pub enum Token {
     ParenthesisOpen,
     ParenthesisClose,
-    Identifier(Identifier),
     Newline,
     Semicolon,
     Colon,
+    Identifier(Identifier),
     Assignment(Option<OpCode>),
     OpSymbol(OpCode),
     Number(f64),

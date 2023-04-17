@@ -43,6 +43,25 @@ impl Cursor {
         self.index += 1;
         self.tokens.get(prev)
     }
+
+    fn peek(&self) -> Option<&Token> {
+        self.tokens.get(self.index)
+    }
+
+    fn take_while(&mut self, condition: impl Fn(&Token) -> bool) -> usize {
+        let mut cnt = 0;
+        loop {
+            let Some(val) = self.tokens.get(self.index) else {
+                break
+            };
+            if ! condition(val) {
+                break
+            }
+            cnt += 1;
+        }
+        self.index += cnt;
+        cnt
+    }
 }
 
 pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<AST, SteelErr> {
@@ -58,16 +77,23 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
     //TODO @mark:
     let mut blocks = Vec::new();
     //TODO @mark: parse multiple blocks
-    match token {
-        other => {
-            blocks.push(Block::Expression(parse_expression(tokens.fork())?));
-            //TODO @mark: fail if no newline or ;
+    loop {
+        match tokens.peek() {
+            Some(Token::ParenthesisOpen) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
+            Some(Token::Identifier(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
+            Some(Token::Number(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
+            Some(Token::Text(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
+            Some(other) => todo!("error handling for unknown block start {other:?}"),
+            None => break,
         }
+        tokens.take_while(|tok| matches!(tok, Token::Semicolon));
+        tokens.take_while(|tok| matches!(tok, Token::Newline));
+        //TODO @mark: fail if there was no semicolon or newline (except ')' or '}' maybe? or maybe just forbid such onelines without ;)
     }
     Ok(blocks)
 }
 
-fn parse_expression(mut tokens: Cursor) -> Result<Expr, SteelErr> {
+fn parse_expression(tokens: &mut Cursor) -> Result<Expr, SteelErr> {
     unimplemented!()
 }
 
