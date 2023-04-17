@@ -166,6 +166,25 @@ impl Tokenizer for TextTokenizer {
     }
 }
 
+#[derive(Debug)]
+struct IdentifierTokenizer(Regex);
+
+impl IdentifierTokenizer {
+    fn new() -> Box<Self> {
+        Box::new(IdentifierTokenizer(Regex::new("^[ \t]*((?:[a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9]*)[ \t]*").unwrap()))
+    }
+}
+
+impl Tokenizer for IdentifierTokenizer {
+    fn regex(&self) -> &Regex {
+        &self.0
+    }
+
+    fn token_for(&self, name: Option<&str>) -> Option<Token> {
+        Some(Token::Identifier(name.expect("regex group must always capture once").to_owned()))
+    }
+}
+
 //TODO @mark: pity about dyn, see if it gets optimized
 static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 11]> = LazyLock::new(|| {
     debug!("start creating tokenizers (compiling regexes)");
@@ -179,6 +198,7 @@ static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 11]> = LazyLock::new(|| {
         OpSymbolTokenizer::new(),
         NumberTokenizer::new(),
         TextTokenizer::new(),
+        IdentifierTokenizer::new(),
         FixedTokenTokenizer::new_leftover_whitespace(),
     ];
     debug!("finished creating {} tokenizers (compiling regexes)", tokenizers.len());

@@ -11,7 +11,8 @@ use ::regex::Regex;
 use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
-use crate::ast::{AST, Expr};
+use crate::ast::AST;
+use crate::ast::Expr;
 use crate::ast::Block;
 use crate::ast::OpCode;
 use crate::parser::lexer::Token;
