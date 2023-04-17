@@ -14,6 +14,7 @@ use ::steel_api::log::trace;
 use crate::ast::AST;
 use crate::ast::Expr;
 use crate::ast::Block;
+use crate::ast::Block::Expression;
 use crate::ast::OpCode;
 use crate::parser::lexer::Token;
 use crate::parser::lexer::Token::OpSymbol;
@@ -108,12 +109,44 @@ fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
             }
             return Ok((expr, tok))
         },
-        // Some(Token::Identifier(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
-        // Some(Token::Number(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
-        // Some(Token::Text(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
+        Some(Token::Identifier(iden)) => {
+            //TODO @mark: probably move this repetition down
+            let iden = Expr::Iden(iden.clone());
+            return if let Ok((expr, tok)) = parse_binary_op(tokens.fork(), iden) {
+                Ok((expr, tok))
+            } else {
+                todo!("report error - not sure how to get here, failed binary already falls back to left, which is available")  //TODO @mark:
+            };
+        },
+        Some(Token::Number(num)) => {
+            let num = Expr::Num(*num);
+            return if let Ok((expr, tok)) = parse_binary_op(tokens.fork(), num) {
+                Ok((expr, tok))
+            } else {
+                todo!("report error - not sure how to get here, failed binary already falls back to left, which is available")  //TODO @mark:
+            };
+        },
+        Some(Token::Text(txt)) => {
+            let txt = Expr::Text(txt.clone());
+            return if let Ok((expr, tok)) = parse_binary_op(tokens.fork(), txt) {
+                Ok((expr, tok))
+            } else {
+                todo!("report error - not sure how to get here, failed binary already falls back to left, which is available")  //TODO @mark:
+            };
+        },
         Some(other) => todo!("error handling for unknown block start {other:?}"),
         None => todo!("handle not finding an expression"),
     }
     //TODO @mark: fail if there was no semicolon or newline (except ')' or '}' maybe? or maybe just forbid such onelines without ;)
 }
 
+fn parse_binary_op(mut tokens: Cursor, left: Expr) -> ParseRes<Expr> {
+    let q = tokens.take();
+    return if let Ok((expr, tok)) = parse_addsub(tokens.fork()) {
+        Ok((expr, tok))
+    } else if let Ok((expr, tok)) = parse_muldiv(tokens.fork()) {
+        Ok((expr, tok))
+    } else {
+        Ok((left, tokens))
+    };
+}

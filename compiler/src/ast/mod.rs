@@ -91,6 +91,7 @@ pub enum Block {
 pub enum Expr {
     Num(f64),
     Text(String),
+    Iden(Identifier),
     BinOp(OpCode, Box<Expr>, Box<Expr>),
 }
 
