@@ -21,6 +21,9 @@ use crate::parser::lexer::tokenize;
 use crate::SteelErr;
 use crate::SteelErr::ParseErr;
 
+type ParseRes<T> = Result<(T, Cursor), SteelErr>;
+//TODO @mark: should I distinguish between ot found and found incorrect? e.g. when parsing a block, it is valid to not find an expression but find "struct" instead, but it is not valid to find "(" without ")"
+
 #[derive(Debug)]
 struct Cursor {
     index: usize,
@@ -77,7 +80,7 @@ pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<AST, SteelErr> {
 fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
     let mut blocks = Vec::new();
     loop {
-        if let Some((expr, tok)) = parse_expression(tokens.fork()) {
+        if let Ok((expr, tok)) = parse_expression(tokens.fork()) {
             tokens = tok;
             blocks.push(Block::Expression(expr));
             let closer_cnt = tokens.take_while(|tok| matches!(tok, Token::Semicolon)) +
@@ -87,29 +90,29 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
                 todo!("error: no closer (semicolon or newline) after expression")
             }
         }
-        todo!()
+        break  //TODO @mark:
     }
     Ok(blocks)
 }
 
-fn parse_expression(mut tokens: Cursor) -> Result<(Expr, Tokens), SteelErr> {
+fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
     match tokens.take() {
         Some(Token::ParenthesisOpen) => {
-            let Ok((expr, tok)) = parse_expression(tokens) else {
+            let Ok((expr, mut tok)) = parse_expression(tokens) else {
                 debug!("tried to parse '('parenthesized')' group but did not find an expression after '('");
                 todo!("report error about missing )")  //TODO @mark:
             };
-            if Ok(&Token::ParenthesisClose) != tokens.take() {
+            if Some(&Token::ParenthesisClose) != tok.take() {
                 debug!("tried to parse '('parenthesized')' group but did not find closing at the end ')'");
                 todo!("report error about missing )")  //TODO @mark:
             }
             return Ok((expr, tok))
         },
-        Some(Token::Identifier(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
-        Some(Token::Number(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
-        Some(Token::Text(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
+        // Some(Token::Identifier(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
+        // Some(Token::Number(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
+        // Some(Token::Text(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
         Some(other) => todo!("error handling for unknown block start {other:?}"),
-        None => return None,
+        None => todo!("handle not finding an expression"),
     }
     //TODO @mark: fail if there was no semicolon or newline (except ')' or '}' maybe? or maybe just forbid such onelines without ;)
 }
