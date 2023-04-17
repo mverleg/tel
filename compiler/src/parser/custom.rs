@@ -74,26 +74,30 @@ pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<AST, SteelErr> {
 
 #[inline]
 fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
-    //TODO @mark:
     let mut blocks = Vec::new();
-    //TODO @mark: parse multiple blocks
     loop {
-        match tokens.peek() {
-            Some(Token::ParenthesisOpen) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
-            Some(Token::Identifier(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
-            Some(Token::Number(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
-            Some(Token::Text(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
-            Some(other) => todo!("error handling for unknown block start {other:?}"),
-            None => break,
+        if let Some((expr, tok)) = parse_expression(tokens.fork()) {
+            tokens = tok;
+            blocks.push(Block::Expression(expr));
+            let closer_cnt = tokens.take_while(|tok| matches!(tok, Token::Semicolon)) +
+                tokens.take_while(|tok| matches!(tok, Token::Newline));
+            if closer_cnt == 0 {
+                todo!("error: no closer (semicolon or newline) after expression")
+            }
         }
-        tokens.take_while(|tok| matches!(tok, Token::Semicolon));
-        tokens.take_while(|tok| matches!(tok, Token::Newline));
-        //TODO @mark: fail if there was no semicolon or newline (except ')' or '}' maybe? or maybe just forbid such onelines without ;)
     }
     Ok(blocks)
 }
 
-fn parse_expression(tokens: &mut Cursor) -> Result<Expr, SteelErr> {
-    unimplemented!()
+fn parse_expression(mut tokens: Cursor) -> Option<(Expr, Tokens)> {
+    match tokens.peek() {
+        Some(Token::ParenthesisOpen) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
+        Some(Token::Identifier(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
+        Some(Token::Number(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
+        Some(Token::Text(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
+        Some(other) => todo!("error handling for unknown block start {other:?}"),
+        None => return None,
+    }
+    //TODO @mark: fail if there was no semicolon or newline (except ')' or '}' maybe? or maybe just forbid such onelines without ;)
 }
 
