@@ -49,7 +49,7 @@ fn find_main_file(path: &Path) -> Result<PathBuf, SteelErr> {
 
 #[derive(Debug, PartialEq)]
 pub enum SteelErr {
-    FileNotFound{ file: PathBuf },
+    FileNotFound { file: PathBuf },
     CouldNotRead(PathBuf, String),
-    ParseErr{ file: PathBuf, line: usize, msg: String },
+    ParseErr { file: PathBuf, line: usize, msg: String },
 }

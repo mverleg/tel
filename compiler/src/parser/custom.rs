@@ -19,6 +19,7 @@ use crate::parser::lexer::Token;
 use crate::parser::lexer::Token::OpSymbol;
 use crate::parser::lexer::tokenize;
 use crate::SteelErr;
+use crate::SteelErr::ParseErr;
 
 #[derive(Debug)]
 struct Cursor {
@@ -81,17 +82,29 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
             blocks.push(Block::Expression(expr));
             let closer_cnt = tokens.take_while(|tok| matches!(tok, Token::Semicolon)) +
                 tokens.take_while(|tok| matches!(tok, Token::Newline));
+            //TODO @mark: only expressions need this right? not e.g. struct declarations, but maybe imports...
             if closer_cnt == 0 {
                 todo!("error: no closer (semicolon or newline) after expression")
             }
         }
+        todo!()
     }
     Ok(blocks)
 }
 
-fn parse_expression(mut tokens: Cursor) -> Option<(Expr, Tokens)> {
-    match tokens.peek() {
-        Some(Token::ParenthesisOpen) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
+fn parse_expression(mut tokens: Cursor) -> Result<(Expr, Tokens), SteelErr> {
+    match tokens.take() {
+        Some(Token::ParenthesisOpen) => {
+            let Ok((expr, tok)) = parse_expression(tokens) else {
+                debug!("tried to parse '('parenthesized')' group but did not find an expression after '('");
+                todo!("report error about missing )")  //TODO @mark:
+            };
+            if Ok(&Token::ParenthesisClose) != tokens.take() {
+                debug!("tried to parse '('parenthesized')' group but did not find closing at the end ')'");
+                todo!("report error about missing )")  //TODO @mark:
+            }
+            return Ok((expr, tok))
+        },
         Some(Token::Identifier(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
         Some(Token::Number(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
         Some(Token::Text(arg)) => { blocks.push(Block::Expression(parse_expression(&mut tokens)?)); },
