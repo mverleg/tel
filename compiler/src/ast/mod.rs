@@ -13,7 +13,7 @@ pub enum OpCode {
     Div,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identifier {
     name: String,
 }

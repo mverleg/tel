@@ -11,6 +11,7 @@ use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
 use crate::ast::AST;
+use crate::ast::Identifier;
 use crate::ast::OpCode;
 use crate::parser::lexer::Token::OpSymbol;
 use crate::SteelErr;
@@ -19,13 +20,11 @@ use crate::SteelErr;
 pub enum Token {
     ParenthesisOpen,
     ParenthesisClose,
-    //TODO @mark:
-    Identifier(String),
+    Identifier(Identifier),
     Newline,
     Semicolon,
     Colon,
     Assignment(Option<OpCode>),
-    //TODO @mark:
     OpSymbol(OpCode),
     Number(f64),
     Text(String),
@@ -181,7 +180,8 @@ impl Tokenizer for IdentifierTokenizer {
     }
 
     fn token_for(&self, name: Option<&str>) -> Option<Token> {
-        Some(Token::Identifier(name.expect("regex group must always capture once").to_owned()))
+        Some(Token::Identifier(Identifier::new(name.expect("regex group must always capture once")).unwrap()))
+        //TODO @mark: unwrap is safe here right?
     }
 }
 
