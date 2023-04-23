@@ -12,9 +12,9 @@ use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
 use crate::ast::AST;
-use crate::ast::Expr;
 use crate::ast::Block;
 use crate::ast::Block::Expression;
+use crate::ast::Expr;
 use crate::ast::OpCode;
 use crate::parser::lexer::Token;
 use crate::parser::lexer::Token::OpSymbol;
@@ -140,13 +140,24 @@ fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
     //TODO @mark: fail if there was no semicolon or newline (except ')' or '}' maybe? or maybe just forbid such onelines without ;)
 }
 
+//TODO @mark: this is addsub, rename?
 fn parse_binary_op(mut tokens: Cursor, left: Expr) -> ParseRes<Expr> {
-    let q = tokens.take();
-    return if let Ok((expr, tok)) = parse_addsub(tokens.fork()) {
-        Ok((expr, tok))
-    } else if let Ok((expr, tok)) = parse_muldiv(tokens.fork()) {
-        Ok((expr, tok))
-    } else {
-        Ok((left, tokens))
-    };
+    let mut expr = left;
+    loop {
+        let op_code;
+        match tokens.peek() {
+            Some(Token::OpSymbol(OpCode::Add)) => op_code = OpCode::Add,
+            Some(Token::OpSymbol(OpCode::Sub)) => op_code = OpCode::Sub,
+            _ => return parse_bin_muldiv(tokens.fork(), &expr),
+        }
+        tokens.take();
+        let (right, right_tokens) = parse_bin_muldiv(tokens.fork(), &expr)?;
+        tokens = right_tokens;
+        expr = Expr::BinOp(op_code, Box::new(expr.clone()), Box::new(right));
+        //TODO @mark: is there a way to avoid cloning?
+    }
+}
+
+fn parse_bin_muldiv(mut tokens: Cursor, left: &Expr) -> ParseRes<Expr> {
+    unimplemented!()
 }

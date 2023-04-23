@@ -4,6 +4,9 @@ use ::clap::Parser;
 use ::clap::Subcommand;
 use ::env_logger;
 
+use ::steel::BuildArgs;
+use ::steel::steel_build;
+
 #[derive(Parser, Debug)]
 #[command(
     name = "steel",
@@ -33,9 +36,6 @@ enum SubCmd {
 fn test_cli_args() {
     SteelCli::try_parse_from(&["steel", "build", "-v"]).unwrap();
 }
-
-use ::steel::steel_build;
-use ::steel::BuildArgs;
 
 #[cfg(not(test))]
 fn main() {
