@@ -146,8 +146,7 @@ fn parse_binary_op(mut tokens: Cursor, left: Expr) -> ParseRes<Expr> {
     loop {
         let op_code;
         match tokens.peek() {
-            Some(Token::OpSymbol(OpCode::Add)) => op_code = OpCode::Add,
-            Some(Token::OpSymbol(OpCode::Sub)) => op_code = OpCode::Sub,
+            Some(Token::OpSymbol(op)) if op_code == OpCode::Add || op_code == OpCode::Sub => op_code = *op,
             _ => return parse_bin_muldiv(tokens.fork(), &expr),
         }
         tokens.take();
@@ -159,5 +158,17 @@ fn parse_binary_op(mut tokens: Cursor, left: Expr) -> ParseRes<Expr> {
 }
 
 fn parse_bin_muldiv(mut tokens: Cursor, left: &Expr) -> ParseRes<Expr> {
-    unimplemented!()
+    let mut expr = left;
+    loop {
+        let op_code;
+        match tokens.peek() {
+            Some(Token::OpSymbol(op)) if op_code == OpCode::Mul || op_code == OpCode::Div => op_code = *op,
+            _ => return parse_bin_muldiv(tokens.fork(), &expr),
+        }
+        tokens.take();
+        let (right, right_tokens) = parse_bin_muldiv(tokens.fork(), &expr)?;
+        tokens = right_tokens;
+        expr = Expr::BinOp(op_code, Box::new(expr.clone()), Box::new(right));
+        //TODO @mark: is there a way to avoid cloning?
+    }
 }
