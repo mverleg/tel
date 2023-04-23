@@ -97,7 +97,7 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
 }
 
 fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
-    parse_value(tokens)
+    parse_scalar(tokens)
     // match tokens.take() {
     //     Some(Token::ParenthesisOpen) => {
     //         let Ok((expr, mut tok)) = parse_expression(tokens) else {
@@ -141,7 +141,8 @@ fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
     //TODO @mark: fail if there was no semicolon or newline (except ')' or '}' maybe? or maybe just forbid such onelines without ;)
 }
 
-fn parse_value(mut tokens: Cursor) -> ParseRes<Expr> {
+fn parse_scalar(orig_tokens: Cursor) -> ParseRes<Expr> {
+    let mut tokens = orig_tokens.fork();
     match tokens.take() {
         Some(Token::Identifier(iden)) => {
             Ok((Expr::Iden(iden.clone()), tokens))
@@ -152,9 +153,21 @@ fn parse_value(mut tokens: Cursor) -> ParseRes<Expr> {
         Some(Token::Text(txt)) => {
             Ok((Expr::Text(txt.clone()), tokens))
         },
-        Some(tok) => todo!("unknown token: {tok:?}"),
-        None => todo!("unexpected end of input"),
+        _ => parse_parenthesised(orig_tokens)
     }
+}
+
+fn parse_parenthesised(orig_tokens: Cursor) -> ParseRes<Expr> {
+    let mut tokens = orig_tokens.fork();
+    if let Some(Token::ParenthesisOpen) = tokens.take() {
+        let (expr, mut expr_tokens) = parse_expression(tokens)?;
+        if let Some(Token::ParenthesisClose) = expr_tokens.take() {
+            return Ok((expr, expr_tokens))
+        } else {
+            todo!("expected closing parenthesis at {expr_tokens:?}")
+        }
+    }
+    todo!("tried all parsing rules but nothing matched at {tokens:?}")
 }
 
 // //TODO @mark: this is addsub, rename?
