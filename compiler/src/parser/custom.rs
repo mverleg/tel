@@ -149,19 +149,37 @@ fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
 }
 
 fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
-    let (left, mut tokens) = parse_scalar(orig_tokens)?;
+    parse_binary_op(
+        orig_tokens,
+        |op| op == OpCode::Add || op == OpCode::Sub,
+        parse_muldiv)
+}
+
+fn parse_muldiv(orig_tokens: Cursor) -> ParseRes<Expr> {
+    parse_binary_op(
+        orig_tokens,
+        |op| op == OpCode::Mul || op == OpCode::Div,
+        parse_scalar)
+}
+
+fn parse_binary_op(
+    orig_tokens: Cursor,
+    is_op: fn(OpCode) -> bool,
+    next: impl Fn(Cursor) -> ParseRes<Expr>,
+) -> ParseRes<Expr> {
+    let (left, mut tokens) = next(orig_tokens)?;
     let Some(Token::OpSymbol(op)) = tokens.peek() else {
         trace!("trying to parse operator, instead got {:?}", tokens.peek());
         return Ok((left, tokens))
     };
     let op = *op;
-    if op != OpCode::Add && op != OpCode::Sub {
+    if ! is_op(op) {
         trace!("got a different operator than expected {:?}", tokens.peek());
         return Ok((left, tokens))
     }
     tokens.take();
     trace!("parsed operator {:?}", op);
-    let (right, mut right_tok) = parse_scalar(tokens)?;
+    let (right, mut right_tok) = next(tokens)?;
     //TODO @mark: how to make the error message say something like "expected a muldiv expression because of +" but readable?
     Ok((Expr::BinOp(op, Box::new(left), Box::new(right)), right_tok))
 }
