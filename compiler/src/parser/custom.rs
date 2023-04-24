@@ -144,12 +144,16 @@ fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
 fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
     let (left, mut left_tok) = parse_scalar(orig_tokens)?;
     let Some(Token::OpSymbol(op)) = left_tok.peek() else {
+        trace!("trying to parse operator, instead got {:?}", left_tok.peek());
         return Ok((left, left_tok))
     };
     let op = *op;
     if op != OpCode::Add && op != OpCode::Sub {
+        trace!("got a different operator than expected {:?}", left_tok.peek());
         return Ok((left, left_tok))
     }
+    left_tok.take();
+    trace!("parsed operator {:?}", op);
     let (right, mut right_tok) = parse_scalar(left_tok)?;
     //TODO @mark: how to make the error message say something like "expected a muldiv expression because of +" but readable?
     Ok((Expr::BinOp(op, Box::new(left), Box::new(right)), right_tok))
@@ -159,12 +163,15 @@ fn parse_scalar(orig_tokens: Cursor) -> ParseRes<Expr> {
     let mut tokens = orig_tokens.fork();
     match tokens.take() {
         Some(Token::Identifier(iden)) => {
+            trace!("parsed identifier {:?}", iden);
             Ok((Expr::Iden(iden.clone()), tokens))
         },
         Some(Token::Number(num)) => {
+            trace!("parsed number {:?}", *num);
             Ok((Expr::Num(*num), tokens))
         },
         Some(Token::Text(txt)) => {
+            trace!("parsed text '{:?}'", txt);
             Ok((Expr::Text(txt.clone()), tokens))
         },
         _ => parse_parenthesised(orig_tokens)
@@ -174,8 +181,10 @@ fn parse_scalar(orig_tokens: Cursor) -> ParseRes<Expr> {
 fn parse_parenthesised(orig_tokens: Cursor) -> ParseRes<Expr> {
     let mut tokens = orig_tokens.fork();
     if let Some(Token::ParenthesisOpen) = tokens.take() {
+        trace!("start parsing parenthesised group");
         let (expr, mut expr_tokens) = parse_expression(tokens)?;
         if let Some(Token::ParenthesisClose) = expr_tokens.take() {
+            trace!("parsed parenthesised group {:?}", &expr);
             return Ok((expr, expr_tokens))
         } else {
             todo!("expected closing parenthesis at {expr_tokens:?}")
