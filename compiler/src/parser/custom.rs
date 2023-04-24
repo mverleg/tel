@@ -22,7 +22,7 @@ use crate::parser::lexer::tokenize;
 use crate::SteelErr;
 use crate::SteelErr::ParseErr;
 
-type ParseRes<T> = Result<(T, Cursor), SteelErr>;
+type ParseRes<T> = Result<Option<(T, Cursor)>, SteelErr>;
 //TODO @mark: should I distinguish between ot found and found incorrect? e.g. when parsing a block, it is valid to not find an expression but find "struct" instead, but it is not valid to find "(" without ")"
 
 #[derive(Debug)]
@@ -81,7 +81,7 @@ pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<AST, SteelErr> {
 fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
     let mut blocks = Vec::new();
     loop {
-        if let Ok((expr, tok)) = parse_expression(tokens.fork()) {
+        if let Some((expr, tok)) = parse_expression(tokens.fork())? {
             tokens = tok;
             blocks.push(Block::Expression(expr));
             let closer_cnt = tokens.take_while(|tok| matches!(tok, Token::Semicolon)) +
@@ -97,7 +97,7 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
 }
 
 fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
-    parse_scalar(tokens)
+    parse_addsub(tokens)
     // match tokens.take() {
     //     Some(Token::ParenthesisOpen) => {
     //         let Ok((expr, mut tok)) = parse_expression(tokens) else {
@@ -141,33 +141,45 @@ fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
     //TODO @mark: fail if there was no semicolon or newline (except ')' or '}' maybe? or maybe just forbid such onelines without ;)
 }
 
+fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
+    if let Some((left, left_cur)) = parse_scalar(orig_tokens)? {
+
+    } else {
+        todo!()
+    }
+}
+
 fn parse_scalar(orig_tokens: Cursor) -> ParseRes<Expr> {
     let mut tokens = orig_tokens.fork();
-    match tokens.take() {
+    Ok(match tokens.take() {
         Some(Token::Identifier(iden)) => {
-            Ok((Expr::Iden(iden.clone()), tokens))
+            Some((Expr::Iden(iden.clone()), tokens))
         },
         Some(Token::Number(num)) => {
-            Ok((Expr::Num(*num), tokens))
+            Some((Expr::Num(*num), tokens))
         },
         Some(Token::Text(txt)) => {
-            Ok((Expr::Text(txt.clone()), tokens))
+            Some((Expr::Text(txt.clone()), tokens))
         },
-        _ => parse_parenthesised(orig_tokens)
-    }
+        _ => parse_parenthesised(orig_tokens)?
+    })
 }
 
 fn parse_parenthesised(orig_tokens: Cursor) -> ParseRes<Expr> {
     let mut tokens = orig_tokens.fork();
     if let Some(Token::ParenthesisOpen) = tokens.take() {
-        let (expr, mut expr_tokens) = parse_expression(tokens)?;
-        if let Some(Token::ParenthesisClose) = expr_tokens.take() {
-            return Ok((expr, expr_tokens))
+        if let Some((expr, mut expr_tokens)) = parse_expression(tokens)? {
+            if let Some(Token::ParenthesisClose) = expr_tokens.take() {
+                return Ok(Some((expr, expr_tokens)))
+            } else {
+                todo!("expected closing parenthesis at {expr_tokens:?}")
+            }
         } else {
-            todo!("expected closing parenthesis at {expr_tokens:?}")
+            todo!("failed to parse an expression between (...)")
         }
     }
-    todo!("tried all parsing rules but nothing matched at {tokens:?}")
+    debug!("tried all parsing rules but nothing matched at {tokens:?}");
+    Ok(None)
 }
 
 // //TODO @mark: this is addsub, rename?
