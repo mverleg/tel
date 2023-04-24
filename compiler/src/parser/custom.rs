@@ -150,27 +150,18 @@ fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
 
 fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
     let (left, mut tokens) = parse_scalar(orig_tokens)?;
-    let op_tok = tokens.take_if(|tok| if let Token::OpSymbol(op) = tok {
-        *op == OpCode::Add || *op == OpCode::Sub
-    } else {
-        false
-    });
-    let Some(op_tok) = op_tok else {
-        return return Ok((left, tokens))
+    let Some(Token::OpSymbol(op)) = tokens.peek() else {
+        trace!("trying to parse operator, instead got {:?}", tokens.peek());
+        return Ok((left, tokens))
     };
-
-    // let Some(Token::OpSymbol(op)) = left_tok.peek() else {
-    //     trace!("trying to parse operator, instead got {:?}", left_tok.peek());
-    //     return Ok((left, left_tok))
-    // };
-    // let op = *op;
-    // if op != OpCode::Add && op != OpCode::Sub {
-    //     trace!("got a different operator than expected {:?}", left_tok.peek());
-    //     return Ok((left, left_tok))
-    // }
-    // left_tok.take();
+    let op = *op;
+    if op != OpCode::Add && op != OpCode::Sub {
+        trace!("got a different operator than expected {:?}", tokens.peek());
+        return Ok((left, tokens))
+    }
+    tokens.take();
     trace!("parsed operator {:?}", op);
-    let (right, mut right_tok) = parse_scalar(left_tok)?;
+    let (right, mut right_tok) = parse_scalar(tokens)?;
     //TODO @mark: how to make the error message say something like "expected a muldiv expression because of +" but readable?
     Ok((Expr::BinOp(op, Box::new(left), Box::new(right)), right_tok))
 }
