@@ -22,7 +22,7 @@ use crate::parser::lexer::tokenize;
 use crate::SteelErr;
 use crate::SteelErr::ParseErr;
 
-type ParseRes<T> = Result<Option<(T, Cursor)>, SteelErr>;
+type ParseRes<T> = Result<(T, Cursor), SteelErr>;
 //TODO @mark: should I distinguish between ot found and found incorrect? e.g. when parsing a block, it is valid to not find an expression but find "struct" instead, but it is not valid to find "(" without ")"
 
 #[derive(Debug)]
@@ -81,7 +81,7 @@ pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<AST, SteelErr> {
 fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
     let mut blocks = Vec::new();
     loop {
-        if let Some((expr, tok)) = parse_expression(tokens.fork())? {
+        if let Ok((expr, tok)) = parse_expression(tokens.fork()) {
             tokens = tok;
             blocks.push(Block::Expression(expr));
             let closer_cnt = tokens.take_while(|tok| matches!(tok, Token::Semicolon)) +
@@ -142,44 +142,51 @@ fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
 }
 
 fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
-    if let Some((left, left_cur)) = parse_scalar(orig_tokens)? {
-
-    } else {
-        todo!()
+    let (left, mut left_tok) = parse_scalar(orig_tokens)?;
+    let Some(Token::OpSymbol(op)) = left_tok.peek() else {
+        return Ok((left, left_tok))
+    };
+    let op = *op;
+    if op != OpCode::Add && op != OpCode::Sub {
+        return Ok((left, left_tok))
     }
+    let (right, mut right_tok) = parse_scalar(left_tok)?;
+    //TODO @mark: how to make the error message say something like "expected a muldiv expression because of +" but readable?
+    Ok((Expr::BinOp(op, Box::new(left), Box::new(right)), right_tok))
 }
 
 fn parse_scalar(orig_tokens: Cursor) -> ParseRes<Expr> {
     let mut tokens = orig_tokens.fork();
-    Ok(match tokens.take() {
+    match tokens.take() {
         Some(Token::Identifier(iden)) => {
-            Some((Expr::Iden(iden.clone()), tokens))
+            Ok((Expr::Iden(iden.clone()), tokens))
         },
         Some(Token::Number(num)) => {
-            Some((Expr::Num(*num), tokens))
+            Ok((Expr::Num(*num), tokens))
         },
         Some(Token::Text(txt)) => {
-            Some((Expr::Text(txt.clone()), tokens))
+            Ok((Expr::Text(txt.clone()), tokens))
         },
-        _ => parse_parenthesised(orig_tokens)?
-    })
+        _ => parse_parenthesised(orig_tokens)
+    }
 }
 
 fn parse_parenthesised(orig_tokens: Cursor) -> ParseRes<Expr> {
     let mut tokens = orig_tokens.fork();
     if let Some(Token::ParenthesisOpen) = tokens.take() {
-        if let Some((expr, mut expr_tokens)) = parse_expression(tokens)? {
-            if let Some(Token::ParenthesisClose) = expr_tokens.take() {
-                return Ok(Some((expr, expr_tokens)))
-            } else {
-                todo!("expected closing parenthesis at {expr_tokens:?}")
-            }
+        let (expr, mut expr_tokens) = parse_expression(tokens)?;
+        if let Some(Token::ParenthesisClose) = expr_tokens.take() {
+            return Ok((expr, expr_tokens))
         } else {
-            todo!("failed to parse an expression between (...)")
+            todo!("expected closing parenthesis at {expr_tokens:?}")
         }
     }
     debug!("tried all parsing rules but nothing matched at {tokens:?}");
-    Ok(None)
+    Err(SteelErr::ParseErr {
+        file: Default::default(),
+        line: 0,
+        msg: "todo no rules matched".to_string(),
+    })  //TODO @mark:
 }
 
 // //TODO @mark: this is addsub, rename?
