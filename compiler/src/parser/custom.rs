@@ -106,8 +106,9 @@ impl fmt::Debug for Cursor {
 }
 
 pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<AST, SteelErr> {
-    let tokens = Cursor::new(tokenize(src_pth, code)?);
+    let tokens = tokenize(src_pth, code)?;
     dbg!(&tokens);  //TODO @mark:
+    let tokens = Cursor::new(tokens);
     let prog = AST { blocks: parse_blocks(tokens)? };
     dbg!(&prog);  //TODO @mark:
     Ok(prog)
@@ -179,10 +180,13 @@ fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
 
 #[inline]
 fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
-    parse_binary_op(
+    eprintln!("start addsub at {:?}", &orig_tokens);  //TODO @mark: TEMPORARY! REMOVE THIS!
+    let res = parse_binary_op(
         orig_tokens,
         |op| op == OpCode::Add || op == OpCode::Sub,
-        parse_muldiv)
+        parse_muldiv);
+    eprintln!("end addsub");  //TODO @mark: TEMPORARY! REMOVE THIS!
+    res
 }
 
 #[inline]

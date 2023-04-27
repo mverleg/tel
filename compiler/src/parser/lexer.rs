@@ -211,22 +211,18 @@ pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelEr
     'outer: while ix < full_code.len() {
         //TODO @mark: drop '...\n' continuations
         let code = &full_code[ix..];
-        eprintln!("ix={ix} code='{}'", code.chars().take(40).join(""));  //TODO @mark: TEMPORARY! REMOVE THIS!
         //TODO @mark: unroll:
         for tokenizer in &*TOKENIZERS {
-            eprintln!("ix={ix} tokenizer={tokenizer:?}");  //TODO @mark: TEMPORARY! REMOVE THIS!
             let Some(caps) = tokenizer.regex().captures_iter(code).next() else {
                 continue;
             };
             let mtch = caps.get(0).expect("regex group 0 should always match").as_str();
             let grp = caps.get(1).map(|g| g.as_str());
             if let Some(token) = tokenizer.token_for(grp) {
-                eprintln!("match {token:?} in '{mtch}' from {ix} to {}", ix + mtch.len());
-                //TODO @mark: change to trace ^
+                trace!("match {token:?} in '{mtch}' from {ix} to {}", ix + mtch.len());
                 tokens.push(token);
             } else {
-                eprintln!("matched tokenizer {tokenizer:?} from {ix} to {} but it produced no token", ix + mtch.len());
-                //TODO @mark: change to trace ^
+                trace!("matched tokenizer {tokenizer:?} from {ix} to {} but it produced no token", ix + mtch.len());
             }
             ix += mtch.len();
             debug_assert!(mtch.len() > 0);
