@@ -4,6 +4,7 @@ use ::std::fmt;
 use ::std::path::PathBuf;
 use ::std::rc::Rc;
 use ::std::sync::LazyLock;
+use std::fmt::Formatter;
 
 use ::itertools::Itertools;
 use ::regex::Regex;
@@ -25,7 +26,6 @@ use crate::SteelErr::ParseErr;
 type ParseRes<T> = Result<(T, Cursor), SteelErr>;
 //TODO @mark: should I distinguish between ot found and found incorrect? e.g. when parsing a block, it is valid to not find an expression but find "struct" instead, but it is not valid to find "(" without ")"
 
-#[derive(Debug)]
 struct Cursor {
     index: usize,
     tokens: Rc<Vec<Token>>,
@@ -76,6 +76,35 @@ impl Cursor {
     }
 }
 
+impl fmt::Debug for Cursor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut i = 0;
+        if self.index > 2 {
+            i = self.index - 2;
+        }
+        let mut is_first = true;
+        write!(f, "[")?;
+        while i < self.index + 3 {
+            let Some(elem) = self.tokens.get(i) else {
+                break
+            };
+            if is_first {
+                is_first = false;
+            } else {
+                write!(f, ", ")?;
+            }
+            if i == self.index {
+                write!(f, "<{i}>:{:?}", elem)?;
+            } else {
+                write!(f, "{i}:{:?}", elem)?;
+            }
+            i += 1
+        }
+        write!(f, "]")?;
+        Ok(())
+    }
+}
+
 pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<AST, SteelErr> {
     let tokens = Cursor::new(tokenize(src_pth, code)?);
     dbg!(&tokens);  //TODO @mark:
@@ -95,7 +124,7 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
                 tokens.take_while(|tok| matches!(tok, Token::Newline));
             //TODO @mark: only expressions need this right? not e.g. struct declarations, but maybe imports...
             if closer_cnt == 0 {
-                todo!("error: no closer (semicolon or newline) after expression")
+                todo!("error: no closer (semicolon or newline) after expression at {tokens:?}")
             }
         }
         break  //TODO @mark:
@@ -148,6 +177,7 @@ fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
     //TODO @mark: fail if there was no semicolon or newline (except ')' or '}' maybe? or maybe just forbid such onelines without ;)
 }
 
+#[inline]
 fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
     parse_binary_op(
         orig_tokens,
@@ -155,6 +185,7 @@ fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
         parse_muldiv)
 }
 
+#[inline]
 fn parse_muldiv(orig_tokens: Cursor) -> ParseRes<Expr> {
     parse_binary_op(
         orig_tokens,
@@ -162,6 +193,7 @@ fn parse_muldiv(orig_tokens: Cursor) -> ParseRes<Expr> {
         parse_scalar)
 }
 
+#[inline]
 fn parse_binary_op(
     orig_tokens: Cursor,
     is_op: fn(OpCode) -> bool,
@@ -184,6 +216,7 @@ fn parse_binary_op(
     Ok((Expr::BinOp(op, Box::new(left), Box::new(right)), right_tok))
 }
 
+#[inline]
 fn parse_scalar(orig_tokens: Cursor) -> ParseRes<Expr> {
     let mut tokens = orig_tokens.fork();
     match tokens.take() {
@@ -203,6 +236,7 @@ fn parse_scalar(orig_tokens: Cursor) -> ParseRes<Expr> {
     }
 }
 
+#[inline]
 fn parse_parenthesised(orig_tokens: Cursor) -> ParseRes<Expr> {
     let mut tokens = orig_tokens.fork();
     if let Some(Token::ParenthesisOpen) = tokens.take() {
