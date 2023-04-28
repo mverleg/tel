@@ -1,10 +1,10 @@
 //TODO @mark: delete either this if lalrpop turns out better, or delete lalrpop if going this way
 
 use ::std::fmt;
+use ::std::fmt::Formatter;
 use ::std::path::PathBuf;
 use ::std::rc::Rc;
 use ::std::sync::LazyLock;
-use std::fmt::Formatter;
 
 use ::itertools::Itertools;
 use ::regex::Regex;
@@ -12,14 +12,14 @@ use ::regex::Regex;
 use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
-use crate::ast::AST;
 use crate::ast::Block;
 use crate::ast::Block::Expression;
 use crate::ast::Expr;
 use crate::ast::OpCode;
+use crate::ast::Ast;
+use crate::parser::lexer::tokenize;
 use crate::parser::lexer::Token;
 use crate::parser::lexer::Token::OpSymbol;
-use crate::parser::lexer::tokenize;
 use crate::SteelErr;
 use crate::SteelErr::ParseErr;
 
@@ -33,7 +33,10 @@ struct Cursor {
 
 impl Cursor {
     fn new(tokens: Vec<Token>) -> Self {
-        Cursor { index: 0, tokens: Rc::new(tokens) }
+        Cursor {
+            index: 0,
+            tokens: Rc::new(tokens),
+        }
     }
 
     fn fork(&self) -> Self {
@@ -57,8 +60,8 @@ impl Cursor {
         let Some(val) = self.tokens.get(self.index) else {
             return None
         };
-        if ! condition(val) {
-            return None
+        if !condition(val) {
+            return None;
         }
         Some(val)
     }
@@ -67,11 +70,11 @@ impl Cursor {
         let mut cnt = 0;
         loop {
             if self.take_if(condition).is_none() {
-                break
+                break;
             }
+            self.index += 1;
             cnt += 1;
         }
-        self.index += cnt;
         cnt
     }
 }
@@ -105,12 +108,14 @@ impl fmt::Debug for Cursor {
     }
 }
 
-pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<AST, SteelErr> {
+pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<Ast, SteelErr> {
     let tokens = tokenize(src_pth, code)?;
-    dbg!(&tokens);  //TODO @mark:
+    dbg!(&tokens); //TODO @mark:
     let tokens = Cursor::new(tokens);
-    let prog = AST { blocks: parse_blocks(tokens)? };
-    dbg!(&prog);  //TODO @mark:
+    let prog = Ast {
+        blocks: parse_blocks(tokens)?,
+    };
+    dbg!(&prog); //TODO @mark:
     Ok(prog)
 }
 
@@ -121,71 +126,32 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
         if let Ok((expr, tok)) = parse_expression(tokens.fork()) {
             tokens = tok;
             blocks.push(Block::Expression(expr));
-            let closer_cnt = tokens.take_while(|tok| matches!(tok, Token::Semicolon)) +
-                tokens.take_while(|tok| matches!(tok, Token::Newline));
+            let closer_cnt = tokens.take_while(|tok| matches!(tok, Token::Semicolon))
+                + tokens.take_while(|tok| matches!(tok, Token::Newline));
             //TODO @mark: only expressions need this right? not e.g. struct declarations, but maybe imports...
             if closer_cnt == 0 {
                 todo!("error: no closer (semicolon or newline) after expression at {tokens:?}")
             }
+            continue;
         }
-        break  //TODO @mark:
+        break; //TODO @mark:
     }
     Ok(blocks)
 }
 
 fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
     parse_addsub(tokens)
-    // match tokens.take() {
-    //     Some(Token::ParenthesisOpen) => {
-    //         let Ok((expr, mut tok)) = parse_expression(tokens) else {
-    //             debug!("tried to parse '('parenthesized')' group but did not find an expression after '('");
-    //             todo!("report error about missing )")  //TODO @mark:
-    //         };
-    //         if Some(&Token::ParenthesisClose) != tok.take() {
-    //             debug!("tried to parse '('parenthesized')' group but did not find closing at the end ')'");
-    //             todo!("report error about missing )")  //TODO @mark:
-    //         }
-    //         return Ok((expr, tok))
-    //     },
-    //     Some(Token::Identifier(iden)) => {
-    //         //TODO @mark: probably move this repetition down
-    //         let iden = Expr::Iden(iden.clone());
-    //         return if let Ok((expr, tok)) = parse_binary_op(tokens.fork(), iden) {
-    //             Ok((expr, tok))
-    //         } else {
-    //             todo!("report error - not sure how to get here, failed binary already falls back to left, which is available")  //TODO @mark:
-    //         };
-    //     },
-    //     Some(Token::Number(num)) => {
-    //         let num = Expr::Num(*num);
-    //         return if let Ok((expr, tok)) = parse_binary_op(tokens.fork(), num) {
-    //             Ok((expr, tok))
-    //         } else {
-    //             todo!("report error - not sure how to get here, failed binary already falls back to left, which is available")  //TODO @mark:
-    //         };
-    //     },
-    //     Some(Token::Text(txt)) => {
-    //         let txt = Expr::Text(txt.clone());
-    //         return if let Ok((expr, tok)) = parse_binary_op(tokens.fork(), txt) {
-    //             Ok((expr, tok))
-    //         } else {
-    //             todo!("report error - not sure how to get here, failed binary already falls back to left, which is available")  //TODO @mark:
-    //         };
-    //     },
-    //     Some(other) => todo!("error handling for unknown block start {other:?}"),
-    //     None => todo!("handle not finding an expression"),
-    // }
-    //TODO @mark: fail if there was no semicolon or newline (except ')' or '}' maybe? or maybe just forbid such onelines without ;)
 }
 
 #[inline]
 fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
-    eprintln!("start addsub at {:?}", &orig_tokens);  //TODO @mark: TEMPORARY! REMOVE THIS!
+    eprintln!("start addsub at {:?}", &orig_tokens); //TODO @mark: TEMPORARY! REMOVE THIS!
     let res = parse_binary_op(
         orig_tokens,
         |op| op == OpCode::Add || op == OpCode::Sub,
-        parse_muldiv);
-    eprintln!("end addsub");  //TODO @mark: TEMPORARY! REMOVE THIS!
+        parse_muldiv,
+    );
+    eprintln!("end addsub"); //TODO @mark: TEMPORARY! REMOVE THIS!
     res
 }
 
@@ -194,7 +160,8 @@ fn parse_muldiv(orig_tokens: Cursor) -> ParseRes<Expr> {
     parse_binary_op(
         orig_tokens,
         |op| op == OpCode::Mul || op == OpCode::Div,
-        parse_scalar)
+        parse_scalar,
+    )
 }
 
 #[inline]
@@ -210,9 +177,9 @@ fn parse_binary_op(
             return Ok((expr, tokens))
         };
         let op = *op;
-        if ! is_op(op) {
+        if !is_op(op) {
             trace!("got a different operator than expected {:?}", tokens.peek());
-            return Ok((expr, tokens))
+            return Ok((expr, tokens));
         }
         tokens.take();
         trace!("parsed operator {:?}", op);
@@ -230,16 +197,16 @@ fn parse_scalar(orig_tokens: Cursor) -> ParseRes<Expr> {
         Some(Token::Identifier(iden)) => {
             trace!("parsed identifier {:?}", iden);
             Ok((Expr::Iden(iden.clone()), tokens))
-        },
+        }
         Some(Token::Number(num)) => {
             trace!("parsed number {:?}", *num);
             Ok((Expr::Num(*num), tokens))
-        },
+        }
         Some(Token::Text(txt)) => {
             trace!("parsed text '{:?}'", txt);
             Ok((Expr::Text(txt.clone()), tokens))
-        },
-        _ => parse_parenthesised(orig_tokens)
+        }
+        _ => parse_parenthesised(orig_tokens),
     }
 }
 
@@ -251,7 +218,7 @@ fn parse_parenthesised(orig_tokens: Cursor) -> ParseRes<Expr> {
         let (expr, mut expr_tokens) = parse_expression(tokens)?;
         if let Some(Token::ParenthesisClose) = expr_tokens.take() {
             trace!("parsed parenthesised group {:?}", &expr);
-            return Ok((expr, expr_tokens))
+            return Ok((expr, expr_tokens));
         } else {
             todo!("expected closing parenthesis at {expr_tokens:?}")
         }
@@ -261,59 +228,8 @@ fn parse_parenthesised(orig_tokens: Cursor) -> ParseRes<Expr> {
         file: Default::default(),
         line: 0,
         msg: "todo no rules matched".to_string(),
-    })  //TODO @mark:
+    }) //TODO @mark:
 }
-
-// //TODO @mark: this is addsub, rename?
-// fn parse_binary_op(mut tokens: Cursor, left: Expr) -> ParseRes<Expr> {
-//     let mut expr = left;
-//     loop {
-//         let op_code;
-//         match tokens.peek() {
-//             Some(Token::OpSymbol(op)) if op_code == OpCode::Add || op_code == OpCode::Sub => op_code = *op,
-//             _ => return parse_bin_muldiv(tokens.fork(), expr),
-//         }
-//         tokens.take();
-//         let (right, right_tokens) = parse_bin_muldiv(tokens.fork(), expr)?;
-//         tokens = right_tokens;
-//         expr = Expr::BinOp(op_code, Box::new(expr.clone()), Box::new(right));
-//         //TODO @mark: is there a way to avoid cloning?
-//     }
-// }
-//
-// fn parse_bin_muldiv(mut tokens: Cursor, left: Expr) -> ParseRes<Expr> {
-//     //TODO @mark: TEMPORARY! REMOVE THIS!
-//     let mut expr = left;
-//     loop {
-//         let op_code;
-//         match tokens.peek() {
-//             Some(Token::OpSymbol(op)) if op_code == OpCode::Mul || op_code == OpCode::Div => op_code = *op,
-//             _ => return parse_bin_muldiv(tokens.fork(), &expr),
-//         }
-//         tokens.take();
-//         let (right, right_tokens) = parse_bin_muldiv(tokens.fork(), &expr)?;
-//         tokens = right_tokens;
-//         expr = Expr::BinOp(op_code, Box::new(expr.clone()), Box::new(right));
-//         //TODO @mark: is there a way to avoid cloning?
-//     }
-// }
-//
-// fn parse_binary_op_with(mut tokens: Cursor, left: Expr, op_condition: fn(&OpCode) -> bool, right_parser: impl FnMut(Cursor, Expr) -> ParseRes<Expr>) -> ParseRes<Expr> {
-//     //TODO @mark: TEMPORARY! REMOVE THIS!
-//     let mut expr = left;
-//     loop {
-//         let op_code;
-//         match tokens.peek() {
-//             Some(Token::OpSymbol(op)) if op_condition(op_code) => op_code = *op,
-//             _ => return parse_bin_muldiv(tokens.fork(), &expr),
-//         }
-//         tokens.take();
-//         let (right, right_tokens) = parse_bin_muldiv(tokens.fork(), &expr)?;
-//         tokens = right_tokens;
-//         expr = Expr::BinOp(op_code, Box::new(expr.clone()), Box::new(right));
-//         //TODO @mark: is there a way to avoid cloning?
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
@@ -321,9 +237,28 @@ mod tests {
 
     #[test]
     fn parse_simple_arithmetic() {
-        let (expr, cur) = parse_expression(Cursor::new(vec![Token::ParenthesisOpen, Token::Number(1.0), Token::ParenthesisClose,
-            Token::OpSymbol(OpCode::Add), Token::Number(2.0), Token::OpSymbol(OpCode::Add), Token::Number(3.0)])).unwrap();
-        assert_eq!(expr, Expr::BinOp(OpCode::Add, Box::new(Expr::BinOp(OpCode::Add, Box::new(Expr::Num(1.0)), Box::new(Expr::Num(2.0)))), Box::new(Expr::Num(3.0))));
+        let (expr, cur) = parse_expression(Cursor::new(vec![
+            Token::ParenthesisOpen,
+            Token::Number(1.0),
+            Token::ParenthesisClose,
+            Token::OpSymbol(OpCode::Add),
+            Token::Number(2.0),
+            Token::OpSymbol(OpCode::Add),
+            Token::Number(3.0),
+        ]))
+        .unwrap();
+        assert_eq!(
+            expr,
+            Expr::BinOp(
+                OpCode::Add,
+                Box::new(Expr::BinOp(
+                    OpCode::Add,
+                    Box::new(Expr::Num(1.0)),
+                    Box::new(Expr::Num(2.0))
+                )),
+                Box::new(Expr::Num(3.0))
+            )
+        );
         assert_eq!(cur.index, 7);
     }
 }

@@ -10,9 +10,9 @@ use ::regex::Regex;
 use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
-use crate::ast::AST;
 use crate::ast::Identifier;
 use crate::ast::OpCode;
+use crate::ast::Ast;
 use crate::parser::lexer::Token::OpSymbol;
 use crate::SteelErr;
 
@@ -31,10 +31,8 @@ pub enum Token {
 }
 
 trait Tokenizer: fmt::Debug + Send + Sync {
-    #[inline]
     fn regex(&self) -> &Regex;
 
-    #[inline]
     fn token_for(&self, cap_group: Option<&str>) -> Option<Token>;
 }
 
@@ -43,23 +41,38 @@ struct FixedTokenTokenizer(Regex, Option<Token>);
 
 impl FixedTokenTokenizer {
     fn new_parenthesis_open() -> Box<Self> {
-        Box::new(FixedTokenTokenizer(Regex::new(r"^[ \t]*\(\s*").unwrap(), Some(Token::ParenthesisOpen)))
+        Box::new(FixedTokenTokenizer(
+            Regex::new(r"^[ \t]*\(\s*").unwrap(),
+            Some(Token::ParenthesisOpen),
+        ))
     }
 
     fn new_parenthesis_close() -> Box<Self> {
-        Box::new(FixedTokenTokenizer(Regex::new(r"^[ \t]*\)[ \t]*").unwrap(), Some(Token::ParenthesisClose)))
+        Box::new(FixedTokenTokenizer(
+            Regex::new(r"^[ \t]*\)[ \t]*").unwrap(),
+            Some(Token::ParenthesisClose),
+        ))
     }
 
     fn new_newline() -> Box<Self> {
-        Box::new(FixedTokenTokenizer(Regex::new(r"^[ \t]*[\n\r]+[ \t]*").unwrap(), Some(Token::Newline)))
+        Box::new(FixedTokenTokenizer(
+            Regex::new(r"^[ \t]*[\n\r]+[ \t]*").unwrap(),
+            Some(Token::Newline),
+        ))
     }
 
     fn new_semicolon() -> Box<Self> {
-        Box::new(FixedTokenTokenizer(Regex::new(r"^[ \t]*;[ \t]*").unwrap(), Some(Token::Semicolon)))
+        Box::new(FixedTokenTokenizer(
+            Regex::new(r"^[ \t]*;[ \t]*").unwrap(),
+            Some(Token::Semicolon),
+        ))
     }
 
     fn new_colon() -> Box<Self> {
-        Box::new(FixedTokenTokenizer(Regex::new(r"^[ \t]*:[ \t]*").unwrap(), Some(Token::Colon)))
+        Box::new(FixedTokenTokenizer(
+            Regex::new(r"^[ \t]*:[ \t]*").unwrap(),
+            Some(Token::Colon),
+        ))
     }
 
     fn new_leftover_whitespace() -> Box<Self> {
@@ -73,7 +86,10 @@ impl Tokenizer for FixedTokenTokenizer {
     }
 
     fn token_for(&self, ignored: Option<&str>) -> Option<Token> {
-        debug_assert!(ignored.is_none(), "no capture group expected for this tokenizer (got {ignored:?})");
+        debug_assert!(
+            ignored.is_none(),
+            "no capture group expected for this tokenizer (got {ignored:?})"
+        );
         self.1.clone()
     }
 }
@@ -83,7 +99,9 @@ struct CommentTokenizer(Regex);
 
 impl CommentTokenizer {
     fn new() -> Box<Self> {
-        Box::new(CommentTokenizer(Regex::new(r"^[ \t]*#[^\n\r]+(?:$|\n|\r)+").unwrap()))
+        Box::new(CommentTokenizer(
+            Regex::new(r"^[ \t]*#[^\n\r]+(?:$|\n|\r)+").unwrap(),
+        ))
     }
 }
 
@@ -103,7 +121,9 @@ struct OpSymbolTokenizer(Regex);
 
 impl OpSymbolTokenizer {
     fn new() -> Box<Self> {
-        Box::new(OpSymbolTokenizer(Regex::new(r"^[ \t]*([*+\-/])\s*").unwrap()))
+        Box::new(OpSymbolTokenizer(
+            Regex::new(r"^[ \t]*([*+\-/])\s*").unwrap(),
+        ))
     }
 }
 
@@ -113,13 +133,15 @@ impl Tokenizer for OpSymbolTokenizer {
     }
 
     fn token_for(&self, op_sym: Option<&str>) -> Option<Token> {
-        Some(Token::OpSymbol(match op_sym.expect("regex group must always capture once") {
-            "+" => OpCode::Add,
-            "-" => OpCode::Sub,
-            "*" => OpCode::Mul,
-            "/" => OpCode::Div,
-            _ => unreachable!(),
-        }))
+        Some(Token::OpSymbol(
+            match op_sym.expect("regex group must always capture once") {
+                "+" => OpCode::Add,
+                "-" => OpCode::Sub,
+                "*" => OpCode::Mul,
+                "/" => OpCode::Div,
+                _ => unreachable!(),
+            },
+        ))
     }
 }
 
@@ -128,7 +150,9 @@ struct NumberTokenizer(Regex);
 
 impl NumberTokenizer {
     fn new() -> Box<Self> {
-        Box::new(NumberTokenizer(Regex::new(r"^[ \t]*(-?[0-9]+(?:\.[0-9]+)?)[ \t]*").unwrap()))
+        Box::new(NumberTokenizer(
+            Regex::new(r"^[ \t]*(-?[0-9]+(?:\.[0-9]+)?)[ \t]*").unwrap(),
+        ))
     }
 }
 
@@ -138,9 +162,12 @@ impl Tokenizer for NumberTokenizer {
     }
 
     fn token_for(&self, num_repr: Option<&str>) -> Option<Token> {
-        match num_repr.expect("regex group must always capture once").parse() {
+        match num_repr
+            .expect("regex group must always capture once")
+            .parse()
+        {
             Ok(num) => Some(Token::Number(num)),
-            Err(_err) => unimplemented!(),  //TODO @mark: error handling (e.g. too large nr? most invalid input is handled by regex)
+            Err(_err) => unimplemented!(), //TODO @mark: error handling (e.g. too large nr? most invalid input is handled by regex)
         }
     }
 }
@@ -151,7 +178,9 @@ struct TextTokenizer(Regex);
 impl TextTokenizer {
     fn new() -> Box<Self> {
         //TODO @mark: quote escaping not allowed yet
-        Box::new(TextTokenizer(Regex::new("^[ \t]*\"([^\"\n]*)\"[ \t]*").unwrap()))
+        Box::new(TextTokenizer(
+            Regex::new("^[ \t]*\"([^\"\n]*)\"[ \t]*").unwrap(),
+        ))
     }
 }
 
@@ -161,7 +190,10 @@ impl Tokenizer for TextTokenizer {
     }
 
     fn token_for(&self, text: Option<&str>) -> Option<Token> {
-        Some(Token::Text(text.expect("regex group must always capture once").to_owned()))
+        Some(Token::Text(
+            text.expect("regex group must always capture once")
+                .to_owned(),
+        ))
     }
 }
 
@@ -170,7 +202,9 @@ struct IdentifierTokenizer(Regex);
 
 impl IdentifierTokenizer {
     fn new() -> Box<Self> {
-        Box::new(IdentifierTokenizer(Regex::new("^[ \t]*((?:[a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9]*)[ \t]*").unwrap()))
+        Box::new(IdentifierTokenizer(
+            Regex::new("^[ \t]*((?:[a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9]*)[ \t]*").unwrap(),
+        ))
     }
 }
 
@@ -180,7 +214,9 @@ impl Tokenizer for IdentifierTokenizer {
     }
 
     fn token_for(&self, name: Option<&str>) -> Option<Token> {
-        Some(Token::Identifier(Identifier::new(name.expect("regex group must always capture once")).unwrap()))
+        Some(Token::Identifier(
+            Identifier::new(name.expect("regex group must always capture once")).unwrap(),
+        ))
         //TODO @mark: unwrap is safe here right?
     }
 }
@@ -201,7 +237,10 @@ static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 11]> = LazyLock::new(|| {
         IdentifierTokenizer::new(),
         FixedTokenTokenizer::new_leftover_whitespace(),
     ];
-    debug!("finished creating {} tokenizers (compiling regexes)", tokenizers.len());
+    debug!(
+        "finished creating {} tokenizers (compiling regexes)",
+        tokenizers.len()
+    );
     tokenizers
 });
 
@@ -216,20 +255,32 @@ pub fn tokenize(src_pth: PathBuf, full_code: &str) -> Result<Vec<Token>, SteelEr
             let Some(caps) = tokenizer.regex().captures_iter(code).next() else {
                 continue;
             };
-            let mtch = caps.get(0).expect("regex group 0 should always match").as_str();
+            let mtch = caps
+                .get(0)
+                .expect("regex group 0 should always match")
+                .as_str();
             let grp = caps.get(1).map(|g| g.as_str());
             if let Some(token) = tokenizer.token_for(grp) {
-                trace!("match {token:?} in '{mtch}' from {ix} to {}", ix + mtch.len());
+                trace!(
+                    "match {token:?} in '{mtch}' from {ix} to {}",
+                    ix + mtch.len()
+                );
                 tokens.push(token);
             } else {
-                trace!("matched tokenizer {tokenizer:?} from {ix} to {} but it produced no token", ix + mtch.len());
+                trace!(
+                    "matched tokenizer {tokenizer:?} from {ix} to {} but it produced no token",
+                    ix + mtch.len()
+                );
             }
             ix += mtch.len();
-            debug_assert!(mtch.len() > 0);
+            debug_assert!(!mtch.is_empty());
             continue 'outer;
         }
-        unreachable!("unexpected end of input at #{ix} ('{}') after {} tokenizers",
-                code.chars().next().unwrap(), TOKENIZERS.len())
+        unreachable!(
+            "unexpected end of input at #{ix} ('{}') after {} tokenizers",
+            code.chars().next().unwrap(),
+            TOKENIZERS.len()
+        )
     }
     Ok(tokens)
 }
@@ -241,7 +292,10 @@ mod tokens {
     #[test]
     fn allow_whitespace_after_open_parenthesis() {
         let tokens = tokenize(PathBuf::from("test"), "(\n)");
-        assert_eq!(tokens, Ok(vec![Token::ParenthesisOpen, Token::ParenthesisClose]));
+        assert_eq!(
+            tokens,
+            Ok(vec![Token::ParenthesisOpen, Token::ParenthesisClose])
+        );
     }
 
     #[test]
@@ -253,8 +307,20 @@ mod tokens {
     #[test]
     fn simple_arithmetic() {
         let tokens = tokenize(PathBuf::from("test"), "(3) + (4 / 2)");
-        assert_eq!(tokens, Ok(vec![Token::ParenthesisOpen, Token::Number(3.), Token::ParenthesisClose, Token::OpSymbol(OpCode::Add),
-                Token::ParenthesisOpen, Token::Number(4.), Token::OpSymbol(OpCode::Div), Token::Number(2.), Token::ParenthesisClose]));
+        assert_eq!(
+            tokens,
+            Ok(vec![
+                Token::ParenthesisOpen,
+                Token::Number(3.),
+                Token::ParenthesisClose,
+                Token::OpSymbol(OpCode::Add),
+                Token::ParenthesisOpen,
+                Token::Number(4.),
+                Token::OpSymbol(OpCode::Div),
+                Token::Number(2.),
+                Token::ParenthesisClose
+            ])
+        );
     }
 
     #[test]

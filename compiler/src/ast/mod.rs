@@ -1,7 +1,7 @@
-use steel_api::log::debug;
+use ::steel_api::log::debug;
 
 #[derive(Debug)]
-pub struct AST {
+pub struct Ast {
     pub blocks: Vec<Block>,
 }
 
@@ -24,26 +24,32 @@ impl Identifier {
         let name = name.into();
         for ch in name.chars() {
             match ch {
-                '0'..='9' => {},
-                'a'..='z' => {},
-                'A'..='Z' => {},
-                '_' => {},
+                '0'..='9' => {}
+                'a'..='z' => {}
+                'A'..='Z' => {}
+                '_' => {}
                 unexpected => {
-                    debug!("reject identifier because '{}' contains '{}'", &name, unexpected);
-                    return None
-                },
+                    debug!(
+                        "reject identifier because '{}' contains '{}'",
+                        &name, unexpected
+                    );
+                    return None;
+                }
             }
         }
         let first = name.chars().next()?;
         match first {
-            'a'..='z' => {},
-            'A'..='Z' => {},
-            '_' => {},
+            'a'..='z' => {}
+            'A'..='Z' => {}
+            '_' => {}
             //TODO @mark: allow _ as leading char?
             unexpected => {
-                debug!("reject identifier because '{}' starts with '{}'", &name, unexpected);
-                return None
-            },
+                debug!(
+                    "reject identifier because '{}' starts with '{}'",
+                    &name, unexpected
+                );
+                return None;
+            }
         }
         Some(Identifier { name })
     }
@@ -84,7 +90,7 @@ pub enum Block {
     Struct {
         iden: Identifier,
         fields: Vec<(Identifier, Type)>,
-    }
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -94,4 +100,3 @@ pub enum Expr {
     Iden(Identifier),
     BinOp(OpCode, Box<Expr>, Box<Expr>),
 }
-

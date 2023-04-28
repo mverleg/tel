@@ -7,22 +7,37 @@ use ::lalrpop_util::ParseError;
 use ::steel_api::log::info;
 
 /// Returns error message and error line (or 0 if unknown)
-pub fn build_error<T, E: fmt::Display>(error: ParseError<usize, T, E>, src_file: &str, code: &str) -> (String, usize) {
+pub fn build_error<T, E: fmt::Display>(
+    error: ParseError<usize, T, E>,
+    src_file: &str,
+    code: &str,
+) -> (String, usize) {
     let msg = match error {
         ParseError::InvalidToken { location } => {
             let (line, col) = source_line_col(code, location);
             (
-                format!("Invalid code in {}:{}:{}\n{}", src_file,
-                    line + 1, col + 1, source_loc_repr(code, line, col, 1)),
-                line
+                format!(
+                    "Invalid code in {}:{}:{}\n{}",
+                    src_file,
+                    line + 1,
+                    col + 1,
+                    source_loc_repr(code, line, col, 1)
+                ),
+                line,
             )
         }
         ParseError::UnrecognizedEOF { location, expected } => {
             let (line, col) = source_line_col(code, location);
             (
-                format!("Unexpected end in {}:{}:{}\n{}{}", src_file, line + 1, col + 1,
-                        source_loc_repr(code, line, col, 1), fmt_expected_tokens(&expected)),
-                line
+                format!(
+                    "Unexpected end in {}:{}:{}\n{}{}",
+                    src_file,
+                    line + 1,
+                    col + 1,
+                    source_loc_repr(code, line, col, 1),
+                    fmt_expected_tokens(&expected)
+                ),
+                line,
             )
         }
         ParseError::UnrecognizedToken {
@@ -31,9 +46,15 @@ pub fn build_error<T, E: fmt::Display>(error: ParseError<usize, T, E>, src_file:
         } => {
             let (line, col) = source_line_col(code, start);
             (
-                format!("Unexpected code in {}:{}:{}\n{}{}", src_file, line + 1, col + 1,
-                        source_loc_repr(code, line, col, max(1, end - start)), fmt_expected_tokens(&expected)),
-                line
+                format!(
+                    "Unexpected code in {}:{}:{}\n{}{}",
+                    src_file,
+                    line + 1,
+                    col + 1,
+                    source_loc_repr(code, line, col, max(1, end - start)),
+                    fmt_expected_tokens(&expected)
+                ),
+                line,
             )
         }
         ParseError::ExtraToken {
@@ -41,17 +62,17 @@ pub fn build_error<T, E: fmt::Display>(error: ParseError<usize, T, E>, src_file:
         } => {
             let (line, col) = source_line_col(code, start);
             (
-                format!("Invalid token in {}:{}:{}\n{}", src_file, line + 1, col + 1,
-                        source_loc_repr(code, line, col, max(1, end - start))),
-                line
+                format!(
+                    "Invalid token in {}:{}:{}\n{}",
+                    src_file,
+                    line + 1,
+                    col + 1,
+                    source_loc_repr(code, line, col, max(1, end - start))
+                ),
+                line,
             )
         }
-        ParseError::User { error } => {
-            (
-                format!("Error in {}: {}", src_file, error),
-                0
-            )
-        }
+        ParseError::User { error } => (format!("Error in {}: {}", src_file, error), 0),
     };
     info!("{}", &msg.0);
     msg
@@ -90,8 +111,20 @@ fn source_loc_repr(code: &str, err_line: usize, err_col: usize, len: usize) -> S
             writeln!(locator, "{:3} | {}", line_nr + 1, line).unwrap();
         }
         if line_nr == err_line {
-            let end_loc = if len > 1 { format!("-{}", err_col + len) } else { "".to_owned() };
-            writeln!(locator, "      {}{} {}{}", " ".repeat(err_col), "^".repeat(len), err_col + 1, end_loc).unwrap();
+            let end_loc = if len > 1 {
+                format!("-{}", err_col + len)
+            } else {
+                "".to_owned()
+            };
+            writeln!(
+                locator,
+                "      {}{} {}{}",
+                " ".repeat(err_col),
+                "^".repeat(len),
+                err_col + 1,
+                end_loc
+            )
+            .unwrap();
         }
         if line_nr > err_line + 2 {
             break;

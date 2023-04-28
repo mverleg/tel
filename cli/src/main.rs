@@ -2,15 +2,12 @@ use ::std::path::PathBuf;
 
 use ::clap::Parser;
 use ::clap::Subcommand;
-use ::env_logger;
 
-use ::steel::BuildArgs;
-use ::steel::steel_build;
+#[cfg(not(test))]
+use ::steel::{steel_build, BuildArgs};
 
 #[derive(Parser, Debug)]
-#[command(
-    name = "steel",
-)]
+#[command(name = "steel")]
 struct SteelCli {
     #[clap(subcommand)]
     subcommand: SubCmd,
@@ -34,17 +31,20 @@ enum SubCmd {
 
 #[test]
 fn test_cli_args() {
-    SteelCli::try_parse_from(&["steel", "build", "-v"]).unwrap();
+    SteelCli::try_parse_from(["steel", "build", "-v"]).unwrap();
 }
 
 #[cfg(not(test))]
 fn main() {
-    env_logger::init_from_env(env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "warn"));
+    env_logger::init_from_env(
+        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "warn"),
+    );
     let args = SteelCli::parse();
     match args.subcommand {
         SubCmd::Build(build_args) => steel_build(&BuildArgs {
             path: build_args.path,
             verbose: build_args.verbose,
-        })
-    }.unwrap()  //TODO @mark: do not unwrap
+        }),
+    }
+    .unwrap() //TODO @mark: do not unwrap
 }

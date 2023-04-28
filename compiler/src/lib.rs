@@ -10,8 +10,8 @@ use ::steel_api::log::warn;
 
 use crate::parser::parse_str;
 
-mod parser;
 mod ast;
+mod parser;
 
 #[derive(Debug)]
 pub struct BuildArgs {
@@ -36,12 +36,20 @@ fn find_main_file(path: &Path) -> Result<PathBuf, SteelErr> {
     } else {
         let pth_ext = path.with_extension("steel");
         if pth_ext.exists() {
-            debug!("select path with '.steel' extension added as starting point: '{}'", pth_ext.display());
+            debug!(
+                "select path with '.steel' extension added as starting point: '{}'",
+                pth_ext.display()
+            );
             pth_ext
         } else {
-            warn!("did not find file at starting point path '{}' nor at '{}'",
-                path.display(), pth_ext.display());
-            return Err(SteelErr::FileNotFound { file: path.to_owned() })
+            warn!(
+                "did not find file at starting point path '{}' nor at '{}'",
+                path.display(),
+                pth_ext.display()
+            );
+            return Err(SteelErr::FileNotFound {
+                file: path.to_owned(),
+            });
         }
     };
     Ok(path)
@@ -49,7 +57,13 @@ fn find_main_file(path: &Path) -> Result<PathBuf, SteelErr> {
 
 #[derive(Debug, PartialEq)]
 pub enum SteelErr {
-    FileNotFound { file: PathBuf },
+    FileNotFound {
+        file: PathBuf,
+    },
     CouldNotRead(PathBuf, String),
-    ParseErr { file: PathBuf, line: usize, msg: String },
+    ParseErr {
+        file: PathBuf,
+        line: usize,
+        msg: String,
+    },
 }
