@@ -16,6 +16,7 @@ use crate::ast::Ast;
 use crate::ast::Block;
 use crate::ast::Block::Expression;
 use crate::ast::Expr;
+use crate::ast::Identifier;
 use crate::ast::OpCode;
 use crate::parser::lexer::Token;
 use crate::parser::lexer::Token::OpSymbol;
@@ -141,6 +142,21 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
 
 fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
     parse_addsub(tokens)
+}
+
+//TODO @mark: use:
+fn parse_identifier(orig_tokens: Cursor) -> ParseRes<Identifier> {
+    let mut tokens = orig_tokens.fork();
+    let Some(Token::Identifier(iden)) = tokens.take() else {
+        todo!("no match but perhaps not an error") //  orig_tokens
+    };
+    Ok((iden.clone(), tokens))
+}
+
+//TODO @mark: use:
+fn parse_type_use(mut tokens: Cursor) -> ParseRes<Identifier> {
+    //TODO @mark: for now
+    parse_identifier(tokens)
 }
 
 #[inline]
