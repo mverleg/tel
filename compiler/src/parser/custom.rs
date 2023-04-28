@@ -203,21 +203,24 @@ fn parse_binary_op(
     is_op: fn(OpCode) -> bool,
     next: impl Fn(Cursor) -> ParseRes<Expr>,
 ) -> ParseRes<Expr> {
-    let (left, mut tokens) = next(orig_tokens)?;
-    let Some(Token::OpSymbol(op)) = tokens.peek() else {
-        trace!("trying to parse operator, instead got {:?}", tokens.peek());
-        return Ok((left, tokens))
-    };
-    let op = *op;
-    if ! is_op(op) {
-        trace!("got a different operator than expected {:?}", tokens.peek());
-        return Ok((left, tokens))
+    let (mut expr, mut tokens) = next(orig_tokens)?;
+    loop {
+        let Some(Token::OpSymbol(op)) = tokens.peek() else {
+            trace!("trying to parse operator, instead got {:?}", tokens.peek());
+            return Ok((expr, tokens))
+        };
+        let op = *op;
+        if ! is_op(op) {
+            trace!("got a different operator than expected {:?}", tokens.peek());
+            return Ok((expr, tokens))
+        }
+        tokens.take();
+        trace!("parsed operator {:?}", op);
+        let (right, mut right_tok) = next(tokens)?;
+        //TODO @mark: how to make the error message say something like "expected a muldiv expression because of +" but readable?
+        expr = Expr::BinOp(op, Box::new(expr), Box::new(right));
+        tokens = right_tok;
     }
-    tokens.take();
-    trace!("parsed operator {:?}", op);
-    let (right, mut right_tok) = next(tokens)?;
-    //TODO @mark: how to make the error message say something like "expected a muldiv expression because of +" but readable?
-    Ok((Expr::BinOp(op, Box::new(left), Box::new(right)), right_tok))
 }
 
 #[inline]
@@ -311,3 +314,16 @@ fn parse_parenthesised(orig_tokens: Cursor) -> ParseRes<Expr> {
 //         //TODO @mark: is there a way to avoid cloning?
 //     }
 // }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_simple_arithmetic() {
+        let (expr, cur) = parse_expression(Cursor::new(vec![Token::ParenthesisOpen, Token::Number(1.0), Token::ParenthesisClose,
+            Token::OpSymbol(OpCode::Add), Token::Number(2.0), Token::OpSymbol(OpCode::Add), Token::Number(3.0)])).unwrap();
+        assert_eq!(expr, Expr::BinOp(OpCode::Add, Box::new(Expr::BinOp(OpCode::Add, Box::new(Expr::Num(1.0)), Box::new(Expr::Num(2.0)))), Box::new(Expr::Num(3.0))));
+        assert_eq!(cur.index, 7);
+    }
+}

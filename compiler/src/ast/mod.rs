@@ -87,7 +87,7 @@ pub enum Block {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Num(f64),
     Text(String),
