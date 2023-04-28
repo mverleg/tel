@@ -10,9 +10,9 @@ use ::regex::Regex;
 use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
+use crate::ast::Ast;
 use crate::ast::Identifier;
 use crate::ast::OpCode;
-use crate::ast::Ast;
 use crate::parser::lexer::Token::OpSymbol;
 use crate::SteelErr;
 

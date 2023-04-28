@@ -1,0 +1,73 @@
+
+# GENERATED: This file is automatically updated by 'Bump dependencies', local changes will be overwritten!
+
+name: 'Check dependencies'
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'master'
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 8 * * Sun'
+
+jobs:
+  checks:
+    name: Check dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 100
+      - name: Last run
+        uses: nrwl/last-successful-commit-action@v1
+        id: last_successful_commit
+        with:
+          branch: main
+          workflow_id: 'check-dependencies.yml'
+          github_token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Changed?
+        id: is_changed
+        run: |
+          if ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}; then
+              echo "RUN DEPENDENCY CHECK FOR MANUAL OR SCHEDULED RUN (${{ github.event_name }})"
+              echo "IS_CHANGED=1" >> $GITHUB_OUTPUT
+              echo "::notice Dependency check for manual/scheduled run"
+              exit 0
+          fi
+          echo "not a scheduled or manual run"
+          basecmt="${{ steps.last_successful_commit.outputs.commit_hash }}"
+          echo "checking if previous run $basecmt can be found"
+          if [ -z "$basecmt" ] || git diff --quiet --exit-code HEAD "$basecmt"
+          then
+              echo "RUN DEPENDENCY CHECK BECAUSE DETERMINING PREVIOUS SUCCESSFUL RUN FAILED (ref = '$basecmt')" 1>&2
+              echo "IS_CHANGED=1" >> $GITHUB_OUTPUT
+              echo "::notice Dependency check because previous run failed"
+              exit 0
+          fi
+          echo "previous run found, checking differences since then"
+          while IFS= read -r changed_file
+          do
+              if [[ "$changed_file" =~ .*Dockerfile$ ]] || [[ "$changed_file" =~ .*Cargo\..* ]]
+              then
+                  echo "RUN DEPENDENCY CHECK BECAUSE OF $changed_file"
+                  echo "IS_CHANGED=1" >> $GITHUB_OUTPUT
+                  echo "::notice Dependency check because '$changed_file' changed"
+              else
+                  echo "found changes in $changed_file but not recognized as a dependency file"
+              fi
+          done <<< "$(git diff --name-only HEAD "$basecmt")"
+      - name: Log
+        if: ${{ steps.is_changed.outputs.IS_CHANGED == '1' }}
+        run: |
+          cat ./ci/check-dependencies.Dockerfile
+      - name: Run checks
+        if: ${{ steps.is_changed.outputs.IS_CHANGED == '1' }}
+        uses: docker/build-push-action@v2
+        with:
+          file: ./ci/check-dependencies.Dockerfile
+          context: .
+          push: false

@@ -12,14 +12,14 @@ use ::regex::Regex;
 use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
+use crate::ast::Ast;
 use crate::ast::Block;
 use crate::ast::Block::Expression;
 use crate::ast::Expr;
 use crate::ast::OpCode;
-use crate::ast::Ast;
-use crate::parser::lexer::tokenize;
 use crate::parser::lexer::Token;
 use crate::parser::lexer::Token::OpSymbol;
+use crate::parser::lexer::tokenize;
 use crate::SteelErr;
 use crate::SteelErr::ParseErr;
 
