@@ -1,0 +1,14 @@
+*
+!ci-conf.json
+!Cargo.toml
+!Cargo.lock
+!build.rs
+!ci/
+!examples/
+!benches/
+!docs/
+!deny.toml
+!dictionary.txt
+!LICENSE.txt
+!README.md
+!rustfmt.toml
