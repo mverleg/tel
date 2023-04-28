@@ -3,6 +3,9 @@
 !Cargo.toml
 !Cargo.lock
 !build.rs
+!api/
+!cli/
+!compiler/
 !ci/
 !examples/
 !benches/

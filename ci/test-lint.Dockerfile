@@ -54,5 +54,5 @@ RUN pth="ci/extra_checks.sh";  \
         echo "RUN $pth";  \
         bash "$pth";  \
     else  \
-        echo SKIPPED;  \
+        echo 'NO EXTRA CHECKS';  \
     fi
