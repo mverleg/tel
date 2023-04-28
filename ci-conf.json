@@ -7,8 +7,7 @@
   "check_dependencies": {},
   "test_lint": {
     "lint_strict": false,
-    "fmt": false,
-    "examples": true
+    "fmt": false
   },
   "release": {
     "artifact": {

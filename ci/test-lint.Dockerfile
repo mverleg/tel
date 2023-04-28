@@ -47,3 +47,12 @@ RUN echo "FMT=$FMT" &&\
         echo SKIPPED;  \
     fi
 
+# Extra steps (incl test-lint.Dockerfile to make sure at least one source)
+COPY ci/test-lint.Dockerfile ci/extra_checks.s[h] ./
+RUN pth="ci/extra_checks.sh";  \
+    if [ -f "$pth" ] ; then  \
+        echo "RUN $pth";  \
+        bash "$pth";  \
+    else  \
+        echo SKIPPED;  \
+    fi
