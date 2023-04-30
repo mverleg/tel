@@ -135,18 +135,6 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
             }
             continue;
         }
-        if let Ok((assign, tok)) = parse_assignment(tokens.fork()) {
-            tokens = tok;
-            blocks.push(Block::Assign(assign));
-            let closer_cnt = tokens.take_while(|tok| matches!(tok, Token::Semicolon))
-                + tokens.take_while(|tok| matches!(tok, Token::Newline));
-            //TODO @mark: only expressions need this right? not e.g. struct declarations, but maybe imports...
-            if closer_cnt == 0 {
-                todo!("error: no closer (semicolon or newline) after expression at {tokens:?}")
-            }
-            continue;
-        }
-
         break; //TODO @mark:
     }
     Ok(blocks)
@@ -154,10 +142,6 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
 
 fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
     parse_addsub(tokens)
-}
-
-fn parse_assignment(mut tokens: Cursor) -> ParseRes<Assignment> {
-    todo!()
 }
 
 //TODO @mark: use:
@@ -175,7 +159,6 @@ fn parse_type_use(mut tokens: Cursor) -> ParseRes<Identifier> {
     parse_identifier(tokens)
 }
 
-#[inline]
 fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
     eprintln!("start addsub at {:?}", &orig_tokens); //TODO @mark: TEMPORARY! REMOVE THIS!
     let res = parse_binary_op(
@@ -187,7 +170,6 @@ fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
     res
 }
 
-#[inline]
 fn parse_muldiv(orig_tokens: Cursor) -> ParseRes<Expr> {
     parse_binary_op(
         orig_tokens,
@@ -222,7 +204,6 @@ fn parse_binary_op(
     }
 }
 
-#[inline]
 fn parse_scalar(orig_tokens: Cursor) -> ParseRes<Expr> {
     let mut tokens = orig_tokens.fork();
     match tokens.take() {
@@ -242,7 +223,6 @@ fn parse_scalar(orig_tokens: Cursor) -> ParseRes<Expr> {
     }
 }
 
-#[inline]
 fn parse_parenthesised(orig_tokens: Cursor) -> ParseRes<Expr> {
     let mut tokens = orig_tokens.fork();
     if let Some(Token::ParenthesisOpen) = tokens.take() {
