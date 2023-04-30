@@ -86,21 +86,20 @@ pub enum AssignmentKw {
 #[derive(Debug)]
 pub enum Block {
     Expression(Expr),
-    // even without mut and type, it can be a declaration (with inferred type)
-    Assign(Assignment),
     Struct {
         iden: Identifier,
         fields: Vec<(Identifier, Type)>,
     },
 }
 
-#[derive(Debug, PartialEq)]
+// even without mut and type, it can be a declaration (with inferred type)
+#[derive(Debug, Clone, PartialEq)]
 pub struct Assignment {
     pub kw: AssignmentKw,
     pub target: Identifier,
     pub typ: Option<Type>,
     pub op: Option<OpCode>,
-    pub value: Expr,
+    pub value: Box<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -109,4 +108,5 @@ pub enum Expr {
     Text(String),
     Iden(Identifier),
     BinOp(OpCode, Box<Expr>, Box<Expr>),
+    Assign(Assignment),
 }

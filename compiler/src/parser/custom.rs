@@ -156,27 +156,51 @@ fn parse_identifier(orig_tokens: Cursor) -> ParseRes<Identifier> {
 }
 
 //TODO @mark: use:
-fn parse_type_use(mut tokens: Cursor) -> ParseRes<Identifier> {
+fn parse_type_use(mut tokens: Cursor) -> ParseRes<Type> {
     //TODO @mark: for now
     parse_identifier(tokens)
+        .map(|(typ, cur)| (Type::new(typ), cur))
 }
 
 fn parse_assignment(orig_tokens: Cursor) -> ParseRes<Expr> {
+    let next = parse_addsub;
     let mut tokens = orig_tokens.fork();
-    let kw = match orig_tokens.peek() {
-        Some(Token::Keyword(Keyword::Mut)) => AssignmentKw::Mut,
-        Some(Token::Keyword(Keyword::Local)) => AssignmentKw::Local,
+    let kw = match tokens.peek() {
+        Some(Token::Keyword(Keyword::Mut)) => {
+            tokens.take();
+            AssignmentKw::Mut
+        },
+        Some(Token::Keyword(Keyword::Local)) => {
+            tokens.take();
+            AssignmentKw::Local
+        }
         Some(_) | None => AssignmentKw::None,
     };
+    let Some(Token::Identifier(iden)) = tokens.take() else {
+        trace!("not an assignment because no identifier");
+        return next(orig_tokens)
+    };
+    let typ = tokens.take_if(|tok| matches!(tok, Token::Colon)).map(|_| {
+        let (typ, typ_tok) = parse_type_use(tokens)?;
+        tokens = typ_tok;
+        typ
+    });
+    let Some(Token::Assignment(op_code)) = tokens.peek() else {
+        trace!("not an assignment because no = sign");
+        return next(orig_tokens)
+    };
+    tokens.take();
+    trace!("parsed {kw:?} assignment");
+    let Ok((value, val_tok)) = next(tokens)?;
+    tokens = val_tok;
     let assign = Assignment {
         kw,
-        target,
-        typ: None,
-        op: None,
+        target: iden.clone(),
+        typ,
+        op: *op_code,
         value,
     };
-    todo!();
-    orig_tokens(parse_addsub)
+    Ok((Expr::Assignment(assign), tokens))
 }
 
 fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
