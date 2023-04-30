@@ -13,6 +13,12 @@ pub enum OpCode {
     Div,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Keyword {
+    Local,
+    Mut,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identifier {
     name: String,

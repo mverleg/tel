@@ -10,7 +10,7 @@ use ::regex::Regex;
 use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
-use crate::ast::{Assignment, Ast};
+use crate::ast::{Assignment, Ast, Keyword};
 use crate::ast::Identifier;
 use crate::ast::OpCode;
 use crate::parser::lexer::Token::OpSymbol;
@@ -23,6 +23,7 @@ pub enum Token {
     Newline,
     Semicolon,
     Colon,
+    Keyword(Keyword),
     Identifier(Identifier),
     Assignment(Option<OpCode>),
     OpSymbol(OpCode),
@@ -250,10 +251,35 @@ impl Tokenizer for IdentifierTokenizer {
     }
 }
 
+#[derive(Debug)]
+struct KeywordTokenizer(Regex);
+
+impl KeywordTokenizer {
+    fn new() -> Box<Self> {
+        Box::new(KeywordTokenizer(
+            Regex::new("^[ \t]*(local|mut)[ \t]+").unwrap(),
+        ))
+    }
+}
+
+impl Tokenizer for KeywordTokenizer {
+    fn regex(&self) -> &Regex {
+        &self.0
+    }
+
+    fn token_for(&self, name: Option<&str>) -> Option<Token> {
+        Some(Token::Keyword(match name.expect("regex group must always capture once") {
+            "local" => Keyword::Local,
+            "mut" => Keyword::Mut,
+            _ => return None,
+        }))
+    }
+}
+
 //TODO @mark: pity about dyn, see if it gets optimized
-static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 12]> = LazyLock::new(|| {
+static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 13]> = LazyLock::new(|| {
     debug!("start creating tokenizers (compiling regexes)");
-    let tokenizers: [Box<dyn Tokenizer>; 12] = [
+    let tokenizers: [Box<dyn Tokenizer>; 13] = [
         CommentTokenizer::new(),
         FixedTokenTokenizer::new_parenthesis_open(),
         FixedTokenTokenizer::new_parenthesis_close(),
@@ -263,6 +289,7 @@ static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 12]> = LazyLock::new(|| {
         OpSymbolTokenizer::new(),
         AssignmentTokenizer::new(),
         NumberTokenizer::new(),
+        KeywordTokenizer::new(),
         TextTokenizer::new(),
         IdentifierTokenizer::new(),
         FixedTokenTokenizer::new_leftover_whitespace(),
