@@ -10,7 +10,7 @@ use ::regex::Regex;
 use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
-use crate::ast::Ast;
+use crate::ast::{Assignment, Ast};
 use crate::ast::Identifier;
 use crate::ast::OpCode;
 use crate::parser::lexer::Token::OpSymbol;
@@ -119,11 +119,23 @@ impl Tokenizer for CommentTokenizer {
 #[derive(Debug)]
 struct OpSymbolTokenizer(Regex);
 
+static OP_RE: &'static str = r"[*+\-/]";
+
 impl OpSymbolTokenizer {
     fn new() -> Box<Self> {
         Box::new(OpSymbolTokenizer(
-            Regex::new(r"^[ \t]*([*+\-/])\s*").unwrap(),
+            Regex::new(&format!(r"^[ \t]*({})\s*", OP_RE)).unwrap(),
         ))
+    }
+
+    fn op_for(op_sym: &str) -> OpCode {
+        match op_sym {
+            "+" => OpCode::Add,
+            "-" => OpCode::Sub,
+            "*" => OpCode::Mul,
+            "/" => OpCode::Div,
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -133,15 +145,32 @@ impl Tokenizer for OpSymbolTokenizer {
     }
 
     fn token_for(&self, op_sym: Option<&str>) -> Option<Token> {
-        Some(Token::OpSymbol(
-            match op_sym.expect("regex group must always capture once") {
-                "+" => OpCode::Add,
-                "-" => OpCode::Sub,
-                "*" => OpCode::Mul,
-                "/" => OpCode::Div,
-                _ => unreachable!(),
-            },
+        Some(Token::OpSymbol(OpSymbolTokenizer::op_for(
+            op_sym.expect("regex group must always capture once"))))
+    }
+}
+
+#[derive(Debug)]
+struct AssignmentTokenizer(Regex);
+
+impl AssignmentTokenizer {
+    fn new() -> Box<Self> {
+        Box::new(AssignmentTokenizer(
+            Regex::new(&format!(r"^[ \t]*({})?=\s*", OP_RE)).unwrap(),
         ))
+    }
+}
+
+impl Tokenizer for AssignmentTokenizer {
+    fn regex(&self) -> &Regex {
+        &self.0
+    }
+
+    fn token_for(&self, op_sym: Option<&str>) -> Option<Token> {
+        Some(Token::Assignment(match op_sym {
+            None => None,
+            Some(op_txt) => Some(OpSymbolTokenizer::op_for(op_txt))
+        }))
     }
 }
 
@@ -222,9 +251,9 @@ impl Tokenizer for IdentifierTokenizer {
 }
 
 //TODO @mark: pity about dyn, see if it gets optimized
-static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 11]> = LazyLock::new(|| {
+static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 12]> = LazyLock::new(|| {
     debug!("start creating tokenizers (compiling regexes)");
-    let tokenizers: [Box<dyn Tokenizer>; 11] = [
+    let tokenizers: [Box<dyn Tokenizer>; 12] = [
         CommentTokenizer::new(),
         FixedTokenTokenizer::new_parenthesis_open(),
         FixedTokenTokenizer::new_parenthesis_close(),
@@ -232,6 +261,7 @@ static TOKENIZERS: LazyLock<[Box<dyn Tokenizer>; 11]> = LazyLock::new(|| {
         FixedTokenTokenizer::new_semicolon(),
         FixedTokenTokenizer::new_colon(),
         OpSymbolTokenizer::new(),
+        AssignmentTokenizer::new(),
         NumberTokenizer::new(),
         TextTokenizer::new(),
         IdentifierTokenizer::new(),

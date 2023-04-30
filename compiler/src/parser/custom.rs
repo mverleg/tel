@@ -141,7 +141,7 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
 }
 
 fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
-    parse_addsub(tokens)
+    parse_assignment(tokens)
 }
 
 //TODO @mark: use:
@@ -157,6 +157,12 @@ fn parse_identifier(orig_tokens: Cursor) -> ParseRes<Identifier> {
 fn parse_type_use(mut tokens: Cursor) -> ParseRes<Identifier> {
     //TODO @mark: for now
     parse_identifier(tokens)
+}
+
+fn parse_assignment(orig_tokens: Cursor) -> ParseRes<Expr> {
+
+    todo!();
+    orig_tokens(parse_addsub)
 }
 
 fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
