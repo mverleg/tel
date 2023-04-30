@@ -81,16 +81,19 @@ pub enum AssignmentKw {
 pub enum Block {
     Expression(Expr),
     // even without mut and type, it can be a declaration (with inferred type)
-    Assignment {
-        kw: AssignmentKw,
-        target: Identifier,
-        typ: Option<Type>,
-        value: Expr,
-    },
+    Assign(Assignment),
     Struct {
         iden: Identifier,
         fields: Vec<(Identifier, Type)>,
     },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Assignment {
+    kw: AssignmentKw,
+    target: Identifier,
+    typ: Option<Type>,
+    value: Expr,
 }
 
 #[derive(Debug, Clone, PartialEq)]

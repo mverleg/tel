@@ -12,7 +12,7 @@ use ::regex::Regex;
 use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
-use crate::ast::Ast;
+use crate::ast::{Assignment, AssignmentKw, Ast};
 use crate::ast::Block;
 use crate::ast::Block::Expression;
 use crate::ast::Expr;
@@ -135,6 +135,18 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
             }
             continue;
         }
+        if let Ok((assign, tok)) = parse_assignment(tokens.fork()) {
+            tokens = tok;
+            blocks.push(Block::Assign(assign));
+            let closer_cnt = tokens.take_while(|tok| matches!(tok, Token::Semicolon))
+                + tokens.take_while(|tok| matches!(tok, Token::Newline));
+            //TODO @mark: only expressions need this right? not e.g. struct declarations, but maybe imports...
+            if closer_cnt == 0 {
+                todo!("error: no closer (semicolon or newline) after expression at {tokens:?}")
+            }
+            continue;
+        }
+
         break; //TODO @mark:
     }
     Ok(blocks)
@@ -142,6 +154,10 @@ fn parse_blocks(mut tokens: Cursor) -> Result<Vec<Block>, SteelErr> {
 
 fn parse_expression(mut tokens: Cursor) -> ParseRes<Expr> {
     parse_addsub(tokens)
+}
+
+fn parse_assignment(mut tokens: Cursor) -> ParseRes<Assignment> {
+    todo!()
 }
 
 //TODO @mark: use:
