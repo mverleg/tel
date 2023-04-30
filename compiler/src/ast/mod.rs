@@ -96,10 +96,11 @@ pub enum Block {
 
 #[derive(Debug, PartialEq)]
 pub struct Assignment {
-    kw: AssignmentKw,
-    target: Identifier,
-    typ: Option<Type>,
-    value: Expr,
+    pub kw: AssignmentKw,
+    pub target: Identifier,
+    pub typ: Option<Type>,
+    pub op: Option<OpCode>,
+    pub value: Expr,
 }
 
 #[derive(Debug, Clone, PartialEq)]

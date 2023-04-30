@@ -12,14 +12,16 @@ use ::regex::Regex;
 use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
-use crate::ast::{Assignment, AssignmentKw, Ast};
+use crate::ast::{Assignment, Identifier};
+use crate::ast::AssignmentKw;
+use crate::ast::Ast;
 use crate::ast::Block;
 use crate::ast::Block::Expression;
 use crate::ast::Expr;
-use crate::ast::Identifier;
+use crate::ast::Keyword;
 use crate::ast::OpCode;
+use crate::ast::Type;
 use crate::parser::lexer::Token;
-use crate::parser::lexer::Token::OpSymbol;
 use crate::parser::lexer::tokenize;
 use crate::SteelErr;
 use crate::SteelErr::ParseErr;
@@ -160,6 +162,19 @@ fn parse_type_use(mut tokens: Cursor) -> ParseRes<Identifier> {
 }
 
 fn parse_assignment(orig_tokens: Cursor) -> ParseRes<Expr> {
+    let mut tokens = orig_tokens.fork();
+    let kw = match orig_tokens.peek() {
+        Some(Token::Keyword(Keyword::Mut)) => AssignmentKw::Mut,
+        Some(Token::Keyword(Keyword::Local)) => AssignmentKw::Local,
+        Some(_) | None => AssignmentKw::None,
+    };
+    let assign = Assignment {
+        kw,
+        target,
+        typ: None,
+        op: None,
+        value,
+    };
     todo!();
     orig_tokens(parse_addsub)
 }
