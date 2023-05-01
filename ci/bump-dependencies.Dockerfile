@@ -1,7 +1,7 @@
 
 # GENERATED: This file is automatically updated by 'Bump dependencies', local changes will be overwritten!
 
-FROM mverleg/rust_nightly_musl_base:2023-04-30_37
+FROM mverleg/rust_nightly_musl_base:nodeps_2023-04-30_37
 
 COPY ./ ./
 
