@@ -181,11 +181,14 @@ fn parse_assignment(orig_tokens: Cursor) -> ParseRes<Expr> {
         trace!("not an assignment because no identifier");
         return next(orig_tokens)
     };
-    let typ = tokens.take_if(|tok| matches!(tok, Token::Colon)).map(|_| {
-        let (typ, typ_tok) = parse_type_use(tokens).ok()?;
-        tokens = typ_tok;
-        typ
-    });
+    let tokmut = &mut tokens;  //TODO @mark: is there no more ergonomic way?
+    let typ = tokens
+        .take_if(|tok| matches!(tok, Token::Colon))
+        .and_then(|_| parse_type_use(tokmut).ok())
+        .map(|(typ, typ_tok)| {
+            *tokmut = typ_tok;
+            typ
+        });
     let Some(Token::Assignment(op_code)) = tokens.peek() else {
         trace!("not an assignment because no = sign");
         return next(orig_tokens)
@@ -201,7 +204,7 @@ fn parse_assignment(orig_tokens: Cursor) -> ParseRes<Expr> {
         op: *op_code,
         value,
     };
-    Ok((Expr::Assignment(assign), tokens))
+    Ok((Expr::Assign(assign), tokens))
 }
 
 fn parse_addsub(orig_tokens: Cursor) -> ParseRes<Expr> {
