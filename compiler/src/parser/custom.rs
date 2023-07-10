@@ -12,7 +12,8 @@ use ::regex::Regex;
 use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
-use crate::ast::{Assignment, Identifier};
+use crate::ast::Assignment;
+use crate::ast::Identifier;
 use crate::ast::AssignmentKw;
 use crate::ast::Ast;
 use crate::ast::Block;
@@ -181,7 +182,7 @@ fn parse_assignment(orig_tokens: Cursor) -> ParseRes<Expr> {
         return next(orig_tokens)
     };
     let typ = tokens.take_if(|tok| matches!(tok, Token::Colon)).map(|_| {
-        let (typ, typ_tok) = parse_type_use(tokens)?;
+        let (typ, typ_tok) = parse_type_use(tokens).ok()?;
         tokens = typ_tok;
         typ
     });

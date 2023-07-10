@@ -61,7 +61,7 @@ impl Identifier {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type {
     //TODO @mark:
     iden: Identifier,
