@@ -156,6 +156,15 @@ fn parse_identifier(orig_tokens: Cursor) -> ParseRes<Identifier> {
     Ok((iden.clone(), tokens))
 }
 
+fn parse_colon_type_use(mut orig_tokens: Cursor) -> ParseRes<Option<Type>> {
+    let tokens = orig_tokens.fork();
+    if ! matches!(tokens.peek(), Some(&Token::Colon)) {
+        return Ok((None, orig_tokens))
+    }
+    parse_type_use(tokens)
+        .map(|(typ, cur)| (Some(typ), cur))
+}
+
 //TODO @mark: use:
 fn parse_type_use(mut tokens: Cursor) -> ParseRes<Type> {
     //TODO @mark: for now
@@ -181,14 +190,7 @@ fn parse_assignment(orig_tokens: Cursor) -> ParseRes<Expr> {
         trace!("not an assignment because no identifier");
         return next(orig_tokens)
     };
-    let tokmut = &mut tokens;  //TODO @mark: is there no more ergonomic way?
-    let typ = tokens
-        .take_if(|tok| matches!(tok, Token::Colon))
-        .and_then(|_| parse_type_use(tokmut).ok())
-        .map(|(typ, typ_tok)| {
-            *tokmut = typ_tok;
-            typ
-        });
+    let (typ, mut tokens) = parse_colon_type_use(tokens)?;
     let Some(Token::Assignment(op_code)) = tokens.peek() else {
         trace!("not an assignment because no = sign");
         return next(orig_tokens)
