@@ -197,14 +197,14 @@ fn parse_assignment(orig_tokens: Cursor) -> ParseRes<Expr> {
     };
     tokens.take();
     trace!("parsed {kw:?} assignment");
-    let Ok((value, val_tok)) = next(tokens)?;
+    let (value, val_tok) = next(tokens)?;
     tokens = val_tok;
     let assign = Assignment {
         kw,
         target: iden.clone(),
         typ,
         op: *op_code,
-        value,
+        value: Box::new(value),
     };
     Ok((Expr::Assign(assign), tokens))
 }
