@@ -14,8 +14,8 @@ match {
     // Do not count END token when preceded by ellipsis
     r"...[ \t]*(\r\n|\n|\r)(\s|\r|\n)" => {},
 } else {
-    // Turn any number of newline into a single token (without this they are skipped)
-    r"(\r\n|\n|\r)(\s|\r|\n)+" => END,
+    // Turn any number of semicolons and newline into a single token (without this they are skipped)
+    r";*(\r\n|\n|\r)(;*|\s|\r|\n)+" => END,
 } else {
     // Match double quoted string literals
     r#"("[^"]*"|([^"]*\\")*)"# => DQSTR,
