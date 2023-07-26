@@ -1,6 +1,6 @@
 use ::std::str::FromStr;
 
-use crate::ast::AST;
+use crate::ast::Ast;
 use crate::ast::AssignmentKw;
 use crate::ast::Block;
 use crate::ast::Expr;
@@ -34,81 +34,82 @@ match {
     _
 }
 
-pub Prog: AST = {
-    END? <bs:Statements<BlockNode>> => AST { blocks: bs },
+pub Prog: Ast = {
+    //END? <bs:Statements<BlockNode>> => AST { blocks: bs },
+    END? <bs:Statements<"hello">> => Ast { blocks: bs },
 };
 
-BlockNode: Block = {
-    <d:StructDecl> => d,
-    <a:Assignment> => a,
-    <e:Expression> => Block::Expression(e),
-}
-
-Expression: Expr = {
-    AddSubExpr
-}
-
-AddSubExpr: Expr = {
-    <l:AddSubExpr> "+" END? <r:MulDivExpr> => Expr::BinOp(OpCode::Add, Box::new(l), Box::new(r)),
-    <l:AddSubExpr> "-" END? <r:MulDivExpr> => Expr::BinOp(OpCode::Sub, Box::new(l), Box::new(r)),
-    MulDivExpr,
-};
-
-MulDivExpr: Expr = {
-    <l:MulDivExpr> "*" END? <r:NullaryExpr> => Expr::BinOp(OpCode::Mul, Box::new(l), Box::new(r)),
-    <l:MulDivExpr> "/" END? <r:NullaryExpr> => Expr::BinOp(OpCode::Div, Box::new(l), Box::new(r)),
-    NullaryExpr,
-};
-
-NullaryExpr: Expr = {
-    <s:DQSTR> => Expr::Text(s.to_string()),
-    <s:SQSTR> => Expr::Text(s.to_string()),
-    NumLit => Expr::Num(<>),
-    "(" END? <e:AddSubExpr> ")" => e
-};
-
-NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
-
-StructDecl: Block = {
-    "struct" <n:Iden> "{" END? <fs:Comma<FieldDecl>> "}" => Block::    Struct {
-        iden: n,
-        fields: fs,
-    },
-};
-
-FieldDecl: (Identifier, Type) = {
-    <n:Iden> ":" <t:TypeUse> => (n, t),
-};
-
-Assignment: Block = {
-    "mut" <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
-            kw: AssignmentKw::Mut, target: n, typ: None, value: e },
-    "mut" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
-            kw: AssignmentKw::Mut, target: n, typ: Some(t), value: e },
-    "local" <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
-            kw: AssignmentKw::Local, target: n, typ: None, value: e },
-    "local" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
-            kw: AssignmentKw::Local, target: n, typ: Some(t), value: e },
-    <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
-            kw: AssignmentKw::None, target: n, typ: None, value: e },
-    <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
-            kw: AssignmentKw::None, target: n, typ: Some(t), value: e },
-}
-
-TypeUse: Type = {
-    <n:Iden> => Type::new(n),
-};
-
-Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9_])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
-
-Comma<T>: Vec<T> = {
-    <mut v:(<T> ",")*> <e:T?> => {
-        if let Some(f) = e {
-            v.push(f);
-        }
-        v
-    }
-};
+//BlockNode: Block = {
+//    <d:StructDecl> => d,
+//    <a:Assignment> => a,
+//    <e:Expression> => Block::Expression(e),
+//}
+//
+//Expression: Expr = {
+//    AddSubExpr
+//}
+//
+//AddSubExpr: Expr = {
+//    <l:AddSubExpr> "+" END? <r:MulDivExpr> => Expr::BinOp(OpCode::Add, Box::new(l), Box::new(r)),
+//    <l:AddSubExpr> "-" END? <r:MulDivExpr> => Expr::BinOp(OpCode::Sub, Box::new(l), Box::new(r)),
+//    MulDivExpr,
+//};
+//
+//MulDivExpr: Expr = {
+//    <l:MulDivExpr> "*" END? <r:NullaryExpr> => Expr::BinOp(OpCode::Mul, Box::new(l), Box::new(r)),
+//    <l:MulDivExpr> "/" END? <r:NullaryExpr> => Expr::BinOp(OpCode::Div, Box::new(l), Box::new(r)),
+//    NullaryExpr,
+//};
+//
+//NullaryExpr: Expr = {
+//    <s:DQSTR> => Expr::Text(s.to_string()),
+//    <s:SQSTR> => Expr::Text(s.to_string()),
+//    NumLit => Expr::Num(<>),
+//    "(" END? <e:AddSubExpr> ")" => e
+//};
+//
+//NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
+//
+//StructDecl: Block = {
+//    "struct" <n:Iden> "{" END? <fs:Comma<FieldDecl>> "}" => Block::    Struct {
+//        iden: n,
+//        fields: fs,
+//    },
+//};
+//
+//FieldDecl: (Identifier, Type) = {
+//    <n:Iden> ":" <t:TypeUse> => (n, t),
+//};
+//
+//Assignment: Block = {
+//    "mut" <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
+//            kw: AssignmentKw::Mut, target: n, typ: None, value: e },
+//    "mut" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
+//            kw: AssignmentKw::Mut, target: n, typ: Some(t), value: e },
+//    "local" <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
+//            kw: AssignmentKw::Local, target: n, typ: None, value: e },
+//    "local" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
+//            kw: AssignmentKw::Local, target: n, typ: Some(t), value: e },
+//    <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
+//            kw: AssignmentKw::None, target: n, typ: None, value: e },
+//    <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
+//            kw: AssignmentKw::None, target: n, typ: Some(t), value: e },
+//}
+//
+//TypeUse: Type = {
+//    <n:Iden> => Type::new(n),
+//};
+//
+//Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9_])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
+//
+//Comma<T>: Vec<T> = {
+//    <mut v:(<T> ",")*> <e:T?> => {
+//        if let Some(f) = e {
+//            v.push(f);
+//        }
+//        v
+//    }
+//};
 
 #[inline]
 SemicolonSep = {

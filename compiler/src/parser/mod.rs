@@ -13,7 +13,7 @@ use crate::SteelErr;
 mod errors;
 mod lexer;
 
-// lalrpop_mod!(gen_parser, "/grammar.rs");
+lalrpop_mod!(gen_parser, "/grammar.rs");
 
 pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<Ast, SteelErr> {
     let parser = gen_parser::ProgParser::new();
