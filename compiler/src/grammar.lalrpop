@@ -84,23 +84,25 @@ FieldDecl: (Identifier, Type) = {
 };
 
 Assign: Assignment = {
-    "mut" <n:Iden> "=" <e:Expression> ";"? => Assignment {
-            kw: AssignmentKw::Mut,
+    <kw:AssignmentKeyword?> <n:Iden> "=" <e:Expression> => Assignment {
+            kw: kw.unwrap_or(AssignmentKw::None),
             target: n,
             typ: None,
             op: None,
             value: Box::new(e),
     },
-//    "mut" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
-//            kw: AssignmentKw::Mut, target: n, typ: Some(t), value: e },
-//    "local" <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
-//            kw: AssignmentKw::Local, target: n, typ: None, value: e },
-//    "local" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
-//            kw: AssignmentKw::Local, target: n, typ: Some(t), value: e },
-//    <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
-//            kw: AssignmentKw::None, target: n, typ: None, value: e },
-//    <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
-//            kw: AssignmentKw::None, target: n, typ: Some(t), value: e },
+    <kw:AssignmentKeyword?> <n:Iden> ":" <t: TypeUse> "=" <e:Expression> => Assignment {
+            kw: kw.unwrap_or(AssignmentKw::None),
+            target: n,
+            typ: Some(t),
+            op: None,
+            value: Box::new(e),
+    },
+}
+
+AssignmentKeyword: AssignmentKw = {
+    "mut" => AssignmentKw::Mut,
+    "local" => AssignmentKw::Local,
 }
 
 TypeUse: Type = {
