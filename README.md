@@ -1,5 +1,5 @@
 
-<img src="./resource/img/steel-logo-9.png width=256 height=256 />
+![Steel](./resource/img/steel-header-9.png)
 
 **Steel** (Statically-Typed Embedded Expression Language) is a scripting language that can be embedded in other applications.
 
