@@ -89,10 +89,10 @@ FieldDecl: (Identifier, Type) = {
 //            kw: AssignmentKw::Local, target: n, typ: None, value: e },
 //    "local" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
 //            kw: AssignmentKw::Local, target: n, typ: Some(t), value: e },
-//    <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
-//            kw: AssignmentKw::None, target: n, typ: None, value: e },
-//    <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
-//            kw: AssignmentKw::None, target: n, typ: Some(t), value: e },
+////    <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
+////            kw: AssignmentKw::None, target: n, typ: None, value: e },
+////    <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
+////            kw: AssignmentKw::None, target: n, typ: Some(t), value: e },
 //}
 
 TypeUse: Type = {
@@ -110,15 +110,8 @@ Comma<T>: Vec<T> = {
     }
 };
 
-#[inline]
-SemicolonSep = {
-    <";"> END,
-    ";",
-    END,
-}
-
 Statements<T>: Vec<T> = {
-    <mut v:(<T> SemicolonSep)*> <e:T?> => {
+    <mut v:(<T> END)*> <e:T?> => {
         if let Some(f) = e {
             v.push(f);
         }
