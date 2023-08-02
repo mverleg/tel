@@ -1,7 +1,8 @@
 use ::std::str::FromStr;
 
-use crate::ast::Ast;
+use crate::ast::Assignment;
 use crate::ast::AssignmentKw;
+use crate::ast::Ast;
 use crate::ast::Block;
 use crate::ast::Expr;
 use crate::ast::Identifier;
@@ -38,9 +39,11 @@ pub Prog: Ast = {
     END? <bs:Statements<BlockNode>> => Ast { blocks: bs },
 };
 
+// guard statement
+
 BlockNode: Block = {
     <d:StructDecl> => d,
-//    <a:Assignment> => a,
+    <a:Assign> => Block::Assign(a),
     <e:Expression> => Block::Expression(e),
 }
 
@@ -80,20 +83,25 @@ FieldDecl: (Identifier, Type) = {
     <n:Iden> ":" <t:TypeUse> => (n, t),
 };
 
-//Assignment: Block = {
-//    "mut" <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
-//            kw: AssignmentKw::Mut, target: n, typ: None, value: e },
+Assign: Assignment = {
+    "mut" <n:Iden> "=" <e:Expression> ";"? => Assignment {
+            kw: AssignmentKw::Mut,
+            target: n,
+            typ: None,
+            op: None,
+            value: Box::new(e),
+    },
 //    "mut" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
 //            kw: AssignmentKw::Mut, target: n, typ: Some(t), value: e },
 //    "local" <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
 //            kw: AssignmentKw::Local, target: n, typ: None, value: e },
 //    "local" <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
 //            kw: AssignmentKw::Local, target: n, typ: Some(t), value: e },
-////    <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
-////            kw: AssignmentKw::None, target: n, typ: None, value: e },
-////    <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
-////            kw: AssignmentKw::None, target: n, typ: Some(t), value: e },
-//}
+//    <n:Iden> "=" <e:Expression> ";"? => Block::Assignment {
+//            kw: AssignmentKw::None, target: n, typ: None, value: e },
+//    <n:Iden> ":" <t: TypeUse> "=" <e:Expression> ";"? => Block::Assignment {
+//            kw: AssignmentKw::None, target: n, typ: Some(t), value: e },
+}
 
 TypeUse: Type = {
     <n:Iden> => Type::new(n),
