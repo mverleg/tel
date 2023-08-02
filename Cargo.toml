@@ -1,4 +1,5 @@
 [workspace]
+resolver = "1"  # lalrpop breaks with 2, did not investigate
 members = [
     "api",
     "compiler",
