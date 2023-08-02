@@ -1,7 +1,7 @@
 
-# Steel
+![Steel](./resource/img/steel-logo-9.png =256x256)
 
-Steel (Statically-Typed Embedded Expression Language) is a scripting language that can be embedded in other applications.
+**Steel** (Statically-Typed Embedded Expression Language) is a scripting language that can be embedded in other applications.
 
 **Steel is under construction and not ready for use**
 
