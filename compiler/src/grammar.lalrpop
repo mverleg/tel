@@ -36,17 +36,15 @@ match {
 }
 
 pub Prog: Ast = {
-    END? <bs:Statements<StatementBlocks>> => Ast {
-        blocks: bs.into_iter().flatten().collect()
-    },
+    END? <bs:Statements<BlockNode>> => Ast { blocks: bs },
 };
 
 // todo: guard statement
 
-StatementBlocks: Vec<Block> = {
-    <d:StructDecl> => vec![d],
-    <aa:MultiAssign> => aa.into_iter().map(|a| Block::Assign(a)).collect(),
-    <e:Expression> => vec![Block::Expression(e)],
+BlockNode: Block = {
+    <d:StructDecl> => d,
+    <a:Assign> => Block::Assign(a),
+    <e:Expression> => Block::Expression(e),
 }
 
 Expression: Expr = {
@@ -75,7 +73,7 @@ NullaryExpr: Expr = {
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
 StructDecl: Block = {
-    "struct" <n:Iden> "{" END? <fs:Comma<FieldDecl>> "}" => Block::Struct {
+    "struct" <n:Iden> "{" END? <fs:Comma<FieldDecl>> "}" => Block::    Struct {
         iden: n,
         fields: fs,
     },
@@ -84,11 +82,6 @@ StructDecl: Block = {
 FieldDecl: (Identifier, Type) = {
     <n:Iden> ":" <t:TypeUse> => (n, t),
 };
-
-//TODO @mark: tinyvec
-MultiAssign: Vec<Assignment> = {
-    <Assign>
-}
 
 Assign: Assignment = {
     <kw:AssignmentKeyword?> <n:Iden> "=" <e:Expression> => Assignment {
