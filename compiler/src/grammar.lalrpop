@@ -43,6 +43,7 @@ pub Prog: Ast = {
 
 BlockNode: Block = {
     <d:StructDecl> => d,
+    <a:Assign> => Block::Assign(a),
     <e:Expression> => Block::Expression(e),
 }
 
@@ -66,14 +67,8 @@ NullaryExpr: Expr = {
     <s:DQSTR> => Expr::Text(s.to_string()),
     <s:SQSTR> => Expr::Text(s.to_string()),
     NumLit => Expr::Num(<>),
-    <AssignExpr>,
-
-};
-
-AssignExpr: Expr = {
-    <a:Assign> => Expr::Assign(a),
     "(" END? <e:AddSubExpr> ")" => e
-}
+};
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 

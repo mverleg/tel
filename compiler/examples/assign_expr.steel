@@ -3,8 +3,7 @@ x = (x = 1) + (x = 2) - x;
 assert x == 1
 # equivalent to:
 # local x = 1
-# tmp_var1 = 1
+# tmp_var = 1
 # x = 2
-# tmp_var2 = 2
-# tmp_var3 = 2 (x)
-# x = tmp_var1 + tmp_var2 - tmp_var3 = 1 + 2 - 2 = 1
+# tmp_var += 2
+# x = tmp_var - x

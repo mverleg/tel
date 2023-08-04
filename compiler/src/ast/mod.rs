@@ -85,6 +85,7 @@ pub enum AssignmentKw {
 
 #[derive(Debug)]
 pub enum Block {
+    Assign(Assignment),
     Expression(Expr),
     Struct {
         iden: Identifier,
@@ -108,5 +109,4 @@ pub enum Expr {
     Text(String),
     Iden(Identifier),
     BinOp(OpCode, Box<Expr>, Box<Expr>),
-    Assign(Assignment),
 }
