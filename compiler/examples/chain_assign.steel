@@ -1,0 +1,4 @@
+
+a = mut b = 1 + 2
+assert a == 3
+assert b == 3
