@@ -1,7 +1,8 @@
 use ::std::str::FromStr;
 
-use crate::ast::Assignment;
+use crate::ast::Assignments;
 use crate::ast::AssignmentKw;
+use crate::ast::AssignmentDest;
 use crate::ast::Ast;
 use crate::ast::Block;
 use crate::ast::Expr;
@@ -43,7 +44,7 @@ pub Prog: Ast = {
 
 BlockNode: Block = {
     <d:StructDecl> => d,
-    <a:Assign> => Block::Assign(a),
+    <a:Assigns> => Block::Assigns(a),
     <e:Expression> => Block::Expression(e),
 }
 
@@ -83,21 +84,26 @@ FieldDecl: (Identifier, Type) = {
     <n:Iden> ":" <t:TypeUse> => (n, t),
 };
 
-Assign: Assignment = {
-    <kw:AssignmentKeyword?> <n:Iden> "=" <e:Expression> => Assignment {
-            kw: kw.unwrap_or(AssignmentKw::None),
-            target: n,
-            typ: None,
+Assigns: Assignments = {
+    <kw:AssignmentKeyword?> <n:Iden> "=" <e:Expression> => Assignments {
+            dest: vec![AssignmentDest {
+                kw: kw.unwrap_or(AssignmentKw::None),
+                target: n,
+                typ: None,
+            }],
             op: None,
             value: Box::new(e),
     },
-    <kw:AssignmentKeyword?> <n:Iden> ":" <t: TypeUse> "=" <e:Expression> => Assignment {
-            kw: kw.unwrap_or(AssignmentKw::None),
-            target: n,
-            typ: Some(t),
+    <kw:AssignmentKeyword?> <n:Iden> ":" <t: TypeUse> "=" <e:Expression> => Assignments {
+            dest: vec![AssignmentDest {
+                kw: kw.unwrap_or(AssignmentKw::None),
+                target: n,
+                typ: Some(t),
+            }],
             op: None,
             value: Box::new(e),
     },
+    // ops like += etc
 }
 
 AssignmentKeyword: AssignmentKw = {

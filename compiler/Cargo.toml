@@ -18,7 +18,7 @@ path = "src/lib.rs"
 [dependencies]
 steel-api = "=0.1.0"
 
-regex = "1.9.1"
+regex = "1.9.3"
 itertools = "0.10.5"
 time = { version = "0.3.25", features = ["serde"] }
 env_logger = "0.10.0"

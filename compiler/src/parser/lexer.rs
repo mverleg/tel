@@ -10,10 +10,10 @@ use ::regex::Regex;
 use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
-use crate::ast::{Assignment, Ast, Keyword};
+use crate::ast::Assignments;
 use crate::ast::Identifier;
+use crate::ast::Keyword;
 use crate::ast::OpCode;
-use crate::parser::lexer::Token::OpSymbol;
 use crate::SteelErr;
 
 #[derive(Debug, Clone, PartialEq)]

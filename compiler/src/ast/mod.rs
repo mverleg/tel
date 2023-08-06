@@ -85,7 +85,7 @@ pub enum AssignmentKw {
 
 #[derive(Debug)]
 pub enum Block {
-    Assign(Assignment),
+    Assigns(Assignments),
     Expression(Expr),
     Struct {
         iden: Identifier,
@@ -95,12 +95,18 @@ pub enum Block {
 
 // even without mut and type, it can be a declaration (with inferred type)
 #[derive(Debug, Clone, PartialEq)]
-pub struct Assignment {
+pub struct Assignments {
+    pub dest: Vec<AssignmentDest>,
+    pub op: Option<OpCode>,
+    pub value: Box<Expr>,
+}
+
+// even without mut and type, it can be a declaration (with inferred type)
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssignmentDest {
     pub kw: AssignmentKw,
     pub target: Identifier,
     pub typ: Option<Type>,
-    pub op: Option<OpCode>,
-    pub value: Box<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
