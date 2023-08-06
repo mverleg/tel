@@ -23,8 +23,12 @@ itertools = "0.10.5"
 time = { version = "0.3.25", features = ["serde"] }
 env_logger = "0.10.0"
 sha2 = "0.10.7"
-dashmap = "5.5.0"
 lalrpop-util = "0.19.12"
+
+dashmap = "5.5.0"
+ahash = "0.8.3"
+smartstring = { version = "1.0.1", features = ["serde"] }
+tinyvec = { version = "1.6.0", default-features = false, features = ["alloc", "rustc_1_57"] }
 
 [build-dependencies] # <-- We added this and everything after!
 lalrpop = "0.19.12"

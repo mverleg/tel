@@ -1,3 +1,6 @@
+use ::tinyvec::TinyVec;
+use ::smartstring::alias::String;
+
 use ::steel_api::log::debug;
 
 #[derive(Debug)]
@@ -96,7 +99,7 @@ pub enum Block {
 // even without mut and type, it can be a declaration (with inferred type)
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assignments {
-    pub dest: Vec<AssignmentDest>,
+    pub dest: TinyVec<[AssignmentDest; 1]>,
     pub op: Option<OpCode>,
     pub value: Box<Expr>,
 }
@@ -107,6 +110,17 @@ pub struct AssignmentDest {
     pub kw: AssignmentKw,
     pub target: Identifier,
     pub typ: Option<Type>,
+}
+
+// only exists for TinyVec
+impl Default for AssignmentDest {
+    fn default() -> Self {
+        AssignmentDest {
+            kw: AssignmentKw::None,
+            target: Identifier::new("$default$").unwrap(),
+            typ: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
