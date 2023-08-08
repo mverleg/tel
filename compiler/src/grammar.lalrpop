@@ -93,6 +93,17 @@ Assigns: Assignments = {
             op: None,
             value: Box::new(e),
     },
+    <kw:AssignmentKeyword?> <n:Iden> <op:AssignModifier> "=" <e:Expression> => Assignments {
+        dest: {
+            vec![AssignmentDest {
+                kw: AssignmentKw::None,
+                target: n,
+                typ: None,
+            }]
+        },
+        op: Some(op),
+        value: Box::new(e),
+    },
     // ops like += etc
 }
 
@@ -113,6 +124,13 @@ AssignDest: AssignmentDest = {
 AssignmentKeyword: AssignmentKw = {
     "mut" => AssignmentKw::Mut,
     "local" => AssignmentKw::Local,
+}
+
+AssignModifier: OpCode = {
+    "+" => OpCode::Add,
+    "-" => OpCode::Sub,
+    "*" => OpCode::Mul,
+    "/" => OpCode::Div,
 }
 
 TypeUse: Type = {

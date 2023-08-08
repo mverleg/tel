@@ -101,6 +101,7 @@ pub enum Block {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assignments {
     //pub dest: TinyVec<[AssignmentDest; 1]>,
+    //TODO @mark: ^
     pub dest: Vec<AssignmentDest>,
     pub op: Option<OpCode>,
     pub value: Box<Expr>,
@@ -113,6 +114,7 @@ pub struct AssignmentDest {
     pub target: Identifier,
     pub typ: Option<Type>,
 }
+//TODO @mark: type cannot be combined with operation, should I create separate types?
 
 // only exists for TinyVec
 impl Default for AssignmentDest {
