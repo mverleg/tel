@@ -93,32 +93,34 @@ Assigns: Assignments = {
             op: None,
             value: Box::new(e),
     },
-    <kw:AssignmentKeyword?> <n:Iden> <op:AssignModifier> "=" <e:Expression> => Assignments {
+    <d:UntypedAssignDest> <op:AssignModifier> "=" <e:Expression> => Assignments {
         dest: {
-            vec![AssignmentDest {
-                kw: AssignmentKw::None,
-                target: n,
-                typ: None,
-            }]
+            vec![d]
         },
         op: Some(op),
         value: Box::new(e),
     },
-    // ops like += etc
 }
 
 AssignDest: AssignmentDest = {
+    <d:UntypedAssignDest> => d,
+    <d:TypedAssignDest> => d,
+}
+
+UntypedAssignDest: AssignmentDest = {
     <kw:AssignmentKeyword?> <n:Iden> => AssignmentDest {
             kw: kw.unwrap_or(AssignmentKw::None),
             target: n,
             typ: None,
     },
+}
+
+TypedAssignDest: AssignmentDest = {
     <kw:AssignmentKeyword?> <n:Iden> ":" <t: TypeUse> => AssignmentDest {
             kw: kw.unwrap_or(AssignmentKw::None),
             target: n,
             typ: Some(t),
     },
-    // ops like += etc
 }
 
 AssignmentKeyword: AssignmentKw = {
