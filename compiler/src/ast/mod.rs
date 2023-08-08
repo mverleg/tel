@@ -100,7 +100,8 @@ pub enum Block {
 // even without mut and type, it can be a declaration (with inferred type)
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assignments {
-    pub dest: TinyVec<[AssignmentDest; 1]>,
+    //pub dest: TinyVec<[AssignmentDest; 1]>,
+    pub dest: Vec<AssignmentDest>,
     pub op: Option<OpCode>,
     pub value: Box<Expr>,
 }

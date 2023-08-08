@@ -86,23 +86,26 @@ FieldDecl: (Identifier, Type) = {
 };
 
 Assigns: Assignments = {
-    <kw:AssignmentKeyword?> <n:Iden> "=" <e:Expression> => Assignments {
-            dest: tiny_vec![AssignmentDest {
-                kw: kw.unwrap_or(AssignmentKw::None),
-                target: n,
-                typ: None,
-            }],
+    <d:AssignDest> "=" <e:Expression> => Assignments {
+            dest: {
+                vec![d]
+            },
             op: None,
             value: Box::new(e),
     },
-    <kw:AssignmentKeyword?> <n:Iden> ":" <t: TypeUse> "=" <e:Expression> => Assignments {
-            dest: tiny_vec![AssignmentDest {
-                kw: kw.unwrap_or(AssignmentKw::None),
-                target: n,
-                typ: Some(t),
-            }],
-            op: None,
-            value: Box::new(e),
+    // ops like += etc
+}
+
+AssignDest: AssignmentDest = {
+    <kw:AssignmentKeyword?> <n:Iden> => AssignmentDest {
+            kw: kw.unwrap_or(AssignmentKw::None),
+            target: n,
+            typ: None,
+    },
+    <kw:AssignmentKeyword?> <n:Iden> ":" <t: TypeUse> => AssignmentDest {
+            kw: kw.unwrap_or(AssignmentKw::None),
+            target: n,
+            typ: Some(t),
     },
     // ops like += etc
 }
