@@ -1,5 +1,6 @@
 use ::tinyvec::TinyVec;
-use ::smartstring::alias::String;
+
+use ::smartstring::alias::String as SString;
 
 use ::steel_api::log::debug;
 
@@ -24,11 +25,11 @@ pub enum Keyword {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identifier {
-    name: String,
+    name: SString,
 }
 
 impl Identifier {
-    pub fn new(name: impl Into<String>) -> Option<Self> {
+    pub fn new(name: impl Into<SString>) -> Option<Self> {
         // [a-zA-Z][a-zA-Z0-9_]*
         let name = name.into();
         for ch in name.chars() {
@@ -126,7 +127,7 @@ impl Default for AssignmentDest {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Num(f64),
-    Text(String),
+    Text(SString),
     Iden(Identifier),
     BinOp(OpCode, Box<Expr>, Box<Expr>),
 }

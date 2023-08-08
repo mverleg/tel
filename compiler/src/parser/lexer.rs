@@ -6,11 +6,11 @@ use ::std::sync::LazyLock;
 
 use ::itertools::Itertools;
 use ::regex::Regex;
+use ::smartstring::alias::String as SString;
 
 use ::steel_api::log::debug;
 use ::steel_api::log::trace;
 
-use crate::ast::Assignments;
 use crate::ast::Identifier;
 use crate::ast::Keyword;
 use crate::ast::OpCode;
@@ -28,7 +28,7 @@ pub enum Token {
     Assignment(Option<OpCode>),
     OpSymbol(OpCode),
     Number(f64),
-    Text(String),
+    Text(SString),
 }
 
 trait Tokenizer: fmt::Debug + Send + Sync {
@@ -220,10 +220,8 @@ impl Tokenizer for TextTokenizer {
     }
 
     fn token_for(&self, text: Option<&str>) -> Option<Token> {
-        Some(Token::Text(
-            text.expect("regex group must always capture once")
-                .to_owned(),
-        ))
+        let txt: SString = text.expect("regex group must always capture once").to_owned().into();
+        Some(Token::Text(txt))
     }
 }
 

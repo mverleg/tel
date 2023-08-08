@@ -1,4 +1,5 @@
 use ::std::str::FromStr;
+use ::tinyvec::tiny_vec;
 
 use crate::ast::Assignments;
 use crate::ast::AssignmentKw;
@@ -65,8 +66,8 @@ MulDivExpr: Expr = {
 };
 
 NullaryExpr: Expr = {
-    <s:DQSTR> => Expr::Text(s.to_string()),
-    <s:SQSTR> => Expr::Text(s.to_string()),
+    <s:DQSTR> => Expr::Text(s.to_string().into()),
+    <s:SQSTR> => Expr::Text(s.to_string().into()),
     NumLit => Expr::Num(<>),
     "(" END? <e:AddSubExpr> ")" => e
 };
@@ -86,7 +87,7 @@ FieldDecl: (Identifier, Type) = {
 
 Assigns: Assignments = {
     <kw:AssignmentKeyword?> <n:Iden> "=" <e:Expression> => Assignments {
-            dest: vec![AssignmentDest {
+            dest: tiny_vec![AssignmentDest {
                 kw: kw.unwrap_or(AssignmentKw::None),
                 target: n,
                 typ: None,
@@ -95,7 +96,7 @@ Assigns: Assignments = {
             value: Box::new(e),
     },
     <kw:AssignmentKeyword?> <n:Iden> ":" <t: TypeUse> "=" <e:Expression> => Assignments {
-            dest: vec![AssignmentDest {
+            dest: tiny_vec![AssignmentDest {
                 kw: kw.unwrap_or(AssignmentKw::None),
                 target: n,
                 typ: Some(t),
