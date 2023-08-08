@@ -45,12 +45,17 @@ pub Prog: Ast = {
 
 BlockNode: Block = {
     <d:StructDecl> => d,
+    <a:Assert> => Block::Assert(a),
     <a:Assigns> => Block::Assigns(a),
     <e:Expression> => Block::Expression(e),
 }
 
 Expression: Expr = {
     AddSubExpr
+}
+
+Assert: Expr = {
+    "assert" <e:Expression> => e,
 }
 
 AddSubExpr: Expr = {
