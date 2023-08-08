@@ -86,25 +86,25 @@ FieldDecl: (Identifier, Type) = {
 };
 
 Assigns: Assignments = {
-    <d:AssignDest> "=" <e:Expression> => Assignments {
-            dest: {
-                vec![d]
-            },
+    <ds:AssignDestEq+> <e:Expression> => Assignments {
+            dest: { ds },
             op: None,
             value: Box::new(e),
     },
     <d:UntypedAssignDest> <op:AssignModifier> "=" <e:Expression> => Assignments {
-        dest: {
-            vec![d]
-        },
+        dest: { vec![d] },
         op: Some(op),
         value: Box::new(e),
     },
 }
 
+AssignDestEq: AssignmentDest = {
+    <d:AssignDest> "=" => d,
+}
+
 AssignDest: AssignmentDest = {
-    <d:UntypedAssignDest> => d,
-    <d:TypedAssignDest> => d,
+    <UntypedAssignDest>,
+    <TypedAssignDest>,
 }
 
 UntypedAssignDest: AssignmentDest = {
