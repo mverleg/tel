@@ -15,7 +15,7 @@ grammar;
 
 match {
     // Do not count END token when preceded by ellipsis
-    r"...[ \t]*(\r\n|\n|\r)(\s|\r|\n)" => {},
+    r"...[ \t]*(\r\n|\n|\r)(\s|\r|\n)" => { },
 } else {
     // Turn any number of semicolons and newline into a single token (without this they are skipped)
     r";*(\r\n|\n|\r)(;*|\s|\r|\n)+" => END,
@@ -26,6 +26,9 @@ match {
 } else {
     // Match single quoted string literals
     r#"('[^']*')"# => SQSTR,
+} else {
+    // Reserved keywords
+    r#"(abstract|alias|all|and|annotation|any|as|async|auto|await|become|bool|box|break|by|byte|catch|class|closed|companion|const|constructor|continue|data|debug|def|default|defer|del|delegate|delegates|delete|derive|deriving|do|double|dynamic|elementwise|elif|end|enum|eval|except|extends|extern|false|family|field|final|finally|float|fn|for|fun|get|global|goto|if|impl|implements|import|in|init|inject|int|interface|internal|intersect|intersection|io|is|it|lambda|lateinit|lazy|let|local|loop|macro|main|match|module|move|NaN|native|nill|none|null|object|open|operator|or|out|override|package|param|pass|private|proof|public|pure|raise|real|rec|reified|return|sealed|select|self|set|sizeof|spawn|static|steel|super|switch|sync|synchronized|tailrec|task|test|this|throw|throws|to|trait|transient|true|try|type|union|unite|unsafe|until|use|val|var|vararg|virtual|volatile|when|where|while|with|xor|yield)"# => ERROR,
 } else {
     // Ignore full-line comments
     r#"\s*#[^\r\n]*(\r\n|\n|\r)(\s|\r|\n)*"# => { },
@@ -59,6 +62,7 @@ Assert: Expr = {
 }
 
 AddSubExpr: Expr = {
+    //TODO @mark: this allows '1 +; 2' which is not desirable
     <l:AddSubExpr> "+" END? <r:MulDivExpr> => Expr::BinOp(OpCode::Add, Box::new(l), Box::new(r)),
     <l:AddSubExpr> "-" END? <r:MulDivExpr> => Expr::BinOp(OpCode::Sub, Box::new(l), Box::new(r)),
     MulDivExpr,
