@@ -164,7 +164,8 @@ TypeUse: Type = {
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9_])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
 
 Comma<T>: Vec<T> = {
-    <mut v:(<T> "," MayBreak)*> <e:T> => {
+    //_ => Vec::new(),
+    <mut v:(<T> "," MayBreak)*> <e:T> ","? => {
         v.push(e);
         v
     }
