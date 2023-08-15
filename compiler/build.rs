@@ -23,19 +23,24 @@ mod tests {
     let mut test_cnt = 0;
     for pth in fs::read_dir(&examples).unwrap() {
         let pth = pth.unwrap().path();
+        let pth_str = pth.to_str().unwrap();
         if ! pth.is_file() || pth.extension() != Some("steel".as_ref()) {
-            println!("skipping test generation for '{}' in examples dir", pth.to_string_lossy());
+            println!("skipping test generation for '{}' in examples dir", pth_str);
             continue
         }
         test_cnt += 1;
         let name = pth.file_stem().unwrap().to_str().unwrap();
         write!(test_code, "#[test]
 fn parse_{name}() {{
-    let pth = PathBuf::from(\"{}\");
+    let pth = PathBuf::from(\"{pth_str}\");
     let code = read_to_string(&pth).unwrap();
     // parse_str should be available in the context where this is included
-    let res = parse_str(pth, &code).unwrap();
-}}\n\n", pth.to_str().unwrap()).unwrap();
+    let res = parse_str(pth, &code);
+    if let Err(SteelErr::ParseErr {{ msg, .. }}) = &res {{
+        eprintln!(\"Failed to parse example file {pth_str}:\\n{{}}\", msg);
+    }}
+    assert!(res.is_ok());
+}}\n\n").unwrap();
         //eprintln!("{} {:?}", pth.to_string_lossy(), pth.file_stem().unwrap())
     }
     write!(test_code, "}}").unwrap();
