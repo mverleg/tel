@@ -17,8 +17,11 @@ fn generate_example_parse_tests() {
     examples.push("examples");
     println!("cargo:rerun-if-changed='{}'", examples.to_str().unwrap());
     let mut test_code = "// Generated
-#[cfg(test)] use ::std::path::PathBuf;
-#[cfg(test)] use ::std::fs::read_to_string;\n\n".to_owned();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::std::path::PathBuf;
+    use ::std::fs::read_to_string;\n\n".to_owned();
     let mut test_cnt = 0;
     for pth in fs::read_dir(&examples).unwrap() {
         let pth = pth.unwrap().path();
@@ -37,6 +40,7 @@ fn parse_{name}() {{
 }}\n\n", pth.to_str().unwrap()).unwrap();
         //eprintln!("{} {:?}", pth.to_string_lossy(), pth.file_stem().unwrap())
     }
+    write!(test_code, "}}").unwrap();
     if test_cnt == 0 {
         panic!("did not find any examples to use for parsing tests");
     }
