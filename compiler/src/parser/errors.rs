@@ -45,10 +45,10 @@ pub fn build_error<T, E: fmt::Display>(
             expected,
         } => {
             let (line, col) = source_line_col(code, start);
+            let found = code.lines().nth(line).unwrap()[start..end].to_owned();
             (
                 format!(
-                    "Unexpected code in {}:{}:{}\n{}{}",
-                    src_file,
+                    "Unexpected '{found}' in {src_file}:{}:{}\n{}{}",
                     line + 1,
                     col + 1,
                     source_loc_repr(code, line, col, max(1, end - start)),
@@ -61,10 +61,10 @@ pub fn build_error<T, E: fmt::Display>(
             token: (start, _, end),
         } => {
             let (line, col) = source_line_col(code, start);
+            let found = code.lines().nth(line).unwrap()[start..end].to_owned();
             (
                 format!(
-                    "Invalid token in {}:{}:{}\n{}",
-                    src_file,
+                    "Invalid token '{found}' in {src_file}:{}:{}\n{}",
                     line + 1,
                     col + 1,
                     source_loc_repr(code, line, col, max(1, end - start))

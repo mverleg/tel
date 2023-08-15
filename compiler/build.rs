@@ -30,7 +30,7 @@ mod tests {
         }
         test_cnt += 1;
         let name = pth.file_stem().unwrap().to_str().unwrap();
-        write!(test_code, "// #[test]
+        write!(test_code, "#[test]
 fn parse_{name}() {{
     let pth = PathBuf::from(\"{pth_str}\");
     let code = read_to_string(&pth).unwrap();
