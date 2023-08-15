@@ -13,6 +13,7 @@ fn main() {
 
 fn generate_example_parse_tests() {
     let examples = PathBuf::from("./examples");
+    println!("cargo:rerun-if-changed={}", examples.to_str().unwrap());
     let mut test_code = "// Generated
 #[cfg(test)]
 mod tests {
@@ -21,9 +22,7 @@ mod tests {
     use ::std::fs::read_to_string;\n\n".to_owned();
     let mut test_cnt = 0;
     for pth in fs::read_dir(&examples).unwrap() {
-        //TODO @mark: should just refer to directory (https://github.com/rust-lang/cargo/issues/2599#issuecomment-1119059540) but that trigger refresh each time for some reason
         let pth = pth.unwrap().path();
-        println!("cargo:rerun-if-changed={}", pth.to_str().unwrap());
         if ! pth.is_file() || pth.extension() != Some("steel".as_ref()) {
             println!("skipping test generation for '{}' in examples dir", pth.to_string_lossy());
             continue
