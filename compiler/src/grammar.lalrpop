@@ -14,11 +14,14 @@ use crate::ast::Type;
 grammar;
 
 match {
-    // Do not count END token when preceded by ellipsis
+    // Do not count NEWLINE token when preceded by ellipsis
     r"...[ \t]*(\r\n|\n|\r)(\s|\r|\n)" => { },
 } else {
-    // Turn any number of semicolons and newline into a single token (without this they are skipped)
-    r";*(\r\n|\n|\r)(;*|\s|\r|\n)+" => END,
+    // Turn at least one semicolons and any number of newlines into a single token (without this they are skipped)
+    r";+[ \t]*(\r\n|\n|\r)(;*|\s|\r|\n)+" => SEMICOLON,
+} else {
+    // Turn any remaining newlines (not preceded by semicolon, in previous rule) into a single token
+    r"(\r\n|\n|\r)(;*|\s|\r|\n)+" => NEWLINE,
 } else {
     // Match double quoted string literals
     r#"("[^"]*"|([^"]*\\")*)"# => DQSTR,
@@ -40,8 +43,11 @@ match {
     _
 }
 
+End: () = { SEMICOLON, NEWLINE }
+MayBreak: () = { NEWLINE? }
+
 pub Prog: Ast = {
-    END? <bs:Statements<BlockNode>> => Ast { blocks: bs },
+    MayBreak <bs:Statements<BlockNode>> => Ast { blocks: bs },
 };
 
 // todo: guard statement
@@ -63,14 +69,14 @@ Assert: Expr = {
 
 AddSubExpr: Expr = {
     //TODO @mark: this allows '1 +; 2' which is not desirable
-    <l:AddSubExpr> "+" END? <r:MulDivExpr> => Expr::BinOp(OpCode::Add, Box::new(l), Box::new(r)),
-    <l:AddSubExpr> "-" END? <r:MulDivExpr> => Expr::BinOp(OpCode::Sub, Box::new(l), Box::new(r)),
+    <l:AddSubExpr> "+" MayBreak <r:MulDivExpr> => Expr::BinOp(OpCode::Add, Box::new(l), Box::new(r)),
+    <l:AddSubExpr> "-" MayBreak <r:MulDivExpr> => Expr::BinOp(OpCode::Sub, Box::new(l), Box::new(r)),
     MulDivExpr,
 };
 
 MulDivExpr: Expr = {
-    <l:MulDivExpr> "*" END? <r:NullaryExpr> => Expr::BinOp(OpCode::Mul, Box::new(l), Box::new(r)),
-    <l:MulDivExpr> "/" END? <r:NullaryExpr> => Expr::BinOp(OpCode::Div, Box::new(l), Box::new(r)),
+    <l:MulDivExpr> "*" MayBreak <r:NullaryExpr> => Expr::BinOp(OpCode::Mul, Box::new(l), Box::new(r)),
+    <l:MulDivExpr> "/" MayBreak <r:NullaryExpr> => Expr::BinOp(OpCode::Div, Box::new(l), Box::new(r)),
     NullaryExpr,
 };
 
@@ -84,13 +90,13 @@ Single: Expr = {
     NumLit => Expr::Num(<>),
     Iden => Expr::IdenRead(<>),
     //TODO @mark: conflicts with assignment
-    "(" END? <e:AddSubExpr> ")" => e,
+    "(" MayBreak <e:AddSubExpr> ")" => e,
 }
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
 StructDecl: Block = {
-    "struct" <n:Iden> "{" END? <fs:Comma<FieldDecl>> "}" => Block::    Struct {
+    "struct" <n:Iden> "{" MayBreak <fs:Comma<FieldDecl>> "}" => Block::    Struct {
         iden: n,
         fields: fs,
     },
@@ -167,7 +173,7 @@ Comma<T>: Vec<T> = {
 };
 
 Statements<T>: Vec<T> = {
-    <mut v:(<T> END)*> <e:T?> => {
+    <mut v:(<T> End)*> <e:T?> => {
         if let Some(f) = e {
             v.push(f);
         }
