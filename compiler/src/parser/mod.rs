@@ -33,3 +33,17 @@ pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<Ast, SteelErr> {
     }
     //TODO @mark: no unwrap
 }
+
+#[cfg(test)]
+mod tests {
+    use ::std::fs::read_to_string;
+
+    use super::*;
+
+    #[test]
+    fn parse_arithmetic() {
+        let pth = PathBuf::from("examples/arithmetic.steel");
+        let code = read_to_string(&pth).unwrap();
+        parse_str(pth, &code).unwrap();
+    }
+}
