@@ -1,6 +1,7 @@
 use ::std::str::FromStr;
 use ::tinyvec::tiny_vec;
 
+use crate::ast::Struct;
 use crate::ast::Assignments;
 use crate::ast::AssignmentKw;
 use crate::ast::AssignmentDest;
@@ -53,7 +54,7 @@ pub Prog: Ast = {
 // todo: guard statement
 
 BlockNode: Block = {
-    <d:StructDecl> => d,
+    <d:StructDecl> => Block::Struct(d),
     <a:Assert> => Block::Assert(a),
     <a:Assigns> => Block::Assigns(a),
     <e:Expression> => Block::Expression(e),
@@ -95,8 +96,8 @@ Single: Expr = {
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
-StructDecl: Block = {
-    "struct" <n:Iden> "{" MayBreak <fs:Comma<FieldDecl>> "}" => Block::    Struct {
+StructDecl: Struct = {
+    "struct" <n:Iden> "{" MayBreak <fs:Comma<FieldDecl>> "}" => Struct {
         iden: n,
         fields: fs,
     },

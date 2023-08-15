@@ -90,10 +90,7 @@ pub enum Block {
     Assigns(Assignments),
     Assert(Expr),
     Expression(Expr),
-    Struct {
-        iden: Identifier,
-        fields: Vec<(Identifier, Type)>,
-    },
+    Struct(Struct),
 }
 
 // even without mut and type, it can be a declaration (with inferred type)
@@ -132,4 +129,10 @@ pub enum Expr {
     Text(SString),
     IdenRead(Identifier),
     BinOp(OpCode, Box<Expr>, Box<Expr>),
+}
+
+#[derive(Debug)]
+pub struct Struct {
+    pub iden: Identifier,
+    pub fields: Vec<(Identifier, Type)>,
 }
