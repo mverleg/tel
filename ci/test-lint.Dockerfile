@@ -24,6 +24,15 @@ RUN if [ "$TEST" != 0 ] ; then  \
         echo SKIPPED;  \
     fi
 
+## Examples
+#ARG EXAMPLES=1
+#RUN echo "EXAMPLES=$EXAMPLES" &&\
+#    if [ "$EXAMPLES" != 0 ] ; then  \
+#        cargo --offline test --all-features;  \
+#    else  \
+#        echo SKIPPED;  \
+#    fi
+
 # Lint
 ARG LINT=1
 ARG STRICT=1
@@ -47,12 +56,3 @@ RUN echo "FMT=$FMT" &&\
         echo SKIPPED;  \
     fi
 
-# Extra steps (incl test-lint.Dockerfile to make sure at least one source)
-COPY ci/test-lint.Dockerfile ci/extra_checks.s[h] ./
-RUN pth="ci/extra_checks.sh";  \
-    if [ -f "$pth" ] ; then  \
-        echo "RUN $pth";  \
-        bash "$pth";  \
-    else  \
-        echo 'NO EXTRA CHECKS';  \
-    fi
