@@ -90,7 +90,6 @@ NullaryExpr: Expr = {
 Single: Expr = {
     NumLit => Expr::Num(<>),
     Iden => Expr::IdenRead(<>),
-    //TODO @mark: conflicts with assignment
     "(" MayBreak <e:AddSubExpr> ")" => e,
 }
 
