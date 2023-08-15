@@ -13,6 +13,7 @@ use crate::SteelErr;
 mod errors;
 
 lalrpop_mod!(gen_parser, "/grammar.rs");
+include!(concat!(env!("OUT_DIR"), "/parse_tests.rs"));
 
 pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<Ast, SteelErr> {
     let parser = gen_parser::ProgParser::new();
@@ -32,18 +33,4 @@ pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<Ast, SteelErr> {
         }
     }
     //TODO @mark: no unwrap
-}
-
-#[cfg(test)]
-mod tests {
-    use ::std::fs::read_to_string;
-
-    use super::*;
-
-    #[test]
-    fn parse_arithmetic() {
-        let pth = PathBuf::from("examples/arithmetic.steel");
-        let code = read_to_string(&pth).unwrap();
-        parse_str(pth, &code).unwrap();
-    }
 }
