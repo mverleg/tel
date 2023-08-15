@@ -77,9 +77,15 @@ MulDivExpr: Expr = {
 NullaryExpr: Expr = {
     <s:DQSTR> => Expr::Text(s.to_string().into()),
     <s:SQSTR> => Expr::Text(s.to_string().into()),
-    NumLit => Expr::Num(<>),
-    "(" END? <e:AddSubExpr> ")" => e
+    Single,
 };
+
+Single: Expr = {
+    NumLit => Expr::Num(<>),
+    Iden => Expr::IdenRead(<>),
+    //TODO @mark: conflicts with assignment
+    "(" END? <e:AddSubExpr> ")" => e,
+}
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
@@ -100,11 +106,11 @@ Assigns: Assignments = {
             op: None,
             value: Box::new(e),
     },
-    <d:UntypedAssignDest> <op:AssignModifier> "=" <e:Expression> => Assignments {
-        dest: { vec![d] },
-        op: Some(op),
-        value: Box::new(e),
-    },
+//    <d:UntypedAssignDest> <op:AssignModifier> "=" <e:Expression> => Assignments {
+//        dest: { vec![d] },
+//        op: Some(op),
+//        value: Box::new(e),
+//    },
 }
 
 AssignDestEq: AssignmentDest = {

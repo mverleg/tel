@@ -1,5 +1,3 @@
-use ::tinyvec::TinyVec;
-
 use ::smartstring::alias::String as SString;
 
 use ::steel_api::log::debug;
@@ -132,6 +130,6 @@ impl Default for AssignmentDest {
 pub enum Expr {
     Num(f64),
     Text(SString),
-    Iden(Identifier),
+    IdenRead(Identifier),
     BinOp(OpCode, Box<Expr>, Box<Expr>),
 }
