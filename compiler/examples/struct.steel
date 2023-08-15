@@ -8,3 +8,6 @@ struct Point {
     y: f64,
     z: f64,
 }
+
+struct Empty {}
+
