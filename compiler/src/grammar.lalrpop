@@ -106,11 +106,11 @@ Assigns: Assignments = {
             op: None,
             value: Box::new(e),
     },
-//    <d:UntypedAssignDest> <op:AssignModifier> "=" <e:Expression> => Assignments {
-//        dest: { vec![d] },
-//        op: Some(op),
-//        value: Box::new(e),
-//    },
+    <d:UntypedAssignDest> <op:AssignModifier> <e:Expression> => Assignments {
+        dest: { vec![d] },
+        op: Some(op),
+        value: Box::new(e),
+    },
 }
 
 AssignDestEq: AssignmentDest = {
@@ -144,10 +144,11 @@ AssignmentKeyword: AssignmentKw = {
 }
 
 AssignModifier: OpCode = {
-    "+" => OpCode::Add,
-    "-" => OpCode::Sub,
-    "*" => OpCode::Mul,
-    "/" => OpCode::Div,
+    // must treat modifier and equals as one token, because lookahead is at most 1 token
+    "+=" => OpCode::Add,
+    "-=" => OpCode::Sub,
+    "*=" => OpCode::Mul,
+    "/=" => OpCode::Div,
 }
 
 TypeUse: Type = {
