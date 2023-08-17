@@ -23,6 +23,10 @@ pub fn steel_build(args: &BuildArgs) -> Result<(), SteelErr> {
     let path = find_main_file(&args.path)?;
     let source = fs::read_to_string(&path)
         .map_err(|err| SteelErr::CouldNotRead(path.clone(), err.to_string()))?;
+    steel_build_str(path, &source)
+}
+
+pub fn steel_build_str(path: PathBuf, source: &str) -> Result<(), SteelErr> {
     let ast = parse_str(path, &source)?;
     info!("{:?}", ast);
     Ok(())
