@@ -38,7 +38,7 @@ match {
     r#"\s*#[^\r\n]*(\r\n|\n|\r)(\s|\r|\n)*"# => { },
 } else {
     // Ignore any other whitespace (except newlines above)
-    r"\s+" => { },
+    r"[ \t]+" => { },
     //TODO @mark: does this mean keywords can be concatenated? that is not desirable
 } else {
     _

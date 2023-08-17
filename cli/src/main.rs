@@ -31,7 +31,7 @@ struct BuildCli {
 #[command(name = "build")]
 struct EvalCli {
     /// Text to be evaluated as steel code
-    #[arg(default_value = "./main.steel")]
+    #[arg()]
     pub code: Option<String>,
     #[arg(short = 'i', long = "stdin", conflicts_with = "code")]
     pub stdin: bool,
@@ -69,7 +69,8 @@ fn main() {
                 _ => panic!("must provide either a source string, or --stdin to read input from standard input"),  // TODO @mark: error handling
             };
             steel_build_str(PathBuf::from("script-input"), &code).unwrap();  // TODO @mark: error handling
-            todo!("impl: run");
+            eprintln!("built successfully, cannot run yet");  //TODO @mark: impl
+            Ok(())
         },
     }
     .unwrap() //TODO @mark: do not unwrap

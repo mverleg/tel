@@ -34,3 +34,13 @@ pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<Ast, SteelErr> {
     }
     //TODO @mark: no unwrap
 }
+
+#[cfg(test)]
+mod bugs {
+    use super::*;
+
+    #[test]
+    fn test_newline_with_indent() {
+        parse_str(PathBuf::new(), "(1)+\n 2").unwrap();
+    }
+}
