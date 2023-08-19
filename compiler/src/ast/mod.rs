@@ -99,6 +99,7 @@ pub enum Block {
     Assigns(Assignments),
     Expression(Expr),
     Struct(Struct),
+    Enum(Enum),
 }
 
 // even without mut and type, it can be a declaration (with inferred type)
@@ -166,4 +167,18 @@ pub struct Struct {
     pub iden: Identifier,
     pub fields: Vec<(Identifier, Type)>,
     pub generics: Vec<AssignmentDest>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Enum {
+    pub iden: Identifier,
+    pub variants: Vec<EnumVariant>,
+    pub generics: Vec<AssignmentDest>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum EnumVariant {
+    Struct(Struct),
+    Enum(Struct),
+    Existing(Type),
 }

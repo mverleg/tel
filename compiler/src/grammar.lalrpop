@@ -5,15 +5,17 @@ use crate::ast::AssignmentDest;
 use crate::ast::AssignmentKw;
 use crate::ast::Assignments;
 use crate::ast::Ast;
+use crate::ast::BinOpCode;
 use crate::ast::Block;
 use crate::ast::Closure;
+use crate::ast::Enum;
+use crate::ast::EnumVariant;
 use crate::ast::Expr;
 use crate::ast::Identifier;
 use crate::ast::Invoke;
-use crate::ast::BinOpCode;
-use crate::ast::UnaryOpCode;
 use crate::ast::Struct;
 use crate::ast::Type;
+use crate::ast::UnaryOpCode;
 
 grammar;
 
@@ -61,6 +63,7 @@ pub Prog: Ast = {
 
 BlockNode: Block = {
     <d:StructDecl> => Block::Struct(d),
+    <d:EnumDecl> => Block::Enum(d),
     <a:Assigns> => Block::Assigns(a),
     <e:Expression> => Block::Expression(e),
 }
@@ -122,11 +125,24 @@ InvokeExpr: Invoke = {
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
 StructDecl: Struct = {
-    "struct" <n:Iden> <gens:("[" <GenericList> "]")?> "{" MayBreak <fs:Comma<FieldDecl>> "}" => Struct {
+    "struct" <n:Iden> <gens:("[" MayBreak <GenericList> "]")?> MayBreak "{" MayBreak <fs:Comma<FieldDecl>> "}" => Struct {
         iden: n,
         fields: fs,
         generics: gens.unwrap_or_else(|| vec![]),
     },
+}
+
+EnumDecl: Enum = {
+    "enum" <n:Iden> <gens:("[" MayBreak <GenericList> "]")?> MayBreak "{" MayBreak <vs:Comma<EnumVariant>> "}" => Enum {
+        iden: n,
+        variants: vs,
+        generics: gens.unwrap_or_else(|| vec![]),
+    },
+}
+
+EnumVariant: EnumVariant = {
+    StructDecl,
+    EnumDecl,
 }
 
 //TODO @mark: is type inference possible in this context?

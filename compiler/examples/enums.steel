@@ -7,9 +7,10 @@ enum Option[T] {
 
 # of existing types (must be structs or enums, not interface)
 struct Apple {}
-enum Vegetable {}
+struct Mushroom {}
 enum Produce {
     Apple,
     struct Banana {},
-    Vegetable
+    enum Vegetable {},
+    Option[Mushroom],
 }
