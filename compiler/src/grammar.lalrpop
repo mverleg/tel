@@ -192,11 +192,11 @@ BoolCombineOp: OpCode = {
     "xor" => OpCode::Xor,
 }
 
-// TODO @mark: will support { 2 * it } syntax for easy cases, but not sure how much further
-// TODO @mark: some features like explicit captures and explicit return types and function types (async) will need full fun syntax
+/// Simple closures can use { 2 * it } syntax, but full `fun` syntax is needed for explicit captures, return, generics, fun kinds, etc
 ClosureExpr: Closure = {
     // With explicit {}, implicit capture and implicit args
     "{" MayBreak <bs:Statements<BlockNode>> "}" => Closure { blocks: bs, args: vec![], },
+    "fun" "(" MayBreak ")" <ret:("->" <TypeUse>)?> MayBreak "{" MayBreak <bs:Statements<BlockNode>> "}" => Closure { blocks: bs, args: vec![], },
 }
 
 TypeUse: Type = {
