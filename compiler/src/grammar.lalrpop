@@ -16,7 +16,7 @@ grammar;
 
 match {
     // Do not count NEWLINE token when preceded by ellipsis
-    r"...[ \t]*(\r\n|\n|\r)(\s|\r|\n)" => { },
+    r"\.\.\.[ \t]*(\r\n|\n|\r)(\s|\r|\n)" => { },
 } else {
     // Turn at least one semicolons and any number of newlines into a single token (without this they are skipped)
     r";+[ \t]*(\r\n|\n|\r)(;|\s|\r|\n)*" => SEMICOLON,
