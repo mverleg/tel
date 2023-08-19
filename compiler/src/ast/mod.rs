@@ -179,6 +179,6 @@ pub struct Enum {
 #[derive(Debug, PartialEq)]
 pub enum EnumVariant {
     Struct(Struct),
-    Enum(Struct),
+    Enum(Enum),
     Existing(Type),
 }

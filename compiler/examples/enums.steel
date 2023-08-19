@@ -1,7 +1,7 @@
 
 # of new types, as labels
 enum Option[T] {
-    struct Some(T),
+    struct Some[T],
     struct None,
 }
 

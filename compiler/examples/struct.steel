@@ -15,4 +15,5 @@ struct Inventory[N: Integer, C: Currency] {
     name: Text,
     price: C,
     amount: N,
+    location: Point[f64],
 }
