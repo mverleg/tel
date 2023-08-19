@@ -1,16 +1,15 @@
 
-struct Resource {}
+struct Resource {
 
-impl Resource {
     # not sure about @static, maybe better way
     new = @static fun() {
         "opening".print
     }
-}
 
-impl Context for Resource {
-    close = fun() {
-        "closing".print
+    impl Context {
+        close = fun() {
+            "closing".print
+        }
     }
 }
 
