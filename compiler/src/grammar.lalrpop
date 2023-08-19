@@ -118,7 +118,7 @@ StructDecl: Struct = {
 }
 
 FieldDecl: (Identifier, Type) = {
-    <n:Iden> ":" <t:TypeUse> => (n, t),
+    <n:Iden> ":" MayBreak <t:TypeUse> => (n, t),
 }
 
 Assigns: Assignments = {
@@ -152,7 +152,7 @@ UntypedAssignDest: AssignmentDest = {
 }
 
 TypedAssignDest: AssignmentDest = {
-    <kw:AssignmentKeyword?> <n:Iden> ":" <t: TypeUse> => AssignmentDest {
+    <kw:AssignmentKeyword?> <n:Iden> ":" MayBreak <t: TypeUse> => AssignmentDest {
             kw: kw.unwrap_or(AssignmentKw::None),
             target: n,
             typ: Some(t),
@@ -194,7 +194,7 @@ TypeUse: Type = {
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
 
 Comma<T>: Vec<T> = {
-    <mut v:(<T> "," MayBreak)*> <e:T> ","? => {
+    <mut v:(<T> "," MayBreak)*> <e:T> ","? MayBreak => {
         v.push(e);
         v
     },
