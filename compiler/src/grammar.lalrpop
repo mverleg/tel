@@ -85,10 +85,15 @@ AddSubExpr: Expr = {
 };
 
 MulDivExpr: Expr = {
-    <l:MulDivExpr> "*" MayBreak <r:Single> => Expr::BinOp(OpCode::Mul, Box::new(l), Box::new(r)),
-    <l:MulDivExpr> "/" MayBreak <r:Single> => Expr::BinOp(OpCode::Div, Box::new(l), Box::new(r)),
-    Single,
+    <l:MulDivExpr> "*" MayBreak <r:DotExpr> => Expr::BinOp(OpCode::Mul, Box::new(l), Box::new(r)),
+    <l:MulDivExpr> "/" MayBreak <r:DotExpr> => Expr::BinOp(OpCode::Div, Box::new(l), Box::new(r)),
+    DotExpr,
 };
+
+DotExpr: Expr = {
+    <e:DotExpr> "." <inv:InvokeExpr> => Expr::Dot(Box::new(e), inv),
+    Single,
+}
 
 Single: Expr = {
     <s:DQSTR> => Expr::Text(s.to_string().into()),
