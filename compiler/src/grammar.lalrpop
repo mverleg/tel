@@ -196,7 +196,7 @@ BoolCombineOp: OpCode = {
 // TODO @mark: some features like explicit captures and explicit return types and function types (async) will need full fun syntax
 ClosureExpr: Closure = {
     // With explicit {}, implicit capture and implicit args
-    "{" MayBreak <bs:Statements<BlockNode>> "}" => Closure {},
+    "{" MayBreak <bs:Statements<BlockNode>> "}" => Closure { blocks: bs, args: vec![], },
 }
 
 TypeUse: Type = {

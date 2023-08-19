@@ -88,7 +88,7 @@ pub enum AssignmentKw {
     Local,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Block {
     Assigns(Assignments),
     Expression(Expr),
@@ -149,9 +149,11 @@ pub struct Invoke {
 
 #[derive(Debug, PartialEq)]
 pub struct Closure {
+    pub blocks: Vec<Block>,
+    pub args: Vec<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Struct {
     pub iden: Identifier,
     pub fields: Vec<(Identifier, Type)>,
