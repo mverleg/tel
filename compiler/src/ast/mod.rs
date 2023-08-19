@@ -131,6 +131,7 @@ pub enum Expr {
     Text(SString),
     IdenRead(Identifier),
     BinOp(OpCode, Box<Expr>, Box<Expr>),
+    FunCall(Identifier, Vec<Expr>),
 }
 
 #[derive(Debug)]

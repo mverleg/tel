@@ -1,13 +1,13 @@
 use ::std::io;
+use ::std::io::Read;
 use ::std::path::PathBuf;
-use std::io::Read;
 
 use ::clap::Parser;
 use ::clap::Subcommand;
 
-#[cfg(not(test))]
-use ::steel::{BuildArgs, steel_build};
-use steel::steel_build_str;
+use ::steel::BuildArgs;
+use ::steel::steel_build;
+use ::steel::steel_build_str;
 
 #[derive(Parser, Debug)]
 #[command(name = "steel")]
@@ -51,7 +51,6 @@ fn test_cli_args() {
     SteelCli::try_parse_from(["steel", "build", "-v"]).unwrap();
 }
 
-#[cfg(not(test))]
 fn main() {
     env_logger::init_from_env(
         env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "warn"),

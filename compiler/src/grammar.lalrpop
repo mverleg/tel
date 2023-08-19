@@ -92,8 +92,14 @@ MulDivExpr: Expr = {
 NullaryExpr: Expr = {
     <s:DQSTR> => Expr::Text(s.to_string().into()),
     <s:SQSTR> => Expr::Text(s.to_string().into()),
-    Single,
+    FunCallExpr,
 };
+
+FunCallExpr: Expr = {
+    //TODO @mark: to support calling nullary functions without () I probably need to combine FunCall and IdenRead
+    <id:Iden> "(" MayBreak <args:Comma<Expression>> ")" => Expr::FunCall(id, args),
+    Single,
+}
 
 Single: Expr = {
     NumLit => Expr::Num(<>),
