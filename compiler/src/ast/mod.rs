@@ -135,6 +135,7 @@ pub enum Expr {
     Invoke(Invoke),
     /// Dot-access a field or method, like x.a or x.f(a)
     Dot(Box<Expr>, Invoke),
+    Closure(Closure),
 }
 
 /// Can be a variable read or a function call. A function call without () cannot be differentiated from
@@ -144,6 +145,10 @@ pub struct Invoke {
     pub iden: Identifier,
     //TODO @mark: to smallvec or something:
     pub args: Vec<Expr>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Closure {
 }
 
 #[derive(Debug)]

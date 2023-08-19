@@ -6,6 +6,7 @@ use crate::ast::AssignmentKw;
 use crate::ast::Assignments;
 use crate::ast::Ast;
 use crate::ast::Block;
+use crate::ast::Closure;
 use crate::ast::Expr;
 use crate::ast::Identifier;
 use crate::ast::Invoke;
@@ -103,6 +104,7 @@ Single: Expr = {
     <s:SQSTR> => Expr::Text(s.to_string().into()),
     NumLit => Expr::Num(<>),
     <inv:InvokeExpr> => Expr::Invoke(inv),
+    <λ:ClosureExpr> => Expr::Closure(λ),
     "(" MayBreak <e:BoolCombineExpr> ")" => e,
 }
 
@@ -188,6 +190,13 @@ BoolCombineOp: OpCode = {
     "and" => OpCode::And,
     "or" => OpCode::Or,
     "xor" => OpCode::Xor,
+}
+
+// TODO @mark: will support { 2 * it } syntax for easy cases, but not sure how much further
+// TODO @mark: some features like explicit captures and explicit return types and function types (async) will need full fun syntax
+ClosureExpr: Closure = {
+    // With explicit {}, implicit capture and implicit args
+    "{" MayBreak <bs:Statements<BlockNode>> "}" => Closure {},
 }
 
 TypeUse: Type = {
