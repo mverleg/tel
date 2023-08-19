@@ -11,6 +11,7 @@ use crate::ast::Expr;
 use crate::ast::Identifier;
 use crate::ast::OpCode;
 use crate::ast::Type;
+use crate::ast::Invoke;
 
 grammar;
 
@@ -96,14 +97,13 @@ NullaryExpr: Expr = {
 };
 
 FunCallExpr: Expr = {
-    //TODO @mark: to support calling nullary functions without () I probably need to combine FunCall and IdenRead
-    <id:Iden> "(" MayBreak <args:Comma<Expression>> ")" => Expr::FunCall(id, args),
+    <iden:Iden> "(" MayBreak <args:Comma<Expression>> ")" => Expr::Invoke(Invoke { iden, args }),
     Single,
 }
 
 Single: Expr = {
     NumLit => Expr::Num(<>),
-    Iden => Expr::IdenRead(<>),
+    <iden:Iden> => Expr::Invoke(Invoke { iden, args: vec![] }),
     "(" MayBreak <e:BoolCombineExpr> ")" => e,
 }
 

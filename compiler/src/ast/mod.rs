@@ -96,7 +96,7 @@ pub enum Block {
 }
 
 // even without mut and type, it can be a declaration (with inferred type)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Assignments {
     //pub dest: TinyVec<[AssignmentDest; 1]>,
     //TODO @mark: ^
@@ -106,7 +106,7 @@ pub struct Assignments {
 }
 
 // even without mut and type, it can be a declaration (with inferred type)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct AssignmentDest {
     pub kw: AssignmentKw,
     pub target: Identifier,
@@ -125,7 +125,7 @@ impl Default for AssignmentDest {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Expr {
     Num(f64),
     Text(SString),
@@ -137,11 +137,11 @@ pub enum Expr {
 
 /// Can be a variable read or a function call. A function call without () cannot be differentiated from
 /// a function call by the parser, this must be done later.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Invoke {
-    iden: Identifier,
+    pub iden: Identifier,
     //TODO @mark: to smallvec or something:
-    args: Vec<Expr>,
+    pub args: Vec<Expr>,
 }
 
 #[derive(Debug)]
