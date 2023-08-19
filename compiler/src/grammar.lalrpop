@@ -20,7 +20,7 @@ match {
     r"\.\.\.[ \t]*(\r\n|\n|\r)(\s|\r|\n)" => { },
 } else {
     // Turn at least one semicolons and any number of newlines into a single token (without this they are skipped)
-    r";+[ \t]*((\r\n|\n|\r)(;|\s|\r|\n)*)?" => SEMICOLON,
+    r";+[ \t]*( |\t|\r\n|\n|\r|;)*" => SEMICOLON,
 } else {
     // Turn any remaining newlines (not preceded by semicolon, in previous rule) into a single token
     r"(\r\n|\n|\r)(\s|\r|\n)*" => NEWLINE,

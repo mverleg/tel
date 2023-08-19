@@ -58,4 +58,14 @@ mod bugs {
     fn nullary_function_with_parentheses() {
         parse_str(PathBuf::new(), "f()").unwrap();
     }
+
+    #[test]
+    fn semicolon_at_end_of_file() {
+        parse_str(PathBuf::new(), "a=1;").unwrap();
+    }
+
+    #[test]
+    fn semicolon_between_statements_no_newline() {
+        parse_str(PathBuf::new(), "a=1;b").unwrap();
+    }
 }
