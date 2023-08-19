@@ -88,7 +88,6 @@ pub enum AssignmentKw {
 #[derive(Debug)]
 pub enum Block {
     Assigns(Assignments),
-    Assert(Expr),
     Expression(Expr),
     Struct(Struct),
 }
