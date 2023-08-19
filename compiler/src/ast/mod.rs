@@ -165,4 +165,5 @@ pub struct Closure {
 pub struct Struct {
     pub iden: Identifier,
     pub fields: Vec<(Identifier, Type)>,
+    pub generics: Vec<AssignmentDest>,
 }

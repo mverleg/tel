@@ -122,9 +122,10 @@ InvokeExpr: Invoke = {
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
 StructDecl: Struct = {
-    "struct" <n:Iden> "{" MayBreak <fs:Comma<FieldDecl>> "}" => Struct {
+    "struct" <n:Iden> <gens:("[" <GenericList> "]")?> "{" MayBreak <fs:Comma<FieldDecl>> "}" => Struct {
         iden: n,
         fields: fs,
+        generics: gens.unwrap_or_else(|| vec![]),
     },
 }
 
@@ -213,6 +214,10 @@ ClosureExpr: Closure = {
 }
 
 ParamList: Vec<AssignmentDest> = {
+    <Comma<AssignDest>>,
+}
+
+GenericList: Vec<AssignmentDest> = {
     <Comma<AssignDest>>,
 }
 
