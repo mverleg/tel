@@ -43,4 +43,9 @@ mod bugs {
     fn test_newline_with_indent() {
         parse_str(PathBuf::new(), "(1)+\n 2").unwrap();
     }
+
+    #[test]
+    fn test_double_close_parentheses() {
+        assert!(parse_str(PathBuf::new(), "(1)+\n 2)").is_err());
+    }
 }
