@@ -50,7 +50,12 @@ mod bugs {
     }
 
     #[test]
+    fn empty_struct() {
+        parse_str(PathBuf::new(), "struct D {\n}").unwrap();
+    }
+
+    #[test]
     fn nullary_function_with_parentheses() {
-        parse_str(PathBuf::new(), "f())").unwrap();
+        parse_str(PathBuf::new(), "f()").unwrap();
     }
 }
