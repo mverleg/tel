@@ -75,13 +75,8 @@ impl Identifier {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type {
     //TODO @mark:
-    iden: Identifier,
-}
-
-impl Type {
-    pub fn new(iden: Identifier) -> Self {
-        Type { iden }
-    }
+    pub iden: Identifier,
+    pub generics: Vec<Type>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

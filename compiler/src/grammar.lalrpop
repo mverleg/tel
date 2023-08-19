@@ -238,7 +238,7 @@ GenericList: Vec<AssignmentDest> = {
 }
 
 TypeUse: Type = {
-    <n:Iden> => Type::new(n),
+    <iden:Iden> <gen:("[" <Comma<TypeUse>> "]")?> => Type { iden, generics: gen.unwrap_or_else(|| vec![]), },
 }
 
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
