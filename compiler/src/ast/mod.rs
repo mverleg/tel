@@ -149,7 +149,6 @@ pub struct Invoke {
 
 #[derive(Debug, PartialEq)]
 pub struct Closure {
-    pub id: Option<Identifier>,
     pub blocks: Vec<Block>,
     pub params: Vec<AssignmentDest>,
 }
