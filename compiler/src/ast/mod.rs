@@ -19,6 +19,9 @@ pub enum OpCode {
     Gt,
     Le,
     Ge,
+    And,
+    Or,
+    Xor,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

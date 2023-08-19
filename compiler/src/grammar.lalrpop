@@ -64,17 +64,20 @@ BlockNode: Block = {
 //   1 or 2 + 4  =>  1 or (2 + 4)
 //   false or false == false or true  =>  false or (false == false) or true
 Expression: Expr = {
-    BoolExpr
+    BoolCombineExpr
 }
 
-BoolExpr: Expr = {
-    //TODO @mark: this allows '1 +; 2' which is not desirable
-    <l:BoolExpr> <o:BoolOp> MayBreak <r:AddSubExpr> => Expr::BinOp(o, Box::new(l), Box::new(r)),
+BoolCombineExpr: Expr = {
+    <l:BoolCombineExpr> <o:BoolCombineOp> MayBreak <r:BoolCompareExpr> => Expr::BinOp(o, Box::new(l), Box::new(r)),
+    BoolCompareExpr,
+};
+
+BoolCompareExpr: Expr = {
+    <l:BoolCompareExpr> <o:BoolCompareOp> MayBreak <r:AddSubExpr> => Expr::BinOp(o, Box::new(l), Box::new(r)),
     AddSubExpr,
 };
 
 AddSubExpr: Expr = {
-    //TODO @mark: this allows '1 +; 2' which is not desirable
     <l:AddSubExpr> "+" MayBreak <r:MulDivExpr> => Expr::BinOp(OpCode::Add, Box::new(l), Box::new(r)),
     <l:AddSubExpr> "-" MayBreak <r:MulDivExpr> => Expr::BinOp(OpCode::Sub, Box::new(l), Box::new(r)),
     MulDivExpr,
@@ -95,7 +98,7 @@ NullaryExpr: Expr = {
 Single: Expr = {
     NumLit => Expr::Num(<>),
     Iden => Expr::IdenRead(<>),
-    "(" MayBreak <e:BoolExpr> ")" => e,
+    "(" MayBreak <e:BoolCombineExpr> ")" => e,
 }
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
@@ -162,14 +165,19 @@ AssignModifier: OpCode = {
     "/=" => OpCode::Div,
 }
 
-BoolOp: OpCode = {
-    // must treat modifier and equals as one token, because lookahead is at most 1 token
+BoolCompareOp: OpCode = {
     "==" => OpCode::Eq,
     "!=" => OpCode::Neq,
     "<" => OpCode::Lt,
     ">" => OpCode::Gt,
     "<=" => OpCode::Le,
     ">=" => OpCode::Ge,
+}
+
+BoolCombineOp: OpCode = {
+    "and" => OpCode::And,
+    "or" => OpCode::Or,
+    "xor" => OpCode::Xor,
 }
 
 TypeUse: Type = {
