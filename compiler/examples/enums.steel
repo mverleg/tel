@@ -1,8 +1,9 @@
 
 # of new types, as labels
 enum Option[T] {
-    struct Some[T],
-    struct None,
+    struct Some[T] { value: T },
+    struct None {},
+    # TODO @mark: support skipping {} if no content?
 }
 
 # of existing types (must be structs or enums, not interface)
