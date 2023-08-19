@@ -44,7 +44,7 @@ fn parse_{name}() {{
 }}\n\n").unwrap();
         //eprintln!("{} {:?}", pth.to_string_lossy(), pth.file_stem().unwrap())
     }
-    write!(test_code, "}}").unwrap();
+    write!(test_code, "}}\n").unwrap();
     if test_cnt == 0 {
         panic!("did not find any examples to use for parsing tests");
     }
