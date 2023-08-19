@@ -94,9 +94,13 @@ Single: Expr = {
     <s:DQSTR> => Expr::Text(s.to_string().into()),
     <s:SQSTR> => Expr::Text(s.to_string().into()),
     NumLit => Expr::Num(<>),
-    <iden:Iden> "(" MayBreak <args:Comma<Expression>> ")" => Expr::Invoke(Invoke { iden, args }),
-    <iden:Iden> => Expr::Invoke(Invoke { iden, args: vec![] }),
+    <inv:InvokeExpr> => Expr::Invoke(inv),
     "(" MayBreak <e:BoolCombineExpr> ")" => e,
+}
+
+InvokeExpr: Invoke = {
+    <iden:Iden> "(" MayBreak <args:Comma<Expression>> ")" => Invoke { iden, args },
+    <iden:Iden> => Invoke { iden, args: vec![] },
 }
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
