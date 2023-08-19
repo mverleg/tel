@@ -59,6 +59,10 @@ BlockNode: Block = {
     <e:Expression> => Block::Expression(e),
 }
 
+// precedence (though some may be warnings for being confusing):
+//   1 + 2 == 3 or 4  => (1 + 2) == (3 or 4)
+//   1 or 2 + 4  =>  1 or (2 + 4)
+//   false or false == false or true  =>  false or (false == false) or true
 Expression: Expr = {
     BoolExpr
 }
