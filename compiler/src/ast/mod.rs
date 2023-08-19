@@ -8,7 +8,7 @@ pub struct Ast {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OpCode {
+pub enum BinOpCode {
     Add,
     Sub,
     Mul,
@@ -22,6 +22,12 @@ pub enum OpCode {
     And,
     Or,
     Xor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOpCode {
+    Not,
+    Min,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,7 +107,7 @@ pub struct Assignments {
     //pub dest: TinyVec<[AssignmentDest; 1]>,
     //TODO @mark: ^
     pub dest: Vec<AssignmentDest>,
-    pub op: Option<OpCode>,
+    pub op: Option<BinOpCode>,
     pub value: Box<Expr>,
 }
 
@@ -129,8 +135,10 @@ impl Default for AssignmentDest {
 pub enum Expr {
     Num(f64),
     Text(SString),
-    /// Binary operation, i.e. '+', '==', 'or'. Parser handled precedence.
-    BinOp(OpCode, Box<Expr>, Box<Expr>),
+    /// Binary operation, e.g. 'x+y', 'x==y', 'x or y'. Parser handled precedence.
+    BinOp(BinOpCode, Box<Expr>, Box<Expr>),
+    /// Unary operation, '!x' or '-x'
+    UnaryOp(UnaryOpCode, Box<Expr>),
     /// Variable read or function call.
     Invoke(Invoke),
     /// Dot-access a field or method, like x.a or x.f(a)
