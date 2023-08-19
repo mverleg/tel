@@ -129,8 +129,11 @@ impl Default for AssignmentDest {
 pub enum Expr {
     Num(f64),
     Text(SString),
+    /// Read a variable. Might also be nullary function call without (), the parser cannot differentiate.
     IdenRead(Identifier),
+    /// Binary operation, i.e. '+', '==', 'or'. Parser handled precedence.
     BinOp(OpCode, Box<Expr>, Box<Expr>),
+    /// Function call with any number of args (calls without () are parsed as IdenRead).
     FunCall(Identifier, Vec<Expr>),
 }
 

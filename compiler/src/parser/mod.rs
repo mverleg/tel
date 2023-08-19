@@ -48,4 +48,9 @@ mod bugs {
     fn test_double_close_parentheses() {
         assert!(parse_str(PathBuf::new(), "(1)+\n 2)").is_err());
     }
+
+    #[test]
+    fn nullary_function_with_parentheses() {
+        parse_str(PathBuf::new(), "f())").unwrap();
+    }
 }

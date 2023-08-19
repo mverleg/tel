@@ -96,7 +96,6 @@ NullaryExpr: Expr = {
 };
 
 FunCallExpr: Expr = {
-    //TODO @mark: to support calling nullary functions without () I probably need to combine FunCall and IdenRead
     <id:Iden> "(" MayBreak <args:Comma<Expression>> ")" => Expr::FunCall(id, args),
     Single,
 }
