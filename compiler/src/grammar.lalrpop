@@ -61,12 +61,18 @@ BlockNode: Block = {
 }
 
 Expression: Expr = {
-    AddSubExpr
+    BoolExpr
 }
 
 Assert: Expr = {
     "assert" <e:Expression> => e,
 }
+
+BoolExpr: Expr = {
+    //TODO @mark: this allows '1 +; 2' which is not desirable
+    <l:BoolExpr> <o:BoolOp> MayBreak <r:AddSubExpr> => Expr::BinOp(o, Box::new(l), Box::new(r)),
+    AddSubExpr,
+};
 
 AddSubExpr: Expr = {
     //TODO @mark: this allows '1 +; 2' which is not desirable
@@ -90,7 +96,7 @@ NullaryExpr: Expr = {
 Single: Expr = {
     NumLit => Expr::Num(<>),
     Iden => Expr::IdenRead(<>),
-    "(" MayBreak <e:AddSubExpr> ")" => e,
+    "(" MayBreak <e:BoolExpr> ")" => e,
 }
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
@@ -155,6 +161,16 @@ AssignModifier: OpCode = {
     "-=" => OpCode::Sub,
     "*=" => OpCode::Mul,
     "/=" => OpCode::Div,
+}
+
+BoolOp: OpCode = {
+    // must treat modifier and equals as one token, because lookahead is at most 1 token
+    "==" => OpCode::Eq,
+    "!=" => OpCode::Neq,
+    "<" => OpCode::Lt,
+    ">" => OpCode::Gt,
+    "<=" => OpCode::Le,
+    ">=" => OpCode::Ge,
 }
 
 TypeUse: Type = {

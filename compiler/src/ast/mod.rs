@@ -13,6 +13,12 @@ pub enum OpCode {
     Sub,
     Mul,
     Div,
+    Eq,
+    Neq,
+    Lt,
+    Gt,
+    Le,
+    Ge,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
