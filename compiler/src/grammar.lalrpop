@@ -143,6 +143,7 @@ EnumDecl: Enum = {
 EnumVariant: EnumVariant = {
     <StructDecl> => EnumVariant::Struct(<>),
     <EnumDecl> => EnumVariant::Enum(<>),
+    <TypeUse> => EnumVariant::Existing(<>),
 }
 
 //TODO @mark: is type inference possible in this context?
