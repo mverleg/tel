@@ -197,7 +197,7 @@ BoolCombineOp: OpCode = {
 ClosureExpr: Closure = {
     // With explicit {}, implicit capture and implicit args
     "{" MayBreak <bs:Statements<BlockNode>> "}" => Closure { blocks: bs, params: vec![], },
-    "fun" "(" MayBreak <params:ParamList> ")" <ret:("=>" <TypeUse>)?> MayBreak "{" MayBreak <blocks:Statements<BlockNode>> "}" => Closure { blocks, params, },
+    "fun" "(" MayBreak <params:ParamList> ")" <ret:(":" <TypeUse>)?> MayBreak "{" MayBreak <blocks:Statements<BlockNode>> "}" => Closure { blocks, params, },
 }
 
 ParamList: Vec<AssignmentDest> = {
