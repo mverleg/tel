@@ -1,17 +1,17 @@
 use ::std::str::FromStr;
 use ::tinyvec::tiny_vec;
 
-use crate::ast::Struct;
-use crate::ast::Assignments;
-use crate::ast::AssignmentKw;
 use crate::ast::AssignmentDest;
+use crate::ast::AssignmentKw;
+use crate::ast::Assignments;
 use crate::ast::Ast;
 use crate::ast::Block;
 use crate::ast::Expr;
 use crate::ast::Identifier;
-use crate::ast::OpCode;
-use crate::ast::Type;
 use crate::ast::Invoke;
+use crate::ast::OpCode;
+use crate::ast::Struct;
+use crate::ast::Type;
 
 grammar;
 
@@ -31,6 +31,9 @@ match {
 } else {
     // Do not count NEWLINE token when preceded by ellipsis
     r"\.\.\.[ \t]*(\r\n|\n|\r)*" => { },
+} else {
+    // Periods have special lexing because a linebreak is allowed before
+   r"(\r\n|\n|\r)*\s*\." => PERIOD,
 } else {
     // Turn at least one semicolons and any number of newlines into a single token (without this they are skipped)
     r";+[ \t]*( |\t|\r\n|\n|\r|;)*" => SEMICOLON,
@@ -91,7 +94,7 @@ MulDivExpr: Expr = {
 }
 
 DotExpr: Expr = {
-    <e:DotExpr> "." <inv:InvokeExpr> => Expr::Dot(Box::new(e), inv),
+    <e:DotExpr> PERIOD <inv:InvokeExpr> => Expr::Dot(Box::new(e), inv),
     Single,
 }
 
