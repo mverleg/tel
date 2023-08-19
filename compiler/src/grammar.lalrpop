@@ -122,6 +122,7 @@ StructDecl: Struct = {
     },
 }
 
+//TODO @mark: is type inference possible in this context?
 FieldDecl: (Identifier, Type) = {
     <n:Iden> ":" MayBreak <t:TypeUse> => (n, t),
 }
@@ -195,8 +196,12 @@ BoolCombineOp: OpCode = {
 /// Simple closures can use { 2 * it } syntax, but full `fun` syntax is needed for explicit captures, return, generics, fun kinds, etc
 ClosureExpr: Closure = {
     // With explicit {}, implicit capture and implicit args
-    "{" MayBreak <bs:Statements<BlockNode>> "}" => Closure { blocks: bs, args: vec![], },
-    "fun" "(" MayBreak ")" <ret:("->" <TypeUse>)?> MayBreak "{" MayBreak <bs:Statements<BlockNode>> "}" => Closure { blocks: bs, args: vec![], },
+    "{" MayBreak <bs:Statements<BlockNode>> "}" => Closure { blocks: bs, params: vec![], },
+    "fun" "(" MayBreak <params:ParamList> ")" <ret:("->" <TypeUse>)?> MayBreak "{" MayBreak <blocks:Statements<BlockNode>> "}" => Closure { blocks, params, },
+}
+
+ParamList: Vec<AssignmentDest> = {
+    <Comma<AssignDest>>,
 }
 
 TypeUse: Type = {

@@ -150,7 +150,7 @@ pub struct Invoke {
 #[derive(Debug, PartialEq)]
 pub struct Closure {
     pub blocks: Vec<Block>,
-    pub args: Vec<Expr>,
+    pub params: Vec<AssignmentDest>,
 }
 
 #[derive(Debug, PartialEq)]
