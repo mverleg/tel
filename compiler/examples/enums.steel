@@ -1,0 +1,15 @@
+
+# of new types, as labels
+enum Option[T] {
+    struct Some(T),
+    struct None,
+}
+
+# of existing types (must be structs or enums, not interface)
+struct Apple {}
+enum Vegetable {}
+enum Produce {
+    Apple,
+    struct Banana {},
+    Vegetable
+}
