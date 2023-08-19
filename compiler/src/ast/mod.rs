@@ -133,6 +133,8 @@ pub enum Expr {
     BinOp(OpCode, Box<Expr>, Box<Expr>),
     /// Variable read or function call.
     Invoke(Invoke),
+    /// Dot-access a field or method, like x.a or x.f(a)
+    Dot(Box<Expr>, Invoke),
 }
 
 /// Can be a variable read or a function call. A function call without () cannot be differentiated from

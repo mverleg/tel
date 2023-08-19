@@ -85,24 +85,16 @@ AddSubExpr: Expr = {
 };
 
 MulDivExpr: Expr = {
-    <l:MulDivExpr> "*" MayBreak <r:NullaryExpr> => Expr::BinOp(OpCode::Mul, Box::new(l), Box::new(r)),
-    <l:MulDivExpr> "/" MayBreak <r:NullaryExpr> => Expr::BinOp(OpCode::Div, Box::new(l), Box::new(r)),
-    NullaryExpr,
-};
-
-NullaryExpr: Expr = {
-    <s:DQSTR> => Expr::Text(s.to_string().into()),
-    <s:SQSTR> => Expr::Text(s.to_string().into()),
-    FunCallExpr,
-};
-
-FunCallExpr: Expr = {
-    <iden:Iden> "(" MayBreak <args:Comma<Expression>> ")" => Expr::Invoke(Invoke { iden, args }),
+    <l:MulDivExpr> "*" MayBreak <r:Single> => Expr::BinOp(OpCode::Mul, Box::new(l), Box::new(r)),
+    <l:MulDivExpr> "/" MayBreak <r:Single> => Expr::BinOp(OpCode::Div, Box::new(l), Box::new(r)),
     Single,
-}
+};
 
 Single: Expr = {
+    <s:DQSTR> => Expr::Text(s.to_string().into()),
+    <s:SQSTR> => Expr::Text(s.to_string().into()),
     NumLit => Expr::Num(<>),
+    <iden:Iden> "(" MayBreak <args:Comma<Expression>> ")" => Expr::Invoke(Invoke { iden, args }),
     <iden:Iden> => Expr::Invoke(Invoke { iden, args: vec![] }),
     "(" MayBreak <e:BoolCombineExpr> ")" => e,
 }
