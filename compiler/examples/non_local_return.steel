@@ -1,8 +1,21 @@
 
-c = "some context that logs on exit"
+struct Resource {}
+
+impl Resource {
+    # not sure about @static, maybe better way
+    new = @static fun() {
+        "opening".print
+    }
+}
+
+impl Context for Resource {
+    close = fun() {
+        "closing".print
+    }
+}
 
 f = fun() {
-    with (c) {
+    with (Context.new()) {
         # return should exit the outer function
         # but it should still allow c to run first
         return
