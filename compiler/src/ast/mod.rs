@@ -114,7 +114,7 @@ pub struct AssignmentDest {
 }
 //TODO @mark: type cannot be combined with operation, should I create separate types?
 
-// only exists for TinyVec
+// only exists because of TinyVec
 impl Default for AssignmentDest {
     fn default() -> Self {
         AssignmentDest {
@@ -129,12 +129,19 @@ impl Default for AssignmentDest {
 pub enum Expr {
     Num(f64),
     Text(SString),
-    /// Read a variable. Might also be nullary function call without (), the parser cannot differentiate.
-    IdenRead(Identifier),
     /// Binary operation, i.e. '+', '==', 'or'. Parser handled precedence.
     BinOp(OpCode, Box<Expr>, Box<Expr>),
-    /// Function call with any number of args (calls without () are parsed as IdenRead).
-    FunCall(Identifier, Vec<Expr>),
+    /// Variable read or function call.
+    Invoke(Invoke),
+}
+
+/// Can be a variable read or a function call. A function call without () cannot be differentiated from
+/// a function call by the parser, this must be done later.
+#[derive(Debug)]
+pub struct Invoke {
+    iden: Identifier,
+    //TODO @mark: to smallvec or something:
+    args: Vec<Expr>,
 }
 
 #[derive(Debug)]
