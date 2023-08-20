@@ -37,7 +37,10 @@ match {
     r"\.\.\.[ \t]*(\r\n|\n|\r)*" => { },
 } else {
     // Periods have special lexing because a linebreak is allowed before
-   r"(\r\n|\n|\r)*\s*\." => PERIOD,
+   r"(\r\n|\n|\r)+\s*\." => BrPer,
+} else {
+    // Periods have special lexing because a linebreak is allowed before
+   r"\." => JustPeriod,
 } else {
     // Turn at least one semicolons and any number of newlines into a single token (without this they are skipped)
     r";+[ \t]*( |\t|\r\n|\n|\r|;)*" => SEMICOLON,
@@ -53,10 +56,10 @@ match {
 }
 
 End: () = { SEMICOLON, NEWLINE }
-MayBreak: () = { NEWLINE? }
+Br: () = { NEWLINE? }
 
 pub Prog: Ast = {
-    MayBreak <bs:Statements<BlockNode>> => Ast { blocks: bs },
+    Br <bs:Statements<BlockNode>> => Ast { blocks: bs },
 }
 
 // todo: guard statement
@@ -65,35 +68,37 @@ BlockNode: Block = {
     <d:StructDecl> => Block::Struct(d),
     <d:EnumDecl> => Block::Enum(d),
     <a:Assigns> => Block::Assigns(a),
-    <e:Expression<MayBreak>> => Block::Expression(e),
+    <e:Expression<Br, BrPer>> => Block::Expression(e),
 }
 
 // precedence (though some may be warnings for being confusing):
 //   1 + 2 == 3 or 4  => (1 + 2) == (3 or 4)
 //   1 or 2 + 4  =>  1 or (2 + 4)
 //   false or false == false or true  =>  false or (false == false) or true
-Expression<B>: Expr = {
-    ShortClosureExpr<B>
+// B: either Br if newlines are allowed, or () if not
+// P: either BrPer is newlines are allowed, or () if not
+Expression<B, P>: Expr = {
+    ShortClosureExpr<B, P>
 }
 
-ShortClosureExpr<B>: Expr = {
-    <ShortClosure<B>> => Expr::Closure(<>),
-    BoolCombineExpr<B>,
+ShortClosureExpr<B, P>: Expr = {
+    <ShortClosure<B, P>> => Expr::Closure(<>),
+    BoolCombineExpr<B, P>,
 }
 
-BoolCombineExpr<B>: Expr = {
-    <l:BoolCombineExpr<B>> <o:BoolCombineOp> B <r:BoolCompareExpr<B>> => Expr::BinOp(o, Box::new(l), Box::new(r)),
-    BoolCompareExpr<B>,
+BoolCombineExpr<B, P>: Expr = {
+    <l:BoolCombineExpr<B, P>> <o:BoolCombineOp> B <r:BoolCompareExpr<B, P>> => Expr::BinOp(o, Box::new(l), Box::new(r)),
+    BoolCompareExpr<B, P>,
 }
 
-BoolCompareExpr<B>: Expr = {
-    <l:BoolCompareExpr<B>> <o:BoolCompareOp> B <r:AddSubExpr<B>> => Expr::BinOp(o, Box::new(l), Box::new(r)),
-    AddSubExpr<B>,
+BoolCompareExpr<B, P>: Expr = {
+    <l:BoolCompareExpr<B, P>> <o:BoolCompareOp> B <r:AddSubExpr<B, P>> => Expr::BinOp(o, Box::new(l), Box::new(r)),
+    AddSubExpr<B, P>,
 }
 
-AddSubExpr<B>: Expr = {
-    <l:AddSubExpr<B>> <op:AddSubOp> B <r:MulDivExpr<B>> => Expr::BinOp(op, Box::new(l), Box::new(r)),
-    MulDivExpr<B>,
+AddSubExpr<B, P>: Expr = {
+    <l:AddSubExpr<B, P>> <op:AddSubOp> B <r:MulDivExpr<B, P>> => Expr::BinOp(op, Box::new(l), Box::new(r)),
+    MulDivExpr<B, P>,
 }
 
 AddSubOp: BinOpCode = {
@@ -101,9 +106,9 @@ AddSubOp: BinOpCode = {
     <"-"> => BinOpCode::Sub,
 }
 
-MulDivExpr<B>: Expr = {
-    <l:MulDivExpr<B>> <op:MulDivOp> B <r:DotExpr<B>> => Expr::BinOp(op, Box::new(l), Box::new(r)),
-    DotExpr<B>,
+MulDivExpr<B, P>: Expr = {
+    <l:MulDivExpr<B, P>> <op:MulDivOp> B <r:DotExpr<B, P>> => Expr::BinOp(op, Box::new(l), Box::new(r)),
+    DotExpr<B, P>,
 }
 
 MulDivOp: BinOpCode = {
@@ -112,36 +117,41 @@ MulDivOp: BinOpCode = {
     <"%"> => BinOpCode::Modulo,
 }
 
-DotExpr<B>: Expr = {
+DotExpr<B, P>: Expr = {
     //TODO @mark: this is a problem with short lambdas: PERIOD may always have a newline independent of B
-    <e:DotExpr<B>> PERIOD <inv:InvokeExpr<B>> => Expr::Dot(Box::new(e), inv),
-    UnaryExpr<B>,
+    <e:DotExpr<B, P>> MaybeBrPeriod<P> <inv:InvokeExpr<B, P>> => Expr::Dot(Box::new(e), inv),
+    UnaryExpr<B, P>,
 }
 
-UnaryExpr<B>: Expr = {
-    <op:UnaryOp> <e:Single<B>> => Expr::UnaryOp(op, Box::new(e)),
-    Single<B>,
+MaybeBrPeriod<P>: () = {
+    P => {},
+    JustPeriod => {},
 }
 
-Single<B>: Expr = {
+UnaryExpr<B, P>: Expr = {
+    <op:UnaryOp> <e:Single<B, P>> => Expr::UnaryOp(op, Box::new(e)),
+    Single<B, P>,
+}
+
+Single<B, P>: Expr = {
     <s:DQSTR> => Expr::Text(s.to_string().into()),
     <s:SQSTR> => Expr::Text(s.to_string().into()),
     NumLit => Expr::Num(<>),
-    <inv:InvokeExpr<B>> => Expr::Invoke(inv),
-    <λ:MidClosure<B>> => Expr::Closure(λ),
-    <λ:LongClosure<B>> => Expr::Closure(λ),
-    "(" B <e:ShortClosureExpr<B>> ")" => e,
+    <inv:InvokeExpr<B, P>> => Expr::Invoke(inv),
+    <λ:MidClosure<B, P>> => Expr::Closure(λ),
+    <λ:LongClosure<B, P>> => Expr::Closure(λ),
+    "(" B <e:ShortClosureExpr<B, P>> ")" => e,
 }
 
-InvokeExpr<B>: Invoke = {
-    <iden:Iden> "(" B <args:Comma<Expression<B>, B>> ")"  <λ:MidClosure<B>?> => Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
+InvokeExpr<B, P>: Invoke = {
+    <iden:Iden> "(" B <args:Comma<Expression<B, P>, B>> ")"  <λ:MidClosure<B, P>?> => Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
     <iden:Iden> <λ:TrailingClosure?> => Invoke { iden, args: vec_and(vec![], λ.map(|f| Expr::Closure(f))) },
 }
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
 StructDecl: Struct = {
-    "struct" <n:Iden> <gens:("[" MayBreak <GenericList> "]")?> MayBreak "{" MayBreak <fs:Comma<FieldDecl, MayBreak>> "}" => Struct {
+    "struct" <n:Iden> <gens:("[" Br <GenericList> "]")?> Br "{" Br <fs:Comma<FieldDecl, Br>> "}" => Struct {
         iden: n,
         fields: fs,
         generics: gens.unwrap_or_else(|| vec![]),
@@ -149,7 +159,7 @@ StructDecl: Struct = {
 }
 
 EnumDecl: Enum = {
-    "enum" <n:Iden> <gens:("[" MayBreak <GenericList> "]")?> MayBreak "{" MayBreak <vs:Comma<EnumVariant, MayBreak>> "}" => Enum {
+    "enum" <n:Iden> <gens:("[" Br <GenericList> "]")?> Br "{" Br <vs:Comma<EnumVariant, Br>> "}" => Enum {
         iden: n,
         variants: vs,
         generics: gens.unwrap_or_else(|| vec![]),
@@ -159,21 +169,21 @@ EnumDecl: Enum = {
 EnumVariant: EnumVariant = {
     <StructDecl> => EnumVariant::Struct(<>),
     <EnumDecl> => EnumVariant::Enum(<>),
-    <TypeUse<MayBreak>> => EnumVariant::Existing(<>),
+    <TypeUse<Br, BrPer>> => EnumVariant::Existing(<>),
 }
 
 //TODO @mark: is type inference possible in this context?
 FieldDecl: (Identifier, Type) = {
-    <n:Iden> ":" MayBreak <t:TypeUse<MayBreak>> => (n, t),
+    <n:Iden> ":" Br <t:TypeUse<Br, BrPer>> => (n, t),
 }
 
 Assigns: Assignments = {
-    <ds:AssignDestEq+> <e:Expression<MayBreak>> => Assignments {
+    <ds:AssignDestEq+> <e:Expression<Br, BrPer>> => Assignments {
             dest: { ds },
             op: None,
             value: Box::new(e),
     },
-    <d:UntypedAssignDest> <op:AssignModifier> <e:Expression<MayBreak>> => Assignments {
+    <d:UntypedAssignDest> <op:AssignModifier> <e:Expression<Br, BrPer>> => Assignments {
         dest: { vec![d] },
         op: Some(op),
         value: Box::new(e),
@@ -198,7 +208,7 @@ UntypedAssignDest: AssignmentDest = {
 }
 
 TypedAssignDest: AssignmentDest = {
-    <kw:AssignmentKeyword?> <n:Iden> ":" MayBreak <t: TypeUse<MayBreak>> => AssignmentDest {
+    <kw:AssignmentKeyword?> <n:Iden> ":" Br <t: TypeUse<Br, BrPer>> => AssignmentDest {
             kw: kw.unwrap_or(AssignmentKw::None),
             target: n,
             typ: Some(t),
@@ -238,36 +248,36 @@ UnaryOp: UnaryOpCode = {
     "-" => UnaryOpCode::Min,
 }
 
-ShortClosure<B>: Closure = {
-    <c:r"(\\|\\\\)"> B <e:Expression<B>> =>
+ShortClosure<B, P>: Closure = {
+    <c:r"(\\|\\\\)"> B <e:Expression<B, P>> =>
         Closure { blocks: vec![Block::Expression(e)], params: vec![], is_cache: c == r"\\" },
 }
 
 //TODO @mark: rename closure types
-MidClosure<B>: Closure = {
+MidClosure<B, P>: Closure = {
     "{" <params:ParamList> <c:r"(\\|\\\\)"> B <bs:Statements<BlockNode>> "}" =>
         Closure { blocks: bs, params, is_cache: c == r"\\" },
 }
 
 /// Simple closures can use `\ 2 * it` or `{\ 2 * it }` syntax, but full `fun` syntax is needed for explicit captures, return, generics, fun kinds, etc
-LongClosure<B>: Closure = {
-    "fun" "(" B <params:ParamList> ")" <ret:(":" B <TypeUse<B>>)?> B "{" B <blocks:Statements<BlockNode>> "}" =>
+LongClosure<B, P>: Closure = {
+    "fun" "(" B <params:ParamList> ")" <ret:(":" B <TypeUse<B, P>>)?> B "{" B <blocks:Statements<BlockNode>> "}" =>
         Closure { blocks, params, is_cache: false },
 }
 
-TrailingClosure: Closure = { <ShortClosure<()>> NEWLINE , MidClosure<MayBreak> }
+TrailingClosure: Closure = { <ShortClosure<(), ()>> NEWLINE , MidClosure<Br, BrPer> }
 //TODO @mark: this is a bit weird, the only case where a newline is required but cannot be replaced by ; or something eles
 
 ParamList: Vec<AssignmentDest> = {
-    <Comma<AssignDest, MayBreak>>,
+    <Comma<AssignDest, Br>>,
 }
 
 GenericList: Vec<AssignmentDest> = {
-    <Comma<AssignDest, MayBreak>>,
+    <Comma<AssignDest, Br>>,
 }
 
-TypeUse<B>: Type = {
-    <iden:Iden> <gen:("[" <Comma<TypeUse<B>, B>> "]")?> => Type { iden, generics: gen.unwrap_or_else(|| vec![]), },
+TypeUse<B, P>: Type = {
+    <iden:Iden> <gen:("[" <Comma<TypeUse<B, P>, B>> "]")?> => Type { iden, generics: gen.unwrap_or_else(|| vec![]), },
 }
 
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
