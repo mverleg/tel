@@ -1,19 +1,26 @@
 
 inside_short(1, \ "inside_short closure".print)
+outside_short(1) \ "outside_short closure".print
 
 inside_short_cached(1, \\ "inside_short_cached closure".print)
+outside_short_cached(1) \\ "outside_short_cached closure".print
 
 # short mode cannot take arguments
 
 inside_medium(1, { \ "inside_medium closure".print })
+outside_medium(1) { \ "outside_medium closure".print }
 
 inside_medium_cached(1, { \\ "inside_medium_cached closure".print })
+outside_medium_cached(1) { \\ "outside_medium_cached closure".print }
 
 inside_medium_args(1, { x: int \\ "inside_medium_args closure {x}".print })
+outside_medium_args(1) { x: int \\ "outside_medium_args closure {x}".print }
 
 inside_long(1, fun() { "inside_long closure".print })
+outside_long(1) fun() { "outside_long closure".print }
 
 inside_long_args(1, fun(x: int) { "inside_long_args closure {x}".print })
+outside_long_args(1) fun(x: int) { "outside_long_args closure {x}".print }
 
 target_has_args(1, 2) {\
     "with_args closure".print
