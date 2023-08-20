@@ -774,6 +774,8 @@ dependencies = [
  "lalrpop",
  "lalrpop-util",
  "regex",
+ "serde",
+ "serde_json",
  "sha2",
  "smartstring",
  "steel-api",

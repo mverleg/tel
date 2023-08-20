@@ -5,8 +5,10 @@ use ::std::path::Path;
 use ::std::path::PathBuf;
 
 use ::steel_api::log::debug;
-use ::steel_api::log::info;
 use ::steel_api::log::warn;
+use ::serde::Serialize;
+use ::serde_json;
+use crate::ast::Ast;
 
 use crate::parser::parse_str;
 
@@ -23,12 +25,20 @@ pub fn steel_build(args: &BuildArgs) -> Result<(), SteelErr> {
     let path = find_main_file(&args.path)?;
     let source = fs::read_to_string(&path)
         .map_err(|err| SteelErr::CouldNotRead(path.clone(), err.to_string()))?;
-    steel_build_str(path, &source)
+    steel_build_str(path, &source, false)
 }
 
-pub fn steel_build_str(path: PathBuf, source: &str) -> Result<(), SteelErr> {
+#[derive(Debug, Serialize)]
+struct DebugInfo<'a> {
+    ast: &'a Ast,
+}
+
+pub fn steel_build_str(path: PathBuf, source: &str, debug: bool) -> Result<(), SteelErr> {
     let ast = parse_str(path, &source)?;
-    info!("{:?}", ast);
+    debug!("{:?}", ast);
+    if debug {
+        serde_json::to_string(&DebugInfo { ast: &ast }).unwrap();
+    }
     Ok(())
 }
 

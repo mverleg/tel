@@ -38,6 +38,8 @@ struct EvalCli {
     /// Print extra debug output
     #[arg(short = 'v', long)]
     pub verbose: bool,
+    #[arg(long)]
+    pub debug: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -67,7 +69,7 @@ fn main() {
                 (None, true) => read_source_from_stdin(),
                 _ => panic!("must provide either a source string, or --stdin to read input from standard input"),  // TODO @mark: error handling
             };
-            steel_build_str(PathBuf::from("script-input"), &code).unwrap();  // TODO @mark: error handling
+            steel_build_str(PathBuf::from("script-input"), &code, script_args.debug).unwrap();  // TODO @mark: error handling
             eprintln!("built successfully, cannot run yet");  //TODO @mark: impl
             Ok(())
         },
