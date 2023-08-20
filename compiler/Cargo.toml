@@ -30,7 +30,8 @@ serde_json = "1.0.104"
 dashmap = "5.5.0"
 ahash = "0.8.3"
 smartstring = { version = "1.0.1", features = ["serde"] }
-tinyvec = { version = "1.6.0", default-features = false, features = ["alloc", "rustc_1_57"] }
+#tinyvec = { version = "1.6.0", default-features = false, features = ["alloc", "rustc_1_57"] }
+smallvec = { version = "1.11.0", default-features = false, features = ["serde", "write", "union", "const_generics", "const_new",] }
 
 [build-dependencies] # <-- We added this and everything after!
 lalrpop = "0.19.12"
