@@ -3,7 +3,7 @@ inside_short(1, \ "inside_short closure".print)
 
 inside_short_cached(1, \\ "inside_short_cached closure".print)
 
-// short mode cannot take arguments
+# short mode cannot take arguments
 
 inside_medium(1, { \ "inside_medium closure".print })
 
@@ -11,9 +11,9 @@ inside_medium_cached(1, { \\ "inside_medium_cached closure".print })
 
 inside_medium_args(1, { x: int \\ "inside_medium_args closure {x}".print })
 
-inside_long(1, fn() { "inside_long closure".print })
+inside_long(1, fun() { "inside_long closure".print })
 
-inside_long_args(1, fn(x: int) { "inside_long_args closure {x}".print })
+inside_long_args(1, fun(x: int) { "inside_long_args closure {x}".print })
 
 target_has_args(1, 2) {\
     "with_args closure".print
@@ -27,7 +27,7 @@ target_has_no_parens {\
     "without_parens closure".print
 }
 
-// long mode cannot be passed in trailing mode
+# long mode cannot be passed in trailing mode
 
 nrs = [1, 2]
 
@@ -39,12 +39,12 @@ capture_medium() {\
     nrs.add(4)
 }
 
-capture_long(fn() {
+capture_long(fun() {
     "capture_long closure".print
     nrs.add(5)
 })
 
 nrs.print
 
-// TODO @mark: in combination with keyword args, lambda should be last positional one?
+# TODO @mark: in combination with keyword args, lambda should be last positional one?
 
