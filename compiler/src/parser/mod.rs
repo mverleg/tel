@@ -12,7 +12,7 @@ use crate::SteelErr;
 
 mod errors;
 
-lalrpop_mod!(gen_parser, "/grammar.rs");
+lalrpop_mod!(#[allow(clippy::all)] gen_parser, "/grammar.rs");
 include!(concat!(env!("OUT_DIR"), "/parse_tests.rs"));
 
 pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<Ast, SteelErr> {
@@ -22,7 +22,7 @@ pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<Ast, SteelErr> {
         Ok(ast) => {
             debug!("ast: {:?}", &ast);
             Ok(ast)
-        },
+        }
         Err(err) => {
             let (msg, line) = build_error(err, src_pth.to_str().unwrap(), code);
             Err(SteelErr::ParseErr {

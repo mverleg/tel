@@ -1,9 +1,9 @@
 extern crate lalrpop;
 
 use ::std::env;
+use ::std::fmt::Write;
 use ::std::fs;
 use ::std::path::PathBuf;
-use ::std::fmt::Write;
 
 fn main() {
     println!("cargo:rerun-if-changed=./build.rs");
@@ -20,18 +20,21 @@ fn generate_example_parse_tests() {
 mod tests {
     use super::*;
     use ::std::path::PathBuf;
-    use ::std::fs::read_to_string;\n\n".to_owned();
+    use ::std::fs::read_to_string;\n\n"
+        .to_owned();
     let mut test_cnt = 0;
     for pth in fs::read_dir(&examples).unwrap() {
         let pth = pth.unwrap().path();
         let pth_str = pth.to_str().unwrap();
-        if ! pth.is_file() || pth.extension() != Some("steel".as_ref()) {
+        if !pth.is_file() || pth.extension() != Some("steel".as_ref()) {
             println!("skipping test generation for '{}' in examples dir", pth_str);
-            continue
+            continue;
         }
         test_cnt += 1;
         let name = pth.file_stem().unwrap().to_str().unwrap().replace('-', "_");
-        write!(test_code, "#[test]
+        write!(
+            test_code,
+            "#[test]
 fn parse_{name}() {{
     let pth = PathBuf::from(\"{pth_str}\");
     let code = read_to_string(&pth).unwrap();
@@ -41,10 +44,12 @@ fn parse_{name}() {{
         eprintln!(\"Failed to parse example file {pth_str}:\\n{{}}\", msg);
     }}
     assert!(res.is_ok());
-}}\n\n").unwrap();
+}}\n\n"
+        )
+        .unwrap();
         //eprintln!("{} {:?}", pth.to_string_lossy(), pth.file_stem().unwrap())
     }
-    write!(test_code, "}}\n").unwrap();
+    writeln!(test_code, "}}").unwrap();
     if test_cnt == 0 {
         panic!("did not find any examples to use for parsing tests");
     }

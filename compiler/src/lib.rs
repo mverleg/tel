@@ -3,13 +3,13 @@
 use ::std::fs;
 use ::std::path::Path;
 use ::std::path::PathBuf;
-use std::io::{BufWriter, stdout, Write};
+use std::io::{stdout, BufWriter, Write};
 
-use ::steel_api::log::debug;
-use ::steel_api::log::warn;
+use crate::ast::Ast;
 use ::serde::Serialize;
 use ::serde_json;
-use crate::ast::Ast;
+use ::steel_api::log::debug;
+use ::steel_api::log::warn;
 
 use crate::parser::parse_str;
 
@@ -35,7 +35,7 @@ struct DebugInfo<'a> {
 }
 
 pub fn steel_build_str(path: PathBuf, source: &str, debug: bool) -> Result<(), SteelErr> {
-    let ast = parse_str(path, &source)?;
+    let ast = parse_str(path, source)?;
     debug!("{:?}", ast);
     print_debug(debug, &ast);
     Ok(())
@@ -46,9 +46,8 @@ fn print_debug(debug: bool, ast: &Ast) {
         return;
     }
     let mut out = BufWriter::new(stdout().lock());
-    serde_json::to_writer_pretty(&mut out,
-                                 &DebugInfo { ast: &ast }).unwrap();
-    out.write(&[b'\n']).unwrap();
+    serde_json::to_writer_pretty(&mut out, &DebugInfo { ast }).unwrap();
+    out.write_all(&[b'\n']).unwrap();
     out.flush().unwrap()
 }
 

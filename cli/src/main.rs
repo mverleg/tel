@@ -5,9 +5,9 @@ use ::std::path::PathBuf;
 use ::clap::Parser;
 use ::clap::Subcommand;
 
-use ::steel::BuildArgs;
 use ::steel::steel_build;
 use ::steel::steel_build_str;
+use ::steel::BuildArgs;
 
 #[derive(Parser, Debug)]
 #[command(name = "steel")]
@@ -69,18 +69,19 @@ fn main() {
                 (None, true) => read_source_from_stdin(),
                 _ => panic!("must provide either a source string, or --stdin to read input from standard input"),  // TODO @mark: error handling
             };
-            steel_build_str(PathBuf::from("script-input"), &code, script_args.debug).unwrap();  // TODO @mark: error handling
-            eprintln!("built successfully, cannot run yet");  //TODO @mark: impl
+            steel_build_str(PathBuf::from("script-input"), &code, script_args.debug).unwrap(); // TODO @mark: error handling
+            eprintln!("built successfully, cannot run yet"); //TODO @mark: impl
             Ok(())
-        },
+        }
     }
     .unwrap() //TODO @mark: do not unwrap
 }
 
 fn read_source_from_stdin() -> String {
     let mut source = String::with_capacity(1024);
-    let read = io::stdin().read_to_string(&mut source)
-        .expect("could not read stdin");  //TODO @mark: error handling
-    assert!(read > 0, "expected stdin to contain input");  //TODO @mark: error handling
+    let read = io::stdin()
+        .read_to_string(&mut source)
+        .expect("could not read stdin"); //TODO @mark: error handling
+    assert!(read > 0, "expected stdin to contain input"); //TODO @mark: error handling
     source
 }
