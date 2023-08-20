@@ -1,6 +1,7 @@
 #![allow(unused)] //TODO @mark: TEMPORARY! REMOVE THIS!
 
 use ::std::path::PathBuf;
+use std::path::Path;
 
 use ::lalrpop_util::lalrpop_mod;
 
@@ -16,6 +17,7 @@ lalrpop_mod!(#[allow(clippy::all)] gen_parser, "/grammar.rs");
 include!(concat!(env!("OUT_DIR"), "/parse_tests.rs"));
 
 pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<Ast, SteelErr> {
+    fail_if_no_newline_at_end(&src_pth, code)?;
     let parser = gen_parser::ProgParser::new();
     let res = parser.parse(code);
     match res {
@@ -33,6 +35,41 @@ pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<Ast, SteelErr> {
         }
     }
     //TODO @mark: no unwrap
+}
+
+fn fail_if_no_newline_at_end(src_pth: &Path, code: &str) -> Result<(), SteelErr> {
+    if count_empty_lines_at_end(code) == 0 {
+        return Err(SteelErr::ParseErr {
+            file: src_pth.to_owned(),
+            line: code.lines().count(),
+            //TODO @mark:  test ^
+            msg: "Source files must have an empty line at the end".to_string(),
+        })
+    }
+    Ok(())
+}
+
+fn count_empty_lines_at_end(text: &str) -> usize {
+    let text = text.as_bytes();
+    let mut lines = 0;
+    let mut i = text.len() - 1;
+    while i > 0 {
+        while i > 0 && [b' ', b'\t'].contains(&text[i]) {
+            i -= 1;
+        }
+        if text[i] == b'\n' {
+            lines += 1;
+        } else if text[i] == b'\r' {
+            lines += 1;
+            if i > 0 && text[i - 1] == b'\n' {
+                i -= 1;
+            }
+        } else {
+            break
+        }
+        i -= 1;
+    }
+    lines
 }
 
 #[cfg(test)]
@@ -67,6 +104,11 @@ mod bugs {
     #[test]
     fn semicolon_between_statements_no_newline() {
         parse_str(PathBuf::new(), "a=1;b").unwrap();
+    }
+
+    #[test]
+    fn short_closure_no_newline_at_eof() {
+        parse_str(PathBuf::new(), "x\\0").unwrap();
     }
 
     #[test]

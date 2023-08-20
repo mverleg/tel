@@ -1,9 +1,8 @@
+use:: serde::Serializer;
+use ::serde::Serialize;
 use ::smartstring::alias::String as SString;
 
 use ::steel_api::log::debug;
-
-use ::serde::Serialize;
-use serde::Serializer;
 
 #[derive(Debug, Serialize)]
 pub struct Ast {
