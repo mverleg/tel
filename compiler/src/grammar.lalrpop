@@ -144,7 +144,7 @@ Single<B, P>: Expr = {
 }
 
 InvokeExpr<B, P>: Invoke = {
-    <iden:Iden> "(" B <args:Comma<Expression<B, P>, B>> ")"  <λ:MidClosure<B, P>?> => Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
+    <iden:Iden> "(" B <args:Comma<Expression<B, P>, B>> ")"  <λ:TrailingClosure?> => Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
     <iden:Iden> <λ:TrailingClosure?> => Invoke { iden, args: vec_and(vec![], λ.map(|f| Expr::Closure(f))) },
 }
 
