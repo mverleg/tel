@@ -1,9 +1,9 @@
 extern crate lalrpop;
 
 use ::std::env;
+use ::std::fmt::Write;
 use ::std::fs;
 use ::std::path::PathBuf;
-use ::std::fmt::Write;
 
 fn main() {
     println!("cargo:rerun-if-changed=./build.rs");

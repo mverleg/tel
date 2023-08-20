@@ -1,3 +1,5 @@
+use ::smallvec::smallvec;
+use ::smallvec::SmallVec;
 use ::std::str::FromStr;
 
 use crate::ast::AssignmentDest;
@@ -10,6 +12,7 @@ use crate::ast::Closure;
 use crate::ast::Enum;
 use crate::ast::EnumVariant;
 use crate::ast::Expr;
+use crate::ast::Field;
 use crate::ast::Identifier;
 use crate::ast::Invoke;
 use crate::ast::Struct;
@@ -124,8 +127,10 @@ Single: Expr = {
 }
 
 InvokeExpr: Invoke = {
-    <iden:Iden> "(" MayBreak <args:Comma<Expression>> ")"  <λ:MidClosure?> => Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
-    <iden:Iden> <λ:MidClosure?> => Invoke { iden, args: vec_and(vec![], λ.map(|f| Expr::Closure(f))) },
+    <iden:Iden> "(" MayBreak <args:Comma<Expression>> ")"  <λ:MidClosure?> =>
+        Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
+    <iden:Iden> <λ:MidClosure?> =>
+        Invoke { iden, args: vec_and(smallvec![], λ.map(|f| Expr::Closure(f))) },
     //TODO @mark: can short closures be trailing? `TrailingClosure`
 }
 
@@ -154,18 +159,18 @@ EnumVariant: EnumVariant = {
 }
 
 //TODO @mark: is type inference possible in this context?
-FieldDecl: (Identifier, Type) = {
+FieldDecl: Field = {
     <n:Iden> ":" MayBreak <t:TypeUse> => (n, t),
 }
 
 Assigns: Assignments = {
     <ds:AssignDestEq+> <e:Expression> => Assignments {
-            dest: { ds },
+            dest: ds.into(),
             op: None,
             value: Box::new(e),
     },
     <d:UntypedAssignDest> <op:AssignModifier> <e:Expression> => Assignments {
-        dest: { vec![d] },
+        dest: { smallvec![d] },
         op: Some(op),
         value: Box::new(e),
     },
@@ -257,16 +262,16 @@ GenericList: Vec<AssignmentDest> = {
 }
 
 TypeUse: Type = {
-    <iden:Iden> <gen:("[" <Comma<TypeUse>> "]")?> => Type { iden, generics: gen.unwrap_or_else(|| vec![]), },
+    <iden:Iden> <gen:("[" <Comma<TypeUse>> "]")?> => Type { iden, generics: gen.unwrap_or_else(|| smallvec![]), },
 }
 
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
 
-Comma<T>: Vec<T> = {
+Comma<T>: Vec<[T; N]> = {
     <mut v:(<T> "," MayBreak)*> <e:T> ","? MayBreak => vec_and(v, Some(e)),
-    () => Vec::new(),
+    () => SmallVec::new(),
 }
 
-Statements<T>: Vec<T> = {
+Statements<T>: SmallVec<[T; _]> = {
     <mut v:(<T> End)*> <e:T?> => vec_and(v, e)
 }

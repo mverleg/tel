@@ -1,16 +1,19 @@
 #![feature(lazy_cell)]
 
 use ::std::fs;
+use ::std::io::BufWriter;
+use ::std::io::stdout;
+use ::std::io::Write;
 use ::std::path::Path;
 use ::std::path::PathBuf;
-use std::io::{BufWriter, stdout, Write};
+
+use ::serde::Serialize;
+use ::serde_json;
 
 use ::steel_api::log::debug;
 use ::steel_api::log::warn;
-use ::serde::Serialize;
-use ::serde_json;
-use crate::ast::Ast;
 
+use crate::ast::Ast;
 use crate::parser::parse_str;
 
 mod ast;

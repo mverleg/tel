@@ -1,9 +1,10 @@
+use ::serde::Serialize;
+use ::serde::Serializer;
+use ::smallvec::SmallVec;
 use ::smartstring::alias::String as SString;
+use ::smallvec;
 
 use ::steel_api::log::debug;
-
-use ::serde::Serialize;
-use serde::Serializer;
 
 #[derive(Debug, Serialize)]
 pub struct Ast {
@@ -84,9 +85,9 @@ impl Identifier {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Type {
-    //TODO @mark:
     pub iden: Identifier,
-    pub generics: Vec<Type>,
+    /// no SmallVec because it would require boxing every Type
+    pub generics: Vec<[Type; 1]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -110,9 +111,7 @@ pub enum Block {
 // even without mut and type, it can be a declaration (with inferred type)
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Assignments {
-    //pub dest: TinyVec<[AssignmentDest; 1]>,
-    //TODO @mark: ^
-    pub dest: Vec<AssignmentDest>,
+    pub dest: SmallVec<[AssignmentDest; 1]>,
     pub op: Option<BinOpCode>,
     pub value: Box<Expr>,
 }
@@ -157,14 +156,14 @@ pub enum Expr {
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Invoke {
     pub iden: Identifier,
-    //TODO @mark: to smallvec or something:
+    /// no SmallVec because it would require boxing every Expr
     pub args: Vec<Expr>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Closure {
-    pub blocks: Vec<Block>,
-    pub params: Vec<AssignmentDest>,
+    pub blocks: SmallVec<[Box<Block>; 2]>,
+    pub params: SmallVec<[AssignmentDest; 1]>,
     /// Caching is only possible for zero-param closures, including no 'it'
     pub is_cache: bool,
 }
@@ -172,8 +171,15 @@ pub struct Closure {
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Struct {
     pub iden: Identifier,
-    pub fields: Vec<(Identifier, Type)>,
+    pub fields: SmallVec<[Field; 2]>,
     pub generics: Vec<AssignmentDest>,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+pub struct Field {
+    iden: Identifier,
+    typ: Type,
+    //TODO @mark: optional type, for inference? ^
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -190,7 +196,7 @@ pub enum EnumVariant {
     Existing(Type),
 }
 
-pub fn vec_and<T>(mut items: Vec<T>, addition: Option<T>) -> Vec<T> {
+pub fn vec_and<T: smallvec::Array>(mut items: SmallVec<T>, addition: Option<T>) -> SmallVec<T> {
     if let Some(addition) = addition {
         items.push(addition);
     }
