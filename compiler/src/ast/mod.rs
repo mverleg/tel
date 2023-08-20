@@ -2,12 +2,15 @@ use ::smartstring::alias::String as SString;
 
 use ::steel_api::log::debug;
 
-#[derive(Debug)]
+use ::serde::Serialize;
+use serde::Serializer;
+
+#[derive(Debug, Serialize)]
 pub struct Ast {
     pub blocks: Vec<Block>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum BinOpCode {
     Add,
     Sub,
@@ -24,15 +27,22 @@ pub enum BinOpCode {
     Xor,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum UnaryOpCode {
     Not,
     Min,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+//TODO @mark: serialize as string
 pub struct Identifier {
     name: SString,
+}
+
+impl Serialize for Identifier {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        serializer.serialize_str(&self.name)
+    }
 }
 
 impl Identifier {
@@ -72,14 +82,14 @@ impl Identifier {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Type {
     //TODO @mark:
     pub iden: Identifier,
     pub generics: Vec<Type>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum AssignmentKw {
     None,
     Mut,
@@ -89,7 +99,7 @@ pub enum AssignmentKw {
     Local,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum Block {
     Assigns(Assignments),
     Expression(Expr),
@@ -98,7 +108,7 @@ pub enum Block {
 }
 
 // even without mut and type, it can be a declaration (with inferred type)
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Assignments {
     //pub dest: TinyVec<[AssignmentDest; 1]>,
     //TODO @mark: ^
@@ -108,7 +118,7 @@ pub struct Assignments {
 }
 
 // even without mut and type, it can be a declaration (with inferred type)
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct AssignmentDest {
     pub kw: AssignmentKw,
     pub target: Identifier,
@@ -127,7 +137,7 @@ impl Default for AssignmentDest {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum Expr {
     Num(f64),
     Text(SString),
@@ -144,14 +154,14 @@ pub enum Expr {
 
 /// Can be a variable read or a function call. A function call without () cannot be differentiated from
 /// a function call by the parser, this must be done later.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Invoke {
     pub iden: Identifier,
     //TODO @mark: to smallvec or something:
     pub args: Vec<Expr>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Closure {
     pub blocks: Vec<Block>,
     pub params: Vec<AssignmentDest>,
@@ -159,21 +169,21 @@ pub struct Closure {
     pub is_cache: bool,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Struct {
     pub iden: Identifier,
     pub fields: Vec<(Identifier, Type)>,
     pub generics: Vec<AssignmentDest>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Enum {
     pub iden: Identifier,
     pub variants: Vec<EnumVariant>,
     pub generics: Vec<AssignmentDest>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum EnumVariant {
     Struct(Struct),
     Enum(Enum),

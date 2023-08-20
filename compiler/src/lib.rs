@@ -3,6 +3,7 @@
 use ::std::fs;
 use ::std::path::Path;
 use ::std::path::PathBuf;
+use std::io::{BufWriter, stdout};
 
 use ::steel_api::log::debug;
 use ::steel_api::log::warn;
@@ -37,7 +38,9 @@ pub fn steel_build_str(path: PathBuf, source: &str, debug: bool) -> Result<(), S
     let ast = parse_str(path, &source)?;
     debug!("{:?}", ast);
     if debug {
-        serde_json::to_string(&DebugInfo { ast: &ast }).unwrap();
+        serde_json::to_writer_pretty(
+            &mut BufWriter::new(stdout().lock()),
+            &DebugInfo { ast: &ast }).unwrap();
     }
     Ok(())
 }
