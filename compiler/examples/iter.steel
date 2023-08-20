@@ -1,6 +1,6 @@
 
 total = primes().iter()
     .take(10)
-    .map({ -2 * it })
+    .map(\ -2 * it )
     .sum()
 (-total).print

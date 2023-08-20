@@ -225,9 +225,10 @@ UnaryOp: UnaryOpCode = {
 /// Simple closures can use `\ 2 * it` or `{\ 2 * it }` syntax, but full `fun` syntax is needed for explicit captures, return, generics, fun kinds, etc
 ClosureExpr: Closure = {
     // With explicit {}, implicit capture and implicit args
-    "{" MayBreak <bs:Statements<BlockNode>> "}" => Closure { blocks: bs, params: vec![], },
-    "fun" "(" MayBreak <params:ParamList> ")" <ret:(":" <TypeUse>)?> MayBreak
-        "{" MayBreak <blocks:Statements<BlockNode>> "}" => Closure { blocks, params, },
+    "{" <params:ParamList> <c:r"(\\|\\\\)"> MayBreak <bs:Statements<BlockNode>> "}" =>
+        Closure { blocks: bs, params, is_cache: c == r"\\" },
+    "fun" "(" MayBreak <params:ParamList> ")" <ret:(":" <TypeUse>)?> MayBreak "{" MayBreak <blocks:Statements<BlockNode>> "}" =>
+        Closure { blocks, params, is_cache: false },
 }
 
 ParamList: Vec<AssignmentDest> = {

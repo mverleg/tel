@@ -155,6 +155,8 @@ pub struct Invoke {
 pub struct Closure {
     pub blocks: Vec<Block>,
     pub params: Vec<AssignmentDest>,
+    /// Caching is only possible for zero-param closures, including no 'it'
+    pub is_cache: bool,
 }
 
 #[derive(Debug, PartialEq)]
