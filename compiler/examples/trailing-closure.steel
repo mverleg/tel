@@ -1,0 +1,22 @@
+
+with_args(1, 2) {
+    "with_args closure".print
+}
+
+with_parens() {
+    "with_parens closure".print
+}
+
+without_parens() {
+    "without_parens closure".print
+}
+
+nrs = [1, 2]
+capture() {
+    "capture closure".print
+    nrs.add(3)
+}
+nrs.print
+
+// TODO @mark: in combination with keyword args, lambda should be last positional one?
+
