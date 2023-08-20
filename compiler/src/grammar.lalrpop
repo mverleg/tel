@@ -125,8 +125,7 @@ Single: Expr = {
 
 InvokeExpr: Invoke = {
     <iden:Iden> "(" MayBreak <args:Comma<Expression>> ")"  <λ:MidClosure?> => Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
-    <iden:Iden> <λ:MidClosure?> => Invoke { iden, args: vec_and(vec![], λ.map(|f| Expr::Closure(f))) },
-    //TODO @mark: can short closures be trailing? `TrailingClosure`
+    <iden:Iden> <λ:TrailingClosure?> => Invoke { iden, args: vec_and(vec![], λ.map(|f| Expr::Closure(f))) },
 }
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
@@ -246,7 +245,8 @@ LongClosure: Closure = {
         Closure { blocks, params, is_cache: false },
 }
 
-TrailingClosure: Closure = { ShortClosure, MidClosure }
+TrailingClosure: Closure = { <ShortClosure> NEWLINE , MidClosure }
+//TODO @mark: this is a bit weird, the only case where a newline is required but cannot be replaced by ; or something eles
 
 ParamList: Vec<AssignmentDest> = {
     <Comma<AssignDest>>,
