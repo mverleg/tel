@@ -16,6 +16,7 @@ pub enum BinOpCode {
     Sub,
     Mul,
     Div,
+    Modulo,
     Eq,
     Neq,
     Lt,
