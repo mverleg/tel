@@ -77,8 +77,7 @@ Expression: Expr = {
 }
 
 ShortClosureExpr: Expr = {
-    <c:r"(\\|\\\\)"> MayBreak <e:Expression> =>
-        Expr::Closure(Closure { blocks: vec![Block::Expression(e)], params: vec![], is_cache: c == r"\\" }),
+    <ShortClosure> => Expr::Closure(<>),
     BoolCombineExpr,
 }
 
@@ -119,7 +118,8 @@ Single: Expr = {
     <s:SQSTR> => Expr::Text(s.to_string().into()),
     NumLit => Expr::Num(<>),
     <inv:InvokeExpr> => Expr::Invoke(inv),
-    <λ:ClosureExpr> => Expr::Closure(λ),
+    <λ:MidClosure> => Expr::Closure(λ),
+    <λ:LongClosure> => Expr::Closure(λ),
     "(" MayBreak <e:ShortClosureExpr> ")" => e,
 }
 
@@ -228,10 +228,18 @@ UnaryOp: UnaryOpCode = {
     "-" => UnaryOpCode::Min,
 }
 
-/// Simple closures can use `\ 2 * it` or `{\ 2 * it }` syntax, but full `fun` syntax is needed for explicit captures, return, generics, fun kinds, etc
-ClosureExpr: Closure = {
+ShortClosure: Closure = {
+    <c:r"(\\|\\\\)"> MayBreak <e:Expression> =>
+        Closure { blocks: vec![Block::Expression(e)], params: vec![], is_cache: c == r"\\" },
+}
+
+MidClosure: Closure = {
     "{" <params:ParamList> <c:r"(\\|\\\\)"> MayBreak <bs:Statements<BlockNode>> "}" =>
         Closure { blocks: bs, params, is_cache: c == r"\\" },
+}
+
+/// Simple closures can use `\ 2 * it` or `{\ 2 * it }` syntax, but full `fun` syntax is needed for explicit captures, return, generics, fun kinds, etc
+LongClosure: Closure = {
     "fun" "(" MayBreak <params:ParamList> ")" <ret:(":" <TypeUse>)?> MayBreak "{" MayBreak <blocks:Statements<BlockNode>> "}" =>
         Closure { blocks, params, is_cache: false },
 }
