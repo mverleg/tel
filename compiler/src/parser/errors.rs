@@ -104,13 +104,14 @@ fn source_line_col(code: &str, start: usize) -> (usize, usize) {
 }
 
 fn source_loc_repr(code: &str, err_line: usize, err_col: usize, len: usize) -> String {
+    let err_line_ix = if err_line > 0 { err_line - 1 } else { err_line };
     assert!(len >= 1);
     let mut locator = String::with_capacity(160);
     for (line_nr, line) in code.lines().enumerate() {
-        if line_nr + 2 > err_line {
+        if line_nr + 2 > err_line_ix {
             writeln!(locator, "{:3} | {}", line_nr + 1, line).unwrap();
         }
-        if line_nr == err_line {
+        if line_nr == err_line_ix + 1 {
             let end_loc = if len > 1 {
                 format!("-{}", err_col + len)
             } else {
@@ -126,7 +127,7 @@ fn source_loc_repr(code: &str, err_line: usize, err_col: usize, len: usize) -> S
             )
             .unwrap();
         }
-        if line_nr > err_line + 2 {
+        if line_nr > err_line_ix + 2 {
             break;
         }
     }
