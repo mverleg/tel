@@ -222,7 +222,7 @@ UnaryOp: UnaryOpCode = {
     "-" => UnaryOpCode::Min,
 }
 
-/// Simple closures can use { 2 * it } syntax, but full `fun` syntax is needed for explicit captures, return, generics, fun kinds, etc
+/// Simple closures can use `\ 2 * it` or `{\ 2 * it }` syntax, but full `fun` syntax is needed for explicit captures, return, generics, fun kinds, etc
 ClosureExpr: Closure = {
     // With explicit {}, implicit capture and implicit args
     "{" MayBreak <bs:Statements<BlockNode>> "}" => Closure { blocks: bs, params: vec![], },
