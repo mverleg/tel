@@ -16,6 +16,7 @@ use crate::ast::Invoke;
 use crate::ast::Struct;
 use crate::ast::Type;
 use crate::ast::UnaryOpCode;
+use crate::ast::vec_and;
 
 grammar;
 
@@ -124,8 +125,9 @@ Single: Expr = {
 }
 
 InvokeExpr: Invoke = {
-    <iden:Iden> "(" MayBreak <args:Comma<Expression>> ")" => Invoke { iden, args },
-    <iden:Iden> <λ:TrailingClosure?> => Invoke { iden, args: match λ { Some(f) => vec![f], None => vec![] } },
+    <iden:Iden> "(" MayBreak <args:Comma<Expression>> ")"  <λ:MidClosure?> => Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
+    <iden:Iden> <λ:MidClosure?> => Invoke { iden, args: vec_and(vec![], λ.map(|f| Expr::Closure(f))) },
+    //TODO @mark: can short closures be trailing? `TrailingClosure`
 }
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
@@ -262,18 +264,10 @@ TypeUse: Type = {
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
 
 Comma<T>: Vec<T> = {
-    <mut v:(<T> "," MayBreak)*> <e:T> ","? MayBreak => {
-        v.push(e);
-        v
-    },
+    <mut v:(<T> "," MayBreak)*> <e:T> ","? MayBreak => vec_and(v, Some(e)),
     () => Vec::new(),
 }
 
 Statements<T>: Vec<T> = {
-    <mut v:(<T> End)*> <e:T?> => {
-        if let Some(f) = e {
-            v.push(f);
-        }
-        v
-    }
+    <mut v:(<T> End)*> <e:T?> => vec_and(v, e)
 }
