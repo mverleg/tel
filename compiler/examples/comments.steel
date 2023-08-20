@@ -2,9 +2,12 @@
 # comment
 total = items  # comment
     ## comment
-    .filter \ it % 2 == 0  # comment
-    .map ...  # comment
-        \  # comment
+    .filter {\ it % 2 == 0 } # comment
+#    .map ...  # comment
+#        \  # comment
+#         -2 * it  # comment
+# TODO @mark: ^
+    .map \  # comment
          -2 * it  # comment
     # comment
     .take(  # comment

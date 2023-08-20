@@ -68,4 +68,9 @@ mod bugs {
     fn semicolon_between_statements_no_newline() {
         parse_str(PathBuf::new(), "a=1;b").unwrap();
     }
+
+    #[test]
+    fn short_closure_assign() {
+        parse_str(PathBuf::new(), "a=\\2*it;b=x\\7\nc=y\\-it").unwrap();
+    }
 }
