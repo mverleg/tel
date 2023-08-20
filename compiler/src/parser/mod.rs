@@ -16,17 +16,20 @@ mod errors;
 lalrpop_mod!(#[allow(clippy::all)] gen_parser, "/grammar.rs");
 include!(concat!(env!("OUT_DIR"), "/parse_tests.rs"));
 
-pub fn parse_str(src_pth: PathBuf, code: &str) -> Result<Ast, SteelErr> {
-    fail_if_no_newline_at_end(&src_pth, code)?;
+pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<Ast, SteelErr> {
+    if count_empty_lines_at_end(&code) == 0 {
+        code.push('\n')
+    }
+    fail_if_no_newline_at_end(&src_pth, &code)?;
     let parser = gen_parser::ProgParser::new();
-    let res = parser.parse(code);
+    let res = parser.parse(&code);
     match res {
         Ok(ast) => {
             debug!("ast: {:?}", &ast);
             Ok(ast)
         }
         Err(err) => {
-            let (msg, line) = build_error(err, src_pth.to_str().unwrap(), code);
+            let (msg, line) = build_error(err, src_pth.to_str().unwrap(), &code);
             Err(SteelErr::ParseErr {
                 file: src_pth,
                 line,
@@ -76,43 +79,52 @@ fn count_empty_lines_at_end(text: &str) -> usize {
 mod bugs {
     use super::*;
 
+    fn parse(code: &str) -> Result<Ast, SteelErr> {
+        parse_str(PathBuf::new(), code.to_owned())
+    }
+
     #[test]
     fn test_newline_with_indent() {
-        parse_str(PathBuf::new(), "(1)+\n 2").unwrap();
+        parse("(1)+\n 2").unwrap();
     }
 
     #[test]
     fn test_double_close_parentheses() {
-        assert!(parse_str(PathBuf::new(), "(1)+\n 2)").is_err());
+        assert!(parse("(1)+\n 2)").is_err());
     }
 
     #[test]
     fn empty_struct() {
-        parse_str(PathBuf::new(), "struct D {\n}").unwrap();
+        parse("struct D {\n}").unwrap();
     }
 
     #[test]
     fn nullary_function_with_parentheses() {
-        parse_str(PathBuf::new(), "f()").unwrap();
+        parse("f()").unwrap();
     }
 
     #[test]
     fn semicolon_at_end_of_file() {
-        parse_str(PathBuf::new(), "a=1;").unwrap();
+        parse("a=1;").unwrap();
     }
 
     #[test]
     fn semicolon_between_statements_no_newline() {
-        parse_str(PathBuf::new(), "a=1;b").unwrap();
+        parse("a=1;b").unwrap();
     }
 
     #[test]
     fn short_closure_no_newline_at_eof() {
-        parse_str(PathBuf::new(), "x\\0").unwrap();
+        parse("x\\0").unwrap();
     }
 
     #[test]
     fn short_closure_assign() {
-        parse_str(PathBuf::new(), "a=\\2*it;b=x\\7\nc=y\\-it").unwrap();
+        parse("a=\\2*it;b=x\\7\nc=y\\-it").unwrap();
+    }
+
+    #[test]
+    fn works_without_trailing_newline() {
+        parse("5+\n5").unwrap();
     }
 }

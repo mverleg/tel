@@ -39,7 +39,7 @@ fn parse_{name}() {{
     let pth = PathBuf::from(\"{pth_str}\");
     let code = read_to_string(&pth).unwrap();
     // parse_str should be available in the context where this is included
-    let res = parse_str(pth, &code);
+    let res = parse_str(pth, code);
     if let Err(SteelErr::ParseErr {{ msg, .. }}) = &res {{
         eprintln!(\"Failed to parse example file {pth_str}:\\n{{}}\", msg);
     }}

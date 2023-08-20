@@ -26,7 +26,7 @@ pub fn steel_build(args: &BuildArgs) -> Result<(), SteelErr> {
     let path = find_main_file(&args.path)?;
     let source = fs::read_to_string(&path)
         .map_err(|err| SteelErr::CouldNotRead(path.clone(), err.to_string()))?;
-    steel_build_str(path, &source, false)
+    steel_build_str(path, source, false)
 }
 
 #[derive(Debug, Serialize)]
@@ -34,8 +34,8 @@ struct DebugInfo<'a> {
     ast: &'a Ast,
 }
 
-pub fn steel_build_str(path: PathBuf, source: &str, debug: bool) -> Result<(), SteelErr> {
-    let ast = parse_str(path, source)?;
+pub fn steel_build_str(path: PathBuf, code: String, debug: bool) -> Result<(), SteelErr> {
+    let ast = parse_str(path, code)?;
     debug!("{:?}", ast);
     print_debug(debug, &ast);
     Ok(())

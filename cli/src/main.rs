@@ -69,7 +69,7 @@ fn main() {
                 (None, true) => read_source_from_stdin(),
                 _ => panic!("must provide either a source string, or --stdin to read input from standard input"),  // TODO @mark: error handling
             };
-            steel_build_str(PathBuf::from("script-input"), &code, script_args.debug).unwrap(); // TODO @mark: error handling
+            steel_build_str(PathBuf::from("script-input"), code, script_args.debug).unwrap(); // TODO @mark: error handling
             eprintln!("built successfully, cannot run yet"); //TODO @mark: impl
             Ok(())
         }
