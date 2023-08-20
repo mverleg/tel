@@ -125,7 +125,7 @@ Single: Expr = {
 
 InvokeExpr: Invoke = {
     <iden:Iden> "(" MayBreak <args:Comma<Expression>> ")" => Invoke { iden, args },
-    <iden:Iden> => Invoke { iden, args: vec![] },
+    <iden:Iden> <λ:TrailingClosure?> => Invoke { iden, args: match λ { Some(f) => vec![f], None => vec![] } },
 }
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
@@ -233,6 +233,7 @@ ShortClosure: Closure = {
         Closure { blocks: vec![Block::Expression(e)], params: vec![], is_cache: c == r"\\" },
 }
 
+//TODO @mark: rename closure types
 MidClosure: Closure = {
     "{" <params:ParamList> <c:r"(\\|\\\\)"> MayBreak <bs:Statements<BlockNode>> "}" =>
         Closure { blocks: bs, params, is_cache: c == r"\\" },
@@ -243,6 +244,8 @@ LongClosure: Closure = {
     "fun" "(" MayBreak <params:ParamList> ")" <ret:(":" <TypeUse>)?> MayBreak "{" MayBreak <blocks:Statements<BlockNode>> "}" =>
         Closure { blocks, params, is_cache: false },
 }
+
+TrailingClosure: Closure = { ShortClosure, MidClosure }
 
 ParamList: Vec<AssignmentDest> = {
     <Comma<AssignDest>>,
