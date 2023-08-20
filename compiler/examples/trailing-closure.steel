@@ -1,18 +1,34 @@
 
-with_args(1, 2) {
+inside_short(1, \ "inside_short closure".print)
+
+inside_short_cached(1, \\ "inside_short_cached closure".print)
+
+inside_short_args(1, x \\ "inside_short_args closure {x}".print)
+
+inside_medium(1, { \ "inside_medium closure".print })
+
+inside_medium_cached(1, { \\ "inside_medium_cached closure".print })
+
+inside_medium_args(1, { x: int \\ "inside_medium_args closure {x}".print })
+
+inside_long(1, fn() { "inside_long closure".print })
+
+inside_long_args(1, fn(x: int) { "inside_long_args closure {x}".print })
+
+target_has_args(1, 2) {\
     "with_args closure".print
 }
 
-with_parens() {
+target_has_parens() {\
     "with_parens closure".print
 }
 
-without_parens() {
+target_has_no_parens {\
     "without_parens closure".print
 }
 
 nrs = [1, 2]
-capture() {
+capture() {\
     "capture closure".print
     nrs.add(3)
 }
