@@ -1,0 +1,14 @@
+
+# comment
+total = items  # comment
+    ## comment
+    .filter \ it % 2 == 0  # comment
+    .map ...  # comment
+        \  # comment
+         -2 * it  # comment
+    # comment
+    .take(  # comment
+        99)  # comment
+    .sum()  # comment # comment
+# comment
+
