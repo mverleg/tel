@@ -65,35 +65,35 @@ BlockNode: Block = {
     <d:StructDecl> => Block::Struct(d),
     <d:EnumDecl> => Block::Enum(d),
     <a:Assigns> => Block::Assigns(a),
-    <e:Expression> => Block::Expression(e),
+    <e:Expression<MayBreak>> => Block::Expression(e),
 }
 
 // precedence (though some may be warnings for being confusing):
 //   1 + 2 == 3 or 4  => (1 + 2) == (3 or 4)
 //   1 or 2 + 4  =>  1 or (2 + 4)
 //   false or false == false or true  =>  false or (false == false) or true
-Expression: Expr = {
-    ShortClosureExpr
+Expression<B>: Expr = {
+    ShortClosureExpr<B>
 }
 
-ShortClosureExpr: Expr = {
-    <ShortClosure> => Expr::Closure(<>),
-    BoolCombineExpr,
+ShortClosureExpr<B>: Expr = {
+    <ShortClosure<B>> => Expr::Closure(<>),
+    BoolCombineExpr<B>,
 }
 
-BoolCombineExpr: Expr = {
-    <l:BoolCombineExpr> <o:BoolCombineOp> MayBreak <r:BoolCompareExpr> => Expr::BinOp(o, Box::new(l), Box::new(r)),
-    BoolCompareExpr,
+BoolCombineExpr<B>: Expr = {
+    <l:BoolCombineExpr<B>> <o:BoolCombineOp> B <r:BoolCompareExpr<B>> => Expr::BinOp(o, Box::new(l), Box::new(r)),
+    BoolCompareExpr<B>,
 }
 
-BoolCompareExpr: Expr = {
-    <l:BoolCompareExpr> <o:BoolCompareOp> MayBreak <r:AddSubExpr> => Expr::BinOp(o, Box::new(l), Box::new(r)),
-    AddSubExpr,
+BoolCompareExpr<B>: Expr = {
+    <l:BoolCompareExpr<B>> <o:BoolCompareOp> B <r:AddSubExpr<B>> => Expr::BinOp(o, Box::new(l), Box::new(r)),
+    AddSubExpr<B>,
 }
 
-AddSubExpr: Expr = {
-    <l:AddSubExpr> <op:AddSubOp> MayBreak <r:MulDivExpr> => Expr::BinOp(op, Box::new(l), Box::new(r)),
-    MulDivExpr,
+AddSubExpr<B>: Expr = {
+    <l:AddSubExpr<B>> <op:AddSubOp> B <r:MulDivExpr<B>> => Expr::BinOp(op, Box::new(l), Box::new(r)),
+    MulDivExpr<B>,
 }
 
 AddSubOp: BinOpCode = {
@@ -101,9 +101,9 @@ AddSubOp: BinOpCode = {
     <"-"> => BinOpCode::Sub,
 }
 
-MulDivExpr: Expr = {
-    <l:MulDivExpr> <op:MulDivOp> MayBreak <r:DotExpr> => Expr::BinOp(op, Box::new(l), Box::new(r)),
-    DotExpr,
+MulDivExpr<B>: Expr = {
+    <l:MulDivExpr<B>> <op:MulDivOp> B <r:DotExpr<B>> => Expr::BinOp(op, Box::new(l), Box::new(r)),
+    DotExpr<B>,
 }
 
 MulDivOp: BinOpCode = {
@@ -112,28 +112,29 @@ MulDivOp: BinOpCode = {
     <"%"> => BinOpCode::Modulo,
 }
 
-DotExpr: Expr = {
-    <e:DotExpr> PERIOD <inv:InvokeExpr> => Expr::Dot(Box::new(e), inv),
-    UnaryExpr,
+DotExpr<B>: Expr = {
+    //TODO @mark: this is a problem with short lambdas: PERIOD may always have a newline independent of B
+    <e:DotExpr<B>> PERIOD <inv:InvokeExpr<B>> => Expr::Dot(Box::new(e), inv),
+    UnaryExpr<B>,
 }
 
-UnaryExpr: Expr = {
-    <op:UnaryOp> <e:Single> => Expr::UnaryOp(op, Box::new(e)),
-    Single,
+UnaryExpr<B>: Expr = {
+    <op:UnaryOp> <e:Single<B>> => Expr::UnaryOp(op, Box::new(e)),
+    Single<B>,
 }
 
-Single: Expr = {
+Single<B>: Expr = {
     <s:DQSTR> => Expr::Text(s.to_string().into()),
     <s:SQSTR> => Expr::Text(s.to_string().into()),
     NumLit => Expr::Num(<>),
-    <inv:InvokeExpr> => Expr::Invoke(inv),
-    <λ:MidClosure> => Expr::Closure(λ),
-    <λ:LongClosure> => Expr::Closure(λ),
-    "(" MayBreak <e:ShortClosureExpr> ")" => e,
+    <inv:InvokeExpr<B>> => Expr::Invoke(inv),
+    <λ:MidClosure<B>> => Expr::Closure(λ),
+    <λ:LongClosure<B>> => Expr::Closure(λ),
+    "(" B <e:ShortClosureExpr<B>> ")" => e,
 }
 
-InvokeExpr: Invoke = {
-    <iden:Iden> "(" MayBreak <args:Comma<Expression>> ")"  <λ:MidClosure?> => Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
+InvokeExpr<B>: Invoke = {
+    <iden:Iden> "(" B <args:Comma<Expression<B>>> ")"  <λ:MidClosure<B>?> => Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
     <iden:Iden> <λ:TrailingClosure?> => Invoke { iden, args: vec_and(vec![], λ.map(|f| Expr::Closure(f))) },
 }
 
@@ -167,12 +168,12 @@ FieldDecl: (Identifier, Type) = {
 }
 
 Assigns: Assignments = {
-    <ds:AssignDestEq+> <e:Expression> => Assignments {
+    <ds:AssignDestEq+> <e:Expression<MayBreak>> => Assignments {
             dest: { ds },
             op: None,
             value: Box::new(e),
     },
-    <d:UntypedAssignDest> <op:AssignModifier> <e:Expression> => Assignments {
+    <d:UntypedAssignDest> <op:AssignModifier> <e:Expression<MayBreak>> => Assignments {
         dest: { vec![d] },
         op: Some(op),
         value: Box::new(e),
@@ -237,24 +238,24 @@ UnaryOp: UnaryOpCode = {
     "-" => UnaryOpCode::Min,
 }
 
-ShortClosure: Closure = {
-    <c:r"(\\|\\\\)"> MayBreak <e:Expression> =>
+ShortClosure<B>: Closure = {
+    <c:r"(\\|\\\\)"> B <e:Expression<B>> =>
         Closure { blocks: vec![Block::Expression(e)], params: vec![], is_cache: c == r"\\" },
 }
 
 //TODO @mark: rename closure types
-MidClosure: Closure = {
-    "{" <params:ParamList> <c:r"(\\|\\\\)"> MayBreak <bs:Statements<BlockNode>> "}" =>
+MidClosure<B>: Closure = {
+    "{" <params:ParamList> <c:r"(\\|\\\\)"> B <bs:Statements<BlockNode>> "}" =>
         Closure { blocks: bs, params, is_cache: c == r"\\" },
 }
 
 /// Simple closures can use `\ 2 * it` or `{\ 2 * it }` syntax, but full `fun` syntax is needed for explicit captures, return, generics, fun kinds, etc
-LongClosure: Closure = {
-    "fun" "(" MayBreak <params:ParamList> ")" <ret:(":" <TypeUse>)?> MayBreak "{" MayBreak <blocks:Statements<BlockNode>> "}" =>
+LongClosure<B>: Closure = {
+    "fun" "(" B <params:ParamList> ")" <ret:(":" B <TypeUse>)?> B "{" B <blocks:Statements<BlockNode>> "}" =>
         Closure { blocks, params, is_cache: false },
 }
 
-TrailingClosure: Closure = { <ShortClosure> NEWLINE , MidClosure }
+TrailingClosure: Closure = { <ShortClosure<()>> NEWLINE , MidClosure<()> }
 //TODO @mark: this is a bit weird, the only case where a newline is required but cannot be replaced by ; or something eles
 
 ParamList: Vec<AssignmentDest> = {
