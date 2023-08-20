@@ -134,14 +134,14 @@ Single<B>: Expr = {
 }
 
 InvokeExpr<B>: Invoke = {
-    <iden:Iden> "(" B <args:Comma<Expression<B>>> ")"  <λ:MidClosure<B>?> => Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
+    <iden:Iden> "(" B <args:Comma<Expression<B>, B>> ")"  <λ:MidClosure<B>?> => Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
     <iden:Iden> <λ:TrailingClosure?> => Invoke { iden, args: vec_and(vec![], λ.map(|f| Expr::Closure(f))) },
 }
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
 StructDecl: Struct = {
-    "struct" <n:Iden> <gens:("[" MayBreak <GenericList> "]")?> MayBreak "{" MayBreak <fs:Comma<FieldDecl>> "}" => Struct {
+    "struct" <n:Iden> <gens:("[" MayBreak <GenericList> "]")?> MayBreak "{" MayBreak <fs:Comma<FieldDecl, MayBreak>> "}" => Struct {
         iden: n,
         fields: fs,
         generics: gens.unwrap_or_else(|| vec![]),
@@ -149,7 +149,7 @@ StructDecl: Struct = {
 }
 
 EnumDecl: Enum = {
-    "enum" <n:Iden> <gens:("[" MayBreak <GenericList> "]")?> MayBreak "{" MayBreak <vs:Comma<EnumVariant>> "}" => Enum {
+    "enum" <n:Iden> <gens:("[" MayBreak <GenericList> "]")?> MayBreak "{" MayBreak <vs:Comma<EnumVariant, MayBreak>> "}" => Enum {
         iden: n,
         variants: vs,
         generics: gens.unwrap_or_else(|| vec![]),
@@ -159,12 +159,12 @@ EnumDecl: Enum = {
 EnumVariant: EnumVariant = {
     <StructDecl> => EnumVariant::Struct(<>),
     <EnumDecl> => EnumVariant::Enum(<>),
-    <TypeUse> => EnumVariant::Existing(<>),
+    <TypeUse<MayBreak>> => EnumVariant::Existing(<>),
 }
 
 //TODO @mark: is type inference possible in this context?
 FieldDecl: (Identifier, Type) = {
-    <n:Iden> ":" MayBreak <t:TypeUse> => (n, t),
+    <n:Iden> ":" MayBreak <t:TypeUse<MayBreak>> => (n, t),
 }
 
 Assigns: Assignments = {
@@ -198,7 +198,7 @@ UntypedAssignDest: AssignmentDest = {
 }
 
 TypedAssignDest: AssignmentDest = {
-    <kw:AssignmentKeyword?> <n:Iden> ":" MayBreak <t: TypeUse> => AssignmentDest {
+    <kw:AssignmentKeyword?> <n:Iden> ":" MayBreak <t: TypeUse<MayBreak>> => AssignmentDest {
             kw: kw.unwrap_or(AssignmentKw::None),
             target: n,
             typ: Some(t),
@@ -251,29 +251,29 @@ MidClosure<B>: Closure = {
 
 /// Simple closures can use `\ 2 * it` or `{\ 2 * it }` syntax, but full `fun` syntax is needed for explicit captures, return, generics, fun kinds, etc
 LongClosure<B>: Closure = {
-    "fun" "(" B <params:ParamList> ")" <ret:(":" B <TypeUse>)?> B "{" B <blocks:Statements<BlockNode>> "}" =>
+    "fun" "(" B <params:ParamList> ")" <ret:(":" B <TypeUse<B>>)?> B "{" B <blocks:Statements<BlockNode>> "}" =>
         Closure { blocks, params, is_cache: false },
 }
 
-TrailingClosure: Closure = { <ShortClosure<()>> NEWLINE , MidClosure<()> }
+TrailingClosure: Closure = { <ShortClosure<()>> NEWLINE , MidClosure<MayBreak> }
 //TODO @mark: this is a bit weird, the only case where a newline is required but cannot be replaced by ; or something eles
 
 ParamList: Vec<AssignmentDest> = {
-    <Comma<AssignDest>>,
+    <Comma<AssignDest, MayBreak>>,
 }
 
 GenericList: Vec<AssignmentDest> = {
-    <Comma<AssignDest>>,
+    <Comma<AssignDest, MayBreak>>,
 }
 
-TypeUse: Type = {
-    <iden:Iden> <gen:("[" <Comma<TypeUse>> "]")?> => Type { iden, generics: gen.unwrap_or_else(|| vec![]), },
+TypeUse<B>: Type = {
+    <iden:Iden> <gen:("[" <Comma<TypeUse<B>, B>> "]")?> => Type { iden, generics: gen.unwrap_or_else(|| vec![]), },
 }
 
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
 
-Comma<T>: Vec<T> = {
-    <mut v:(<T> "," MayBreak)*> <e:T> ","? MayBreak => vec_and(v, Some(e)),
+Comma<T, B>: Vec<T> = {
+    <mut v:(<T> "," B)*> <e:T> ","? B => vec_and(v, Some(e)),
     () => Vec::new(),
 }
 
