@@ -15,3 +15,5 @@ enum Produce {
     enum Vegetable {},
     Option[Mushroom],
 }
+
+# TODO @mark: anonymous enums for in arguments? `A | B | C`

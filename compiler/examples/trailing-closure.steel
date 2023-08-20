@@ -29,22 +29,24 @@ target_has_no_parens {\
 
 # long mode cannot be passed in trailing mode
 
-nrs = [1, 2]
+# TODO @mark: enable this after lists implemented
 
-capture_short() \
-    "capture_short closure".print and nrs.add(3)
+#nrs = [1, 2]
 
-capture_medium() {\
-    "capture_medium closure".print
-    nrs.add(4)
-}
+#capture_short() \
+#    "capture_short closure".print and nrs.add(3)
 
-capture_long(fun() {
-    "capture_long closure".print
-    nrs.add(5)
-})
+#capture_medium() {\
+#    "capture_medium closure".print
+#    nrs.add(4)
+#}
 
-nrs.print
+#capture_long(fun() {
+#    "capture_long closure".print
+#    nrs.add(5)
+#})
+
+#nrs.print
 
 # TODO @mark: in combination with keyword args, lambda should be last positional one?
 
