@@ -37,14 +37,19 @@ struct DebugInfo<'a> {
 pub fn steel_build_str(path: PathBuf, source: &str, debug: bool) -> Result<(), SteelErr> {
     let ast = parse_str(path, &source)?;
     debug!("{:?}", ast);
-    if debug {
-        let mut out = BufWriter::new(stdout().lock());
-        serde_json::to_writer_pretty(&mut out,
-            &DebugInfo { ast: &ast }).unwrap();
-        out.write(&[b'\n']).unwrap();
-        out.flush().unwrap()
-    }
+    print_debug(debug, &ast);
     Ok(())
+}
+
+fn print_debug(debug: bool, ast: &Ast) {
+    if !debug {
+        return;
+    }
+    let mut out = BufWriter::new(stdout().lock());
+    serde_json::to_writer_pretty(&mut out,
+                                 &DebugInfo { ast: &ast }).unwrap();
+    out.write(&[b'\n']).unwrap();
+    out.flush().unwrap()
 }
 
 fn find_main_file(path: &Path) -> Result<PathBuf, SteelErr> {
