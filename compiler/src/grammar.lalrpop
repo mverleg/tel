@@ -79,7 +79,7 @@ Expression: Expr = {
 ShortClosureExpr: Expr = {
     <c:r"(\\|\\\\)"> MayBreak <e:Expression> =>
         Expr::Closure(Closure { blocks: vec![Block::Expression(e)], params: vec![], is_cache: c == r"\\" }),
-    BoolCompareExpr,
+    BoolCombineExpr,
 }
 
 BoolCombineExpr: Expr = {
@@ -120,7 +120,7 @@ Single: Expr = {
     NumLit => Expr::Num(<>),
     <inv:InvokeExpr> => Expr::Invoke(inv),
     <λ:ClosureExpr> => Expr::Closure(λ),
-    "(" MayBreak <e:BoolCombineExpr> ")" => e,
+    "(" MayBreak <e:ShortClosureExpr> ")" => e,
 }
 
 InvokeExpr: Invoke = {
