@@ -43,19 +43,19 @@ match {
     r#"(abstract|alias|all|annotation|any|as|assert|async|auto|await|become|bool|box|break|by|byte|catch|class|closed|companion|const|constructor|continue|data|debug|def|default|defer|del|delegate|delegates|delete|derive|deriving|do|double|dynamic|elementwise|elif|end|eval|except|extends|extern|family|field|final|finally|float|fn|for|get|global|goto|if|impl|implements|import|in|init|inject|int|interface|internal|intersect|intersection|io|is|lambda|lateinit|lazy|let|local|loop|macro|main|match|module|move|NaN|native|nill|none|null|object|open|operator|out|override|package|param|pass|private|proof|public|pure|raise|real|rec|reified|return|sealed|select|self|set|sizeof|spawn|static|steel|super|switch|sync|synchronized|tailrec|task|test|this|throw|throws|to|trait|transient|try|type|union|unite|unsafe|until|use|val|var|vararg|virtual|volatile|when|where|while|xor|yield)"# => ERROR,
 } else {
     // Ignore line comments
-    r#"#[^\r\n]*(\r\n|\n|\r)(\s|\r\n|\n|\r)*"# => { },
+    r#"#[^\r\n]*(\r\n|\n|\r)(\s|\n|\r)*"# => { },
 } else {
     // Do not count NEWLINE token when preceded by ellipsis
-    r"\.\.\.[ \t]*(\r\n|\n|\r)*" => { },
+    r"\.\.\.[ \t]*(\n|\r)*" => { },
 } else {
     // Periods have special lexing because a linebreak is allowed before
-   r"(\r\n|\n|\r)*\." => PERIOD,
+   r"(\n|\r| |\t)*\." => PERIOD,
 } else {
     // Turn at least one semicolons and any number of newlines into a single token (without this they are skipped)
-    r";+[ \t]*( |\t|\r\n|\n|\r|;)*" => SEMICOLON,
+    r";+[ \t]*( |\t|\n|\r|;)*" => SEMICOLON,
 } else {
     // Turn any remaining newlines (not preceded by semicolon, in previous rule) into a single token
-    r"(\r\n|\n|\r)*" => NEWLINE,
+    r"(\n|\r)+" => NEWLINE,
 } else {
     // Ignore any other whitespace (except newlines above)
     r"[ \t]+" => { },
@@ -127,7 +127,6 @@ MulDivOp: BinOpCode = {
 }
 
 DotExpr: Expr = {
-    //TODO @mark: this is a problem with short lambdas: PERIOD may always have a newline independent of B
     <e:DotExpr> PERIOD <inv:InvokeExpr> => Expr::Dot(Box::new(e), inv),
     UnaryExpr,
 }
@@ -270,7 +269,7 @@ LongClosure: Closure = {
 }
 
 TrailingClosure: Closure = { <ShortClosure> NEWLINE , MidClosure }
-//TODO @mark: this is a bit weird, the only case where a newline is required but cannot be replaced by ; or something eles
+//TODO @mark: this is a bit weird, the only case where a newline is required but cannot be replaced by ; or something else
 
 ParamList: Vec<AssignmentDest> = {
     <Comma<AssignDest>>,
