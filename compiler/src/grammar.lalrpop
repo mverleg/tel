@@ -19,6 +19,18 @@ use crate::ast::vec_and;
 
 grammar;
 
+// About short lambda syntax: \ it + 1
+// The problem is that there is no dedicated terminator, so either outer scope is closed like `)`, or newline is used.
+// But that consumes the newline, so it no longer closes the statement. Workaround don't work:
+// * Match without consume is not possible (neither lexer nor parser)
+// * Lexer cannot produce two tokens per match
+// * Lexing the whole lambda is hard because various things can close it: \n, ), ], }
+// * I tried to disallow newlines in short lambda expressions, but that does not address the problem, it still
+//   consumes the newline at the end.
+// * I thought about having special rules for short-lambda, short-lambda+(;|\n) and short-lambda+. but that would
+//   be enormously complicated, especially `\n` since it is not even at expression level (statement).
+// A similar problem exists for `.` which can span newlines.
+
 match {
     // Match double quoted string literals
     r#""[^"]*""# => DQSTR,
@@ -43,7 +55,7 @@ match {
    r"\." => JustPeriod,
 } else {
     // Turn at least one semicolons and any number of newlines into a single token (without this they are skipped)
-    r"( |\t|\r\n|\n|\r|;)*(?=;)" => SEMICOLON,
+    r";+[ \t]*( |\t|\r\n|\n|\r|;)*" => SEMICOLON,
 } else {
     // Turn any remaining newlines (not preceded by semicolon, in previous rule) into a single token
     r"(\r\n|\n|\r)*" => NEWLINE,
