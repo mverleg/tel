@@ -42,20 +42,22 @@ match {
     // Reserved keywords
     r#"(abstract|alias|all|annotation|any|as|assert|async|auto|await|become|bool|box|break|by|byte|catch|class|closed|companion|const|constructor|continue|data|debug|def|default|defer|del|delegate|delegates|delete|derive|deriving|do|double|dynamic|elementwise|elif|end|eval|except|extends|extern|family|field|final|finally|float|fn|for|get|global|goto|if|impl|implements|import|in|init|inject|int|interface|internal|intersect|intersection|io|is|lambda|lateinit|lazy|let|local|loop|macro|main|match|module|move|NaN|native|nill|none|null|object|open|operator|out|override|package|param|pass|private|proof|public|pure|raise|real|rec|reified|return|sealed|select|self|set|sizeof|spawn|static|steel|super|switch|sync|synchronized|tailrec|task|test|this|throw|throws|to|trait|transient|try|type|union|unite|unsafe|until|use|val|var|vararg|virtual|volatile|when|where|while|xor|yield)"# => ERROR,
 } else {
+    r#"(\r\n|\n|\r)+"# => "\n\n"
+} else {
     // Ignore line comments
-    r#"#[^\r\n]*(\r\n|\n|\r)(\s|\n|\r)*"# => { },
+    r#"#[^\n]*\n(\s|\n)*"# => { },
 } else {
     // Do not count NEWLINE token when preceded by ellipsis
-    r"\.\.\.[ \t]*(\n|\r)*" => { },
+    r"\.\.\.[ \t]*\n*" => { },
 } else {
     // Periods have special lexing because a linebreak is allowed before
-   r"(\n|\r| |\t)*\." => PERIOD,
+   r"(\n| |\t)*\." => PERIOD,
 } else {
     // Turn at least one semicolons and any number of newlines into a single token (without this they are skipped)
-    r";+[ \t]*( |\t|\n|\r|;)*" => SEMICOLON,
+    r";+[ \t]*( |\t|\n|;)*" => SEMICOLON,
 } else {
     // Turn any remaining newlines (not preceded by semicolon, in previous rule) into a single token
-    r"(\n|\r)+" => NEWLINE,
+    r"\n+" => NEWLINE,
 } else {
     // Ignore any other whitespace (except newlines above)
     r"[ \t]+" => { },
