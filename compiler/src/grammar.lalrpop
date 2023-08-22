@@ -55,9 +55,6 @@ match {
     r";+[ \t]*( |\t|\n|\r|;)*" => SEMICOLON,
 } else {
     // Turn any remaining newlines (not preceded by semicolon, in previous rule) into a single token
-    r"$" => SPECIAL,
-} else {
-    // Turn any remaining newlines (not preceded by semicolon, in previous rule) into a single token
     r"(\n|\r)+" => NEWLINE,
 } else {
     // Ignore any other whitespace (except newlines above)
