@@ -43,7 +43,7 @@ match {
    r"\." => JustPeriod,
 } else {
     // Turn at least one semicolons and any number of newlines into a single token (without this they are skipped)
-    r";+[ \t]*( |\t|\r\n|\n|\r|;)*" => SEMICOLON,
+    r"( |\t|\r\n|\n|\r|;)*(?=;)" => SEMICOLON,
 } else {
     // Turn any remaining newlines (not preceded by semicolon, in previous rule) into a single token
     r"(\r\n|\n|\r)*" => NEWLINE,
