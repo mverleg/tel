@@ -77,15 +77,17 @@ fn count_empty_lines_at_end(text: &str) -> usize {
 
 #[cfg(test)]
 mod bugs {
+    use crate::ast::{Block, Invoke};
+    use crate::ast::Expr;
     use super::*;
-
-    fn parse(code: &str) -> Result<Ast, SteelErr> {
-        parse_str(PathBuf::new(), code.to_owned())
-    }
 
     #[test]
     fn test_newline_with_indent() {
         parse("(1)+\n 2").unwrap();
+    }
+
+    fn parse(code: &str) -> Result<Ast, SteelErr> {
+        parse_str(PathBuf::new(), code.to_owned())
     }
 
     #[test]
@@ -121,6 +123,17 @@ mod bugs {
     #[test]
     fn short_closure_assign() {
         parse("a=\\2*it;b=x\\7\nc=y\\-it").unwrap();
+    }
+
+    #[test]
+    fn short_closure_end_statement() {
+        let ast = parse("a=f()\\1\nb=1").unwrap();
+        assert!(ast.blocks.len() == 2);
+    }
+
+    #[test]
+    fn short_closure_period_newline() {
+        parse("x.a\\1\n.b;f").unwrap();
     }
 
     #[test]
