@@ -26,7 +26,7 @@ pub fn build_error<T, E: fmt::Display>(
                 line,
             )
         }
-        ParseError::UnrecognizedEOF { location, expected } => {
+        ParseError::UnrecognizedEof { location, expected } => {
             let (line, col) = source_line_col(code, location);
             (
                 format!(
