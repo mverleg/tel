@@ -149,6 +149,7 @@ Single: Expr = {
 InvokeExpr: Invoke = {
     <iden:Iden> "(" Br <args:Comma<Expression>> ")"  <λ:TrailingClosure?> => Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
     <iden:Iden> <λ:TrailingClosure?> => Invoke { iden, args: vec_and(vec![], λ.map(|f| Expr::Closure(f))) },
+    // TODO @mark: it seems weird that this is iden, what if a.b \ c, it should parse as (a.b) \ c, should it not?
 }
 
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();

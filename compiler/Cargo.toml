@@ -23,7 +23,7 @@ itertools = "0.11.0"
 time = { version = "0.3.26", features = ["serde"] }
 env_logger = "0.10.0"
 sha2 = "0.10.7"
-lalrpop-util = "0.20.0"
+lalrpop-util = { version = "0.20.0", features = ["lexer", "unicode"] }
 serde = "1.0.171"
 serde_json = "1.0.105"
 
@@ -32,7 +32,7 @@ ahash = "0.8.3"
 smartstring = { version = "1.0.1", features = ["serde"] }
 
 [build-dependencies]
-lalrpop = "0.20.0"
+lalrpop = { version = "0.20.0", features = ["lexer", "unicode"] }
 
 
 
