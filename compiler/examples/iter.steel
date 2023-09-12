@@ -1,7 +1,7 @@
 
 total = primes().iter()
     .take(10)
-    .filter \ it != 7
-    .map \ -2 * it
+    .filter {\ it != 7}
+    .map {\ -2 * it}
     .sum()
 (-total).print

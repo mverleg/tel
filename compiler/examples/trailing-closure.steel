@@ -1,9 +1,11 @@
 
-inside_short(1, \ "inside_short closure".print)
-outside_short(1) \ "outside_short closure".print
+# todo Disabled short closures
+# inside_short(1, \ "inside_short closure".print)
+# outside_short(1) \ "outside_short closure".print
 
-inside_short_cached(1, \\ "inside_short_cached closure".print)
-outside_short_cached(1) \\ "outside_short_cached closure".print
+# todo Disabled short closures
+# inside_short_cached(1, \\ "inside_short_cached closure".print)
+# outside_short_cached(1) \\ "outside_short_cached closure".print
 
 # short mode cannot take arguments
 
