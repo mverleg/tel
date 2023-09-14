@@ -270,7 +270,8 @@ LongClosure: Closure = {
         Closure { blocks, params, is_cache: false },
 }
 
-TrailingClosure: Closure = { <ShortClosure> NEWLINE , MidClosure }
+// TrailingClosure: Closure = { <ShortClosure> NEWLINE , MidClosure }
+TrailingClosure: Closure = { MidClosure }
 //TODO @mark: this is a bit weird, the only case where a newline is required but cannot be replaced by ; or something else
 
 ParamList: Vec<AssignmentDest> = {
