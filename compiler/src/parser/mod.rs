@@ -77,8 +77,12 @@ fn count_empty_lines_at_end(text: &str) -> usize {
 
 #[cfg(test)]
 mod bugs {
-    use crate::ast::{Block, Invoke};
+    use crate::ast::Identifier;
     use crate::ast::Expr;
+    use crate::ast::Closure;
+    use crate::ast::Block;
+    use crate::ast::Invoke;
+
     use super::*;
 
     #[test]
@@ -140,5 +144,20 @@ mod bugs {
     #[test]
     fn works_without_trailing_newline() {
         parse("5+\n5").unwrap();
+    }
+
+    #[test]
+    fn cached_closure_as_arg() {
+        let expected = Ast {
+            blocks: vec![Block::Expression(Expr::Invoke(Invoke {
+                iden: Identifier::new("func").unwrap(),
+                args: vec![Expr::Num(1.0), Expr::Closure(Closure {
+                    blocks: vec![],
+                    params: vec![],
+                    is_cache: false,
+                })],
+            }))
+        ]};
+        assert_eq!(parse("func(1, { \\\\ \"msg\".print })"), expected);
     }
 }
