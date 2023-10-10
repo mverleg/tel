@@ -148,8 +148,14 @@ Single: Expr = {
 }
 
 InvokeExpr: Invoke = {
-    <iden:Iden> "(" Br <args:Comma<Expression>> ")"  <λ:TrailingClosure?> => Invoke { iden, args: vec_and(args, λ.map(|f| Expr::Closure(f))) },
-    <iden:Iden> <λ:TrailingClosure?> => Invoke { iden, args: vec_and(vec![], λ.map(|f| Expr::Closure(f))) },
+    <iden:Iden> "(" Br <args:Comma<Expression>> ")"  <λ:TrailingClosure?> => Invoke {
+            iden,
+            args: vec_and(args, λ.map(|f| Expr::Closure(f)))
+        },
+    <iden:Iden> <λ:TrailingClosure?> => Invoke {
+            iden,
+            args: vec_and(vec![], λ.map(|f| Expr::Closure(f)))
+        },
     // TODO @mark: it seems weird that this is iden, what if a.b \ c, it should parse as (a.b) \ c, should it not?
 }
 
@@ -260,8 +266,10 @@ ShortClosure: Closure = {
 
 //TODO @mark: rename closure types
 MidClosure: Closure = {
-    "{" <params:ParamList> <c:r"(\\|\\\\)"> Br <bs:Statements<BlockNode>> "}" =>
-        Closure { blocks: bs, params, is_cache: c == r"\\" },
+    "{" <params:ParamList> "\\" Br <bs:Statements<BlockNode>> "}" =>
+        Closure { blocks: bs, params, is_cache: false },
+    "{" <params:ParamList> "\\\\" Br <bs:Statements<BlockNode>> "}" =>
+        Closure { blocks: bs, params, is_cache: true },
 }
 
 /// Simple closures can use `\ 2 * it` or `{\ 2 * it }` syntax, but full `fun` syntax is needed for explicit captures, return, generics, fun kinds, etc

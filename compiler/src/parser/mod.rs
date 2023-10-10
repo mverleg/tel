@@ -166,6 +166,6 @@ mod bugs {
                 }))
             ]
         };
-        assert_eq!(parse("func(1, { \\ \"msg\".print })"), Ok(expected));
+        assert_eq!(parse("func(1, { \\\\ \"msg\".print })"), Ok(expected));
     }
 }
