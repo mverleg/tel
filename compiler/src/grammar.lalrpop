@@ -260,16 +260,19 @@ UnaryOp: UnaryOpCode = {
 }
 
 ShortClosure: Closure = {
-    <c:r"(\\|\\\\)"> Br <e:Expression> =>
-        Closure { blocks: vec![Block::Expression(e)], params: vec![], is_cache: c == r"\\" },
+    <is_cache:ClosureParamTerminator> Br <e:Expression> =>
+        Closure { blocks: vec![Block::Expression(e)], params: vec![], is_cache },
 }
 
 //TODO @mark: rename closure types
 MidClosure: Closure = {
-    "{" <params:ParamList> "\\" Br <bs:Statements<BlockNode>> "}" =>
-        Closure { blocks: bs, params, is_cache: false },
-    "{" <params:ParamList> "\\\\" Br <bs:Statements<BlockNode>> "}" =>
-        Closure { blocks: bs, params, is_cache: true },
+    "{" <params:ParamList> <is_cache:ClosureParamTerminator> Br <bs:Statements<BlockNode>> "}" =>
+        Closure { blocks: bs, params, is_cache },
+}
+
+ClosureParamTerminator: bool = {
+    "\\" => false,
+    "\\\\" => true,
 }
 
 /// Simple closures can use `\ 2 * it` or `{\ 2 * it }` syntax, but full `fun` syntax is needed for explicit captures, return, generics, fun kinds, etc
