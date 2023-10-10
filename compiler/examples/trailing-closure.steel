@@ -19,10 +19,10 @@ inside_medium_args(1, { x: int \\ "inside_medium_args closure {x}".print })
 outside_medium_args(1) { x: int \\ "outside_medium_args closure {x}".print }
 
 inside_long(1, fun() { "inside_long closure".print })
-outside_long(1) fun() { "outside_long closure".print }
+# outside_long(1) fun() { "outside_long closure".print }
 
 inside_long_args(1, fun(x: int) { "inside_long_args closure {x}".print })
-outside_long_args(1) fun(x: int) { "outside_long_args closure {x}".print }
+# outside_long_args(1) fun(x: int) { "outside_long_args closure {x}".print }
 
 target_has_args(1, 2) {\
     "with_args closure".print
