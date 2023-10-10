@@ -1,7 +1,7 @@
 #![allow(unused)] //TODO @mark: TEMPORARY! REMOVE THIS!
 
 use ::std::path::PathBuf;
-use std::path::Path;
+use ::std::path::Path;
 
 use ::lalrpop_util::lalrpop_mod;
 
@@ -77,10 +77,12 @@ fn count_empty_lines_at_end(text: &str) -> usize {
 
 #[cfg(test)]
 mod bugs {
-    use crate::ast::Identifier;
-    use crate::ast::Expr;
-    use crate::ast::Closure;
+    use sha2::digest::typenum::Exp;
+
     use crate::ast::Block;
+    use crate::ast::Closure;
+    use crate::ast::Expr;
+    use crate::ast::Identifier;
     use crate::ast::Invoke;
 
     use super::*;
@@ -149,15 +151,21 @@ mod bugs {
     #[test]
     fn cached_closure_as_arg() {
         let expected = Ast {
-            blocks: vec![Block::Expression(Expr::Invoke(Invoke {
-                iden: Identifier::new("func").unwrap(),
-                args: vec![Expr::Num(1.0), Expr::Closure(Closure {
-                    blocks: vec![],
-                    params: vec![],
-                    is_cache: false,
-                })],
-            }))
-        ]};
-        assert_eq!(parse("func(1, { \\\\ \"msg\".print })"), expected);
+            blocks: vec![
+                Block::Expression(Expr::Invoke(Invoke {
+                    iden: Identifier::new("func").unwrap(),
+                    args: vec![Expr::Num(1.0), Expr::Closure(Closure {
+                        blocks: vec![
+                            Block::Expression(Expr::Dot(
+                                Box::new(Expr::Text("\"msg\"".into())),
+                                Invoke { iden: Identifier::new("print").unwrap(), args: vec![] }))
+                        ],
+                        params: vec![],
+                        is_cache: true,
+                    })],
+                }))
+            ]
+        };
+        assert_eq!(parse("func(1, { \\ \"msg\".print })"), Ok(expected));
     }
 }

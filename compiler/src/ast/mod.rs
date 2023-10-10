@@ -4,7 +4,7 @@ use ::smartstring::alias::String as SString;
 
 use ::steel_api::log::debug;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Ast {
     pub blocks: Vec<Block>,
 }
