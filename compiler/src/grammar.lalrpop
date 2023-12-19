@@ -157,18 +157,18 @@ InvokeExpr: Invoke = {
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
 StructDecl: Struct = {
-    "struct" <n:Iden> <gens:("[" Br <GenericList> "]")?> Br "{" Br <fs:Comma<FieldDecl>> "}" => Struct {
+    "struct" <n:Iden> <gens:GenericList> Br "{" Br <fs:Comma<FieldDecl>> "}" => Struct {
         iden: n,
         fields: fs,
-        generics: gens.unwrap_or_else(|| vec![]),
+        generics: gens,
     },
 }
 
 EnumDecl: Enum = {
-    "enum" <n:Iden> <gens:("[" Br <GenericList> "]")?> Br "{" Br <vs:Comma<EnumVariant>> "}" => Enum {
+    "enum" <n:Iden> <gens:GenericList> Br "{" Br <vs:Comma<EnumVariant>> "}" => Enum {
         iden: n,
         variants: vs,
-        generics: gens.unwrap_or_else(|| vec![]),
+        generics: gens,
     },
 }
 
@@ -264,11 +264,12 @@ Lambda: Closure = {
 //}
 
 GenericList: Vec<AssignmentDest> = {
-    <Comma<AssignDest>>,
+    "<" Br <gens:Comma<AssignDest>> ">" => gens,
+    () => Vec::new(),
 }
 
 TypeUse: Type = {
-    <iden:Iden> <gen:("[" <Comma<TypeUse>> "]")?> => Type { iden, generics: gen.unwrap_or_else(|| vec![]), },
+    <iden:Iden> <gen:("<" <Comma<TypeUse>> ">")?> => Type { iden, generics: gen.unwrap_or_else(|| vec![]), },
 }
 
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
@@ -281,3 +282,6 @@ Comma<T>: Vec<T> = {
 Statements<T>: Vec<T> = {
     <mut v:(<T> End)*> <e:T?> => vec_and(v, e)
 }
+
+//TODO @mark: see if any rules are unused (is there a warning?)
+
