@@ -161,7 +161,6 @@ mod bugs {
                                 Invoke { iden: Identifier::new("print").unwrap(), args: vec![] }))
                         ],
                         params: vec![],
-                        is_cache: true,
                     })],
                 }))
             ]

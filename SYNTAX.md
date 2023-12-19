@@ -18,8 +18,10 @@ Some details about it:
 * Variables can be declared without any keyword (if immutable), or with "mut" or "local"
 * For reasons of performance, simplicity and backwards compatibility, type inference is from expression to result and not exceptionally smart 
 * There is a preference for left-to-right style, with some operators having attribute syntax (e.g. `.assert`)
-* Closures that take 0 or 1 arguments can be written as just `{...}` anywhere an expression is expected, and can use `it` for the arg
+* Closures that take 0 or 1 arguments and don't need type annotations can be written as just `{...}` anywhere an expression is expected, and can use `it` as the arg
 * Closures that take more than 1 argument are written the same as functions, e.g. `fn(a, b) {...}`
 * Closures can be placed outside a function invocation, and will be passed as the last positional argument
 * Using `self` can be omitted when used, and is not declared as part of functions
+* Lexical scope corresponds to blocks wrapped in `{` and `}`, whether functions, closures or statements 
+
 

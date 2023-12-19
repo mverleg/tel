@@ -88,13 +88,7 @@ BlockNode: Block = {
 // B: either Br if newlines are allowed, or () if not
 // P: either BrPer is newlines are allowed, or () if not
 Expression: Expr = {
-    ShortClosureExpr
-}
-
-ShortClosureExpr: Expr = {
-//    Disabled until custom lexer or similar solution, see https://github.com/mverleg/lalrpop_close_block_and_statement
-//    <ShortClosure> => Expr::Closure(<>),
-    BoolCombineExpr,
+    BoolCombineExpr
 }
 
 BoolCombineExpr: Expr = {
@@ -143,17 +137,17 @@ Single: Expr = {
     <s:SQSTR> => Expr::Text(s.to_string().into()),
     NumLit => Expr::Num(<>),
     <inv:InvokeExpr> => Expr::Invoke(inv),
-    <λ:MidClosure> => Expr::Closure(λ),
-    <λ:LongClosure> => Expr::Closure(λ),
-    "(" Br <e:ShortClosureExpr> ")" => e,
+    "(" Br <e:BoolCombineExpr> ")" => e,
+    <λ:Lambda> => Expr::Closure(λ),
+    //TODO @mark: function declaration
 }
 
 InvokeExpr: Invoke = {
-    <iden:Iden> "(" Br <args:Comma<Expression>> ")"  <λ:TrailingClosure?> => Invoke {
+    <iden:Iden> "(" Br <args:Comma<Expression>> ")" <λ:Lambda?> => Invoke {
             iden,
             args: vec_and(args, λ.map(|f| Expr::Closure(f)))
         },
-    <iden:Iden> <λ:TrailingClosure?> => Invoke {
+    <iden:Iden> <λ:Lambda?> => Invoke {
             iden,
             args: vec_and(vec![], λ.map(|f| Expr::Closure(f)))
         },
@@ -260,35 +254,14 @@ UnaryOp: UnaryOpCode = {
     "-" => UnaryOpCode::Min,
 }
 
-ShortClosure: Closure = {
-    <is_cache:ClosureParamTerminator> Br <e:Expression> =>
-        Closure { blocks: vec![Block::Expression(e)], params: vec![], is_cache },
+Lambda: Closure = {
+    "{" Br <e:Expression> "}" =>
+        Closure { blocks: vec![Block::Expression(e)], params: vec![] },
 }
 
-//TODO @mark: rename closure types
-MidClosure: Closure = {
-    "{" <params:ParamList> <is_cache:ClosureParamTerminator> Br <bs:Statements<BlockNode>> "}" =>
-        Closure { blocks: bs, params, is_cache },
-}
-
-ClosureParamTerminator: bool = {
-    "\\" => false,
-    "\\\\" => true,
-}
-
-/// Simple closures can use `\ 2 * it` or `{\ 2 * it }` syntax, but full `fun` syntax is needed for explicit captures, return, generics, fun kinds, etc
-LongClosure: Closure = {
-    "fun" "(" Br <params:ParamList> ")" <ret:(":" Br <TypeUse>)?> Br "{" Br <blocks:Statements<BlockNode>> "}" =>
-        Closure { blocks, params, is_cache: false },
-}
-
-// TrailingClosure: Closure = { <ShortClosure> NEWLINE , MidClosure }
-TrailingClosure: Closure = { MidClosure }
-//TODO @mark: this is a bit weird, the only case where a newline is required but cannot be replaced by ; or something else
-
-ParamList: Vec<AssignmentDest> = {
-    <Comma<AssignDest>>,
-}
+//ParamList: Vec<AssignmentDest> = {
+//    <Comma<AssignDest>>,
+//}
 
 GenericList: Vec<AssignmentDest> = {
     <Comma<AssignDest>>,
