@@ -244,7 +244,7 @@ UnaryOp: UnaryOpCode = {
 }
 
 Function: Closure = {
-    "fun" "(" <p:ParamList> ")" "{" Br <e:Expression> "}" =>
+    "fun" "(" <p:ParamList> ")" <r:(":" Br <TypeUse>)?> "{" Br <e:Expression> "}" =>
         //TODO @mark: use `p`
         //TODO @mark: return type annotation
         Closure { blocks: vec![Block::Expression(e)], params: vec![] },
