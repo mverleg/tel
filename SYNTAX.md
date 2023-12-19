@@ -9,7 +9,10 @@ The goal of the syntax is to
 Some details about it:
 
 * Indentation is not significant, but newlines are; statements must end with ';' and/or a newline
-* To split a statement over multiple lines, either break where it can't be closed (e.g. after '[' or '+'), or insert '...'
+* You can split expressions over multiple lines by
+  - breaking after a symbol that can't be the end, e.g. '+', '(' or '='
+  - breaking before `.`
+  - adding `...` before the linebreak
 * Comments start with '#' and are always single-line
 * Types are always required on the signatures of public 'things' (enums, structs, functions), otherwise can be omitted if inferrable
 * Variables can be declared without any keyword (if immutable), or with "mut" or "local"
