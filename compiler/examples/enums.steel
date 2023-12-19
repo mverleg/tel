@@ -1,7 +1,7 @@
 
 # of new types, as labels
-enum Option[T] {
-    struct Some[T] { value: T },
+enum Option<T> {
+    struct Some<T> { value: T },
     struct None {},
     # TODO @mark: support skipping {} if no content?
 }
@@ -13,7 +13,7 @@ enum Produce {
     Apple,
     struct Banana {},
     enum Vegetable {},
-    Option[Mushroom],
+    Option<Mushroom>,
 }
 
 # TODO @mark: anonymous enums for in arguments? `A | B | C`
