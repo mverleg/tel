@@ -2,8 +2,8 @@
 # comment
 total = items  # comment
     ## comment
-    .filter {\ it % 2 == 0 } # comment
-    .map {\  # comment
+    .filter { it % 2 == 0 } # comment
+    .map {  # comment
          -2 * it}  # comment
     # comment
     .take(  # comment
