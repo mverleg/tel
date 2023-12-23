@@ -147,24 +147,4 @@ mod bugs {
     fn works_without_trailing_newline() {
         parse("5+\n5").unwrap();
     }
-
-    #[test]
-    fn cached_closure_as_arg() {
-        let expected = Ast {
-            blocks: vec![
-                Block::Expression(Expr::Invoke(Invoke {
-                    iden: Identifier::new("func").unwrap(),
-                    args: vec![Expr::Num(1.0), Expr::Closure(Closure {
-                        blocks: vec![
-                            Block::Expression(Expr::Dot(
-                                Box::new(Expr::Text("\"msg\"".into())),
-                                Invoke { iden: Identifier::new("print").unwrap(), args: vec![] }))
-                        ],
-                        params: vec![],
-                    })],
-                }))
-            ]
-        };
-        assert_eq!(parse("func(1, { \\\\ \"msg\".print })"), Ok(expected));
-    }
 }

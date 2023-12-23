@@ -44,7 +44,7 @@ match {
 } else {
     // Turn any remaining newlines (not preceded by semicolon, in previous rule) into a single token
     r"(\n|\r)+" => NEWLINE,
-} else {
+
     // Ignore any other whitespace (except newlines above)
     r"[ \t]+" => { },
     //TODO @mark: does this mean keywords can be concatenated? that is not desirable
@@ -251,8 +251,9 @@ Function: Closure = {
 }
 
 Lambda: Closure = {
-    "{" Br <e:Expression> "}" =>
-        Closure { blocks: vec![Block::Expression(e)], params: vec![] },
+    "{" Br <bs:Statements<BlockNode>> "}" =>
+    //"{" Br <e:Expression> "}" =>
+        Closure { blocks: bs, params: vec![] },
 }
 
 ParamList: Vec<AssignmentDest> = {
