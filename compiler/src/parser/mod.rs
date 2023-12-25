@@ -87,38 +87,46 @@ mod bugs {
 
     use super::*;
 
-    #[test]
-    fn test_newline_with_indent() {
-        parse("(1)+\n 2").unwrap();
+    fn parse(code: &str) -> Ast {
+        match parse_str(PathBuf::new(), code.to_owned()) {
+            Ok(ast) => ast,
+            Err(SteelErr::ParseErr { msg, .. }) => {
+                println!("{}", msg);
+                panic!()
+            }
+            Err(_) => panic!(),
+        }
     }
 
-    fn parse(code: &str) -> Result<Ast, SteelErr> {
-        parse_str(PathBuf::new(), code.to_owned())
+    #[test]
+    fn test_newline_with_indent() {
+        parse("(1)+\n 2");
     }
 
     #[test]
     fn test_double_close_parentheses() {
-        assert!(parse("(1)+\n 2)").is_err());
+        let code = "(1)+\n 2)";
+        assert!(parse_str(PathBuf::new(), code.to_owned()).is_err());
     }
 
     #[test]
     fn empty_struct() {
-        parse("struct D {\n}").unwrap();
+        parse("struct D {\n}");
     }
 
     #[test]
     fn nullary_function_with_parentheses() {
-        parse("f()").unwrap();
+        parse("f()");
     }
 
     #[test]
     fn semicolon_at_end_of_file() {
-        parse("a=1;").unwrap();
+        parse("a=1;");
     }
 
     #[test]
     fn semicolon_between_statements_no_newline() {
-        parse("a=1;b").unwrap();
+        parse("a=1;b");
     }
 
     // Disabled until custom lexer or similar solution, see https://github.com/mverleg/lalrpop_close_block_and_statement
@@ -145,6 +153,11 @@ mod bugs {
 
     #[test]
     fn works_without_trailing_newline() {
-        parse("5+\n5").unwrap();
+        parse("5+\n5");
+    }
+
+    #[test]
+    fn function_with_type_annotation_any_void() {
+        parse("fn(it: any): void { it.print }");
     }
 }
