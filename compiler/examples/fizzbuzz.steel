@@ -1,0 +1,13 @@
+
+range(1, 101).for_each {
+    msg = if it % 15 == 0 {
+        "FizzBuzz"
+    } elif it % 3 == 0 {
+        "Fizz"
+    } elif it % 5 == 0 {
+        "Buzz"
+    } else {
+        it
+    }
+    msg.print
+}

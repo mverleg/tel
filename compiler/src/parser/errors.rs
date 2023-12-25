@@ -49,8 +49,7 @@ pub fn build_error<T, E: fmt::Display>(
             let found = &code[start..end];
             (
                 format!(
-                    "Did not expect '{found}' ({}) in {src_file}:{}:{}\n{}{}",
-                    type_name::<T>().rsplit_once(':').unwrap().1,
+                    "Did not expect '{found}' in {src_file}:{}:{}\n{}{}",
                     line + 1,
                     col + 1,
                     source_loc_repr(code, line, col, max(1, end - start)),
