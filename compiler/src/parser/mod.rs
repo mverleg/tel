@@ -155,9 +155,4 @@ mod bugs {
     fn works_without_trailing_newline() {
         parse("5+\n5");
     }
-
-    #[test]
-    fn function_with_type_annotation_any_void2() {
-        parse("any = 1");
-    }
 }

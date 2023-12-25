@@ -1,13 +1,13 @@
 
 inside_only_lambda({ it.print })
-inside_only_function(fn(it: any): void { it.print })
+inside_only_function(fn(it: Any): Void { it.print })
 
 inside_args_lambda(1, 2, { it.print })
-inside_args_function(1, 2, fn(it: any): void { it.print })
+inside_args_function(1, 2, fn(it: Any): Void { it.print })
 
 outside_paren_lambda(1, 2) { it.print }
-outside_paren_function(1, 2) fn(it: any): void { it.print }
+outside_paren_function(1, 2) fn(it: Any): Void { it.print }
 
 outside_no_paren_lambda { it.print }
-outside_no_paren_function fn(it: any): void { it.print }
+outside_no_paren_function fn(it: Any): Void { it.print }
 
