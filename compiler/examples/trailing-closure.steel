@@ -1,60 +1,13 @@
 
-# todo Disabled short closures
-# inside_short(1, \ "inside_short closure".print)
-# outside_short(1) \ "outside_short closure".print
+inside_only_lambda({ it.print })
+inside_only_function(fn(it: any): void { it.print })
 
-# todo Disabled short closures
-# inside_short_cached(1, \\ "inside_short_cached closure".print)
-# outside_short_cached(1) \\ "outside_short_cached closure".print
+inside_args_lambda(1, 2, { it.print })
+inside_args_function(1, 2, fn(it: any): void { it.print })
 
-# short mode cannot take arguments
+outside_paren_lambda(1, 2) { it.print }
+outside_paren_function(1, 2) fn(it: any): void { it.print }
 
-inside_medium(1, { \ "inside_medium closure".print })
-outside_medium(1) { \ "outside_medium closure".print }
-
-inside_medium_cached(1, { \\ "inside_medium_cached closure".print })
-outside_medium_cached(1) { \\ "outside_medium_cached closure".print }
-
-inside_medium_args(1, { x: int \\ "inside_medium_args closure {x}".print })
-outside_medium_args(1) { x: int \\ "outside_medium_args closure {x}".print }
-
-inside_long(1, fun() { "inside_long closure".print })
-# outside_long(1) fun() { "outside_long closure".print }
-
-inside_long_args(1, fun(x: int) { "inside_long_args closure {x}".print })
-# outside_long_args(1) fun(x: int) { "outside_long_args closure {x}".print }
-
-target_has_args(1, 2) {\
-    "with_args closure".print
-}
-
-target_has_parens() {\
-    "with_parens closure".print
-}
-
-target_has_no_parens {\
-    "without_parens closure".print
-}
-
-# long mode cannot be passed in trailing mode
-
-obj = dummy(0)
-
-#capture_short() \
-#    "capture_short closure".print and dummy.operation(1)
-# TODO @mark: support this? ^
-
-capture_medium() {\
-    "capture_medium closure".print
-    dummy.operation(2)
-}
-
-capture_long(fun() {
-    "capture_long closure".print
-    dummy.operation(3)
-})
-
-dummy.print
-
-# TODO @mark: in combination with keyword args, lambda should be last positional one?
+outside_no_paren_lambda { it.print }
+outside_no_paren_function fn(it: any): void { it.print }
 

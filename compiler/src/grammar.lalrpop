@@ -28,7 +28,7 @@ match {
     r#"('[^']*')"# => SQSTR,
 
     // Reserved keywords
-    r#"(abstract|alias|all|annotation|any|as|assert|async|auto|await|become|bool|box|break|by|byte|catch|class|closed|companion|const|constructor|continue|data|debug|def|default|defer|del|delegate|delegates|delete|derive|deriving|do|double|dynamic|elementwise|elif|end|eval|except|extends|extern|family|field|final|finally|float|fn|for|get|global|goto|if|impl|implements|import|in|init|inject|int|interface|internal|intersect|intersection|io|is|lambda|lateinit|lazy|let|local|loop|macro|main|match|module|move|NaN|native|nill|none|null|object|open|operator|out|override|package|param|pass|private|proof|public|pure|raise|real|rec|reified|return|sealed|select|self|set|sizeof|spawn|static|steel|super|switch|sync|synchronized|tailrec|task|test|this|throw|throws|to|trait|transient|try|type|union|unite|unsafe|until|use|val|var|vararg|virtual|volatile|when|where|while|xor|yield)"# => ERROR,
+    r#"(abstract|alias|all|annotation|any|as|assert|async|auto|await|become|bool|box|break|by|byte|catch|class|closed|companion|const|constructor|continue|data|debug|def|default|defer|del|delegate|delegates|delete|derive|deriving|do|double|dynamic|elementwise|elif|end|eval|except|extends|extern|family|field|final|finally|float|fun|for|get|global|goto|if|impl|implements|import|in|init|inject|int|interface|internal|intersect|intersection|io|is|lambda|lateinit|lazy|let|local|loop|macro|main|match|module|move|NaN|native|nill|none|null|object|open|operator|out|override|package|param|pass|private|proof|public|pure|raise|real|rec|reified|return|sealed|select|self|set|sizeof|spawn|static|steel|super|switch|sync|synchronized|tailrec|task|test|this|throw|throws|to|trait|transient|try|type|union|unite|unsafe|until|use|val|var|vararg|virtual|volatile|when|where|while|xor|yield)"# => ERROR,
 
     // Ignore line comments
     r#"#[^\r\n]*(\r\n|\n|\r)(\s|\n|\r)*"# => { },
@@ -243,7 +243,7 @@ UnaryOp: UnaryOpCode = {
 }
 
 Function: Closure = {
-    "fun" "(" <p:ParamList> ")" <r:(":" Br <TypeUse>)?> <f:FunctionBody> =>
+    "fn" "(" <p:ParamList> ")" <r:(":" Br <TypeUse>)?> <f:FunctionBody> =>
         //TODO @mark: use `p`
         Closure { blocks: f, params: vec![] },
 }
