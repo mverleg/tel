@@ -269,6 +269,7 @@ TypeUse: Type = {
     <iden:Iden> <gen:("<" <Comma<TypeUse>> ">")?> => Type { iden, generics: gen.unwrap_or_else(|| vec![]), },
 }
 
+// If this does not match, it may be a reserved keyword
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
 
 Comma<T>: Vec<T> = {
