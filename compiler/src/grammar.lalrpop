@@ -125,17 +125,16 @@ Single: Expr = {
     <s:SQSTR> => Expr::Text(s.to_string().into()),
     NumLit => Expr::Num(<>),
     <inv:InvokeExpr> => Expr::Invoke(inv),
-    <f:FullFunction> => Expr::Closure(f),
-    <λ:Lambda> => Expr::Closure(λ),
+    <f:Function> => Expr::Closure(f),
     "(" Br <e:BoolCombineExpr> ")" => e,
 }
 
 InvokeExpr: Invoke = {
-    <iden:Iden> "(" Br <args:Comma<Expression>> ")" <λ:Lambda?> => Invoke {
+    <iden:Iden> "(" Br <args:Comma<Expression>> ")" <λ:Function?> => Invoke {
             iden,
             args: vec_and(args, λ.map(|f| Expr::Closure(f)))
         },
-    <iden:Iden> <λ:Lambda?> => Invoke {
+    <iden:Iden> <λ:Function?> => Invoke {
             iden,
             args: vec_and(vec![], λ.map(|f| Expr::Closure(f)))
         },
@@ -244,7 +243,7 @@ UnaryOp: UnaryOpCode = {
 }
 
 Function: Closure = {
-    <Function>,
+    <FullFunction>,
     <Lambda>,
 }
 
