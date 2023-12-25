@@ -8,7 +8,7 @@ use ::lalrpop_util::ParseError;
 use ::steel_api::log::info;
 
 /// Returns error message and error line (or 0 if unknown)
-pub fn build_error<T: fmt::Debug, E: fmt::Display>(
+pub fn build_error<T, E: fmt::Display>(
     error: ParseError<usize, T, E>,
     src_file: &str,
     code: &str,
@@ -42,15 +42,15 @@ pub fn build_error<T: fmt::Debug, E: fmt::Display>(
             )
         }
         ParseError::UnrecognizedToken {
-            token: (start, encountered, end),
+            token: (start, encountered_type, end),
             expected,
         } => {
             let (line, col) = source_line_col(code, start);
             let found = &code[start..end];
             (
                 format!(
-                    "Did not expect '{found}' ({:?}) in {src_file}:{}:{}\n{}{}",
-                    encountered,
+                    "Did not expect '{found}' ({}) in {src_file}:{}:{}\n{}{}",
+                    type_name::<T>().rsplit_once(':').unwrap().1,
                     line + 1,
                     col + 1,
                     source_loc_repr(code, line, col, max(1, end - start)),
