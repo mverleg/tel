@@ -125,7 +125,7 @@ Single: Expr = {
     <s:SQSTR> => Expr::Text(s.to_string().into()),
     NumLit => Expr::Num(<>),
     <inv:InvokeExpr> => Expr::Invoke(inv),
-    <f:Function> => Expr::Closure(f),
+    <f:FullFunction> => Expr::Closure(f),
     <λ:Lambda> => Expr::Closure(λ),
     "(" Br <e:BoolCombineExpr> ")" => e,
 }
@@ -139,6 +139,7 @@ InvokeExpr: Invoke = {
             iden,
             args: vec_and(vec![], λ.map(|f| Expr::Closure(f)))
         },
+    // TODO @mark: full functions
     // TODO @mark: should numbers also be supported, for tuples?
 }
 
@@ -243,6 +244,11 @@ UnaryOp: UnaryOpCode = {
 }
 
 Function: Closure = {
+    <Function>,
+    <Lambda>,
+}
+
+FullFunction: Closure = {
     "fn" "(" <p:ParamList> ")" <r:(":" Br <TypeUse>)?> <f:FunctionBody> =>
         //TODO @mark: use `p`
         Closure { blocks: f, params: vec![] },
