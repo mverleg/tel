@@ -157,7 +157,7 @@ mod bugs {
     }
 
     #[test]
-    fn function_with_type_annotation_any_void() {
-        parse("fn(it: any): void { it.print }");
+    fn function_with_type_annotation_any_void2() {
+        parse("any = 1");
     }
 }

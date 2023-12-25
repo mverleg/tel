@@ -1,3 +1,4 @@
+use ::std::any::type_name;
 use ::std::cmp::max;
 use ::std::fmt;
 use ::std::fmt::Write;
@@ -41,14 +42,15 @@ pub fn build_error<T, E: fmt::Display>(
             )
         }
         ParseError::UnrecognizedToken {
-            token: (start, _, end),
+            token: (start, encountered_type, end),
             expected,
         } => {
             let (line, col) = source_line_col(code, start);
             let found = &code[start..end];
             (
                 format!(
-                    "Did not expect '{found}' in {src_file}:{}:{}\n{}{}",
+                    "Did not expect '{found}' ({}) in {src_file}:{}:{}\n{}{}",
+                    type_name::<T>().rsplit_once(':').unwrap().1,
                     line + 1,
                     col + 1,
                     source_loc_repr(code, line, col, max(1, end - start)),
