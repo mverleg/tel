@@ -1,0 +1,11 @@
+
+last = for (i in range(10)) {
+    i
+}
+last.print()
+
+last = while (!queue.is_empty()) {
+    queue.pop()
+}
+last.print()
+
