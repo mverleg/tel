@@ -79,9 +79,9 @@ Expression: Expr = {
     Conditional,
 }
 
+// TODO @mark: do if/for/while without "(..)" if possible
+
 Conditional: Expr = {
-    // TODO @mark:shorter
-    // TODO @mark: can we do both either "(" or "then"
     // could allow newline after `if` but I prefer not to
     "if" "(" <when:Expression> ")" "{" Br <yes:Expression> "}" <no:("else" "{" <Expression> "}")?> =>
             Expr::If(Box::new(when), Box::new(yes), no.map(|e| Box::new(e))),
@@ -92,6 +92,13 @@ ForEach: Expr = {
     // could allow newline after `for` but I prefer not to
     "for" "(" <name:AssignDest> "in" <iter:Expression> ")" "{" Br <body:Expression> "}" =>
             Expr::ForEach(name, Box::new(iter), Box::new(body)),
+    WhileLoop,
+}
+
+WhileLoop: Expr = {
+    // could allow newline after `if` but I prefer not to
+    "while" "(" <when:Expression> ")" "{" Br <body:Expression> "}" =>
+            Expr::While(Box::new(when), Box::new(body)),
     BoolCombineExpr,
 }
 
