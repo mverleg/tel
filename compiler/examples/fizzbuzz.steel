@@ -8,7 +8,7 @@ range(1, 101).for_each {
         "Fizz"
     }.elif (it % 5 == 0) {
         "Buzz"
-    }.else {
+    }.otherwise {
         it
     }
     msg.print
@@ -18,8 +18,8 @@ range(1, 101).for_each {
 
 # TODO @mark: if
 
-for i in range(1, 101) do {
-    msg = if it % 15 == 0 then {
+for (i in range(1, 101)) {
+    msg = if (it % 15 == 0) {
         "FizzBuzz"
 //    } elif (it % 3 == 0) {
 //        "Fizz"

@@ -81,18 +81,18 @@ Expression: Expr = {
 
 Conditional: Expr = {
     // TODO @mark:shorter
-    // TODO @mark: can we do both either "(" or "then" (and maybe parens don't even work because they should still be an expression)
+    // TODO @mark: can we do both either "(" or "then"
     // could allow newline after `if` but I prefer not to
-    "if" <when:Expression> "then" "{" Br <yes:Expression> "}" =>
-            Expr::If(Box::new(when), Box::new(yes), None),
-    "if" <when:Expression> "then" "{" Br <yes:Expression> "}" "else" "{" <no:Expression> "}" =>
+    "if" "(" <when:Expression> ")" "{" Br <yes:Expression> "}" "else" "{" <no:Expression> "}" =>
             Expr::If(Box::new(when), Box::new(yes), Some(Box::new(no))),
+    //"if" "(" <when:Expression> ")" "{" Br <yes:Expression> "}" =>
+    //        Expr::If(Box::new(when), Box::new(yes), None),
     ForEach,
 }
 
 ForEach: Expr = {
     // could allow newline after `for` but I prefer not to
-    "for" <name:AssignDest> "in" <iter:Expression> "do" "{" Br <body:Expression> "}" =>
+    "for" "(" <name:AssignDest> "in" <iter:Expression> ")" "{" Br <body:Expression> "}" =>
             Expr::ForEach(name, Box::new(iter), Box::new(body)),
     BoolCombineExpr,
 }
