@@ -140,6 +140,8 @@ pub enum Expr {
     /// Dot-access a field or method, like x.a or x.f(a)
     Dot(Box<Expr>, Invoke),
     Closure(Closure),
+    /// If, then, else
+    If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
 }
 
 /// Can be a variable read or a function call. A function call without () cannot be differentiated from
