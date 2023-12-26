@@ -1,13 +1,16 @@
 
+## using only methods and lambdas
+
 range(1, 101).for_each {
-    msg = if it % 15 == 0 {
+    msg = (it % 15 == 0).if {
         "FizzBuzz"
-    } elif it % 3 == 0 {
+    }.elif (it % 3 == 0) {
         "Fizz"
-    } elif it % 5 == 0 {
+    }.elif (it % 5 == 0) {
         "Buzz"
-    } else {
+    }.else {
         it
     }
     msg.print
 }
+
