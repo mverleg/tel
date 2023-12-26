@@ -76,7 +76,18 @@ BlockNode: Block = {
 // B: either Br if newlines are allowed, or () if not
 // P: either BrPer is newlines are allowed, or () if not
 Expression: Expr = {
-    BoolCombineExpr
+    Conditional,
+}
+
+Conditional: Expr = {
+    // TODO @mark:shorter
+    // TODO @mark: can we do both either "(" or "then"
+    // could allow newline after `if` but I prefer not to
+    "if" <when:Expression> "then" "{" Br <yes:Expression> "}" =>
+            Expr::If(Box::new(when), Box::new(yes), None),
+    "if" <when:Expression> "then" "{" Br <yes:Expression> "}" "else" "{" <no:Expression> "}" =>
+            Expr::If(Box::new(when), Box::new(yes), Some(Box::new(no))),
+    BoolCombineExpr,
 }
 
 BoolCombineExpr: Expr = {
@@ -118,12 +129,6 @@ DotExpr: Expr = {
 UnaryExpr: Expr = {
     <op:UnaryOp> <e:Single> => Expr::UnaryOp(op, Box::new(e)),
     Single,
-}
-
-Conditional: Expr = {
-    // could allow newline after `if` but I prefer not to
-    "if" <when:BoolCombineExpr> "{" Br <yes:BoolCombineExpr> "}" =>
-            Expr::If(Box::new(when), Box::new(yes), None),
 }
 
 Single: Expr = {
