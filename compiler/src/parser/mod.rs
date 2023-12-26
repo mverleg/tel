@@ -158,6 +158,6 @@ mod bugs {
 
     #[test]
     fn line_continuation() {
-        parse("x = 1 ...\n+ 2");
+        parse("x = 1 ...\n\n+ 2");
     }
 }
