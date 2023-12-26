@@ -2,6 +2,7 @@
 optional = if (108 % 3 == 0) {
     "hello"
 }
+
 optional.then { it.print() }
 
 guaranteed = if (161 % 7 == 0) {
@@ -11,4 +12,4 @@ guaranteed = if (161 % 7 == 0) {
 }
 guaranteed.print()
 
-// TODO @mark: match/branch/select
+# TODO @mark: match/branch/select

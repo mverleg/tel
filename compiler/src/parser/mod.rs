@@ -155,4 +155,9 @@ mod bugs {
     fn works_without_trailing_newline() {
         parse("5+\n5");
     }
+
+    #[test]
+    fn line_continuation() {
+        parse("x = 1 ...\n+ 2");
+    }
 }
