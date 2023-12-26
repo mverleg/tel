@@ -1,0 +1,14 @@
+
+optional = if (108 % 3 == 0) {
+    "hello"
+}
+optional.then { it.print() }
+
+guaranteed = if (161 % 7 == 0) {
+    "goodbye"
+} else {
+    "see you later"
+}
+guaranteed.print()
+
+// TODO @mark: match/branch/select
