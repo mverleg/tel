@@ -77,6 +77,7 @@ fn count_empty_lines_at_end(text: &str) -> usize {
 
 #[cfg(test)]
 mod bugs {
+    use regex::Regex;
     use sha2::digest::typenum::Exp;
 
     use crate::ast::Block;
@@ -158,6 +159,8 @@ mod bugs {
 
     #[test]
     fn line_continuation() {
-        parse("x = 1 ...\n\n+ 2");
+        let code = "x = 1 ...\n\n+ 2";
+        assert!(Regex::new(r"\.{3}[ \t\n\r]*").unwrap().is_match(code));
+        parse(code);
     }
 }

@@ -34,10 +34,10 @@ match {
     r#"#[^\r\n]*(\r\n|\n|\r)(\s|\n|\r)*"# => { },
 
     // Do not count NEWLINE token when preceded by ellipsis
-    r#"\.\.\.[ \t]*(\n|\r)*"# => { },
-} else {  // TODO @mark: else unnecessary?
+    r#"\.{3}[ \t\n\r]*"# => { },
+} else {
     // Periods have special lexing because a linebreak is allowed before
-    r#"(\n|\r| |\t)*\."# => PERIOD,
+    r#"[ \t\n\r]*\."# => PERIOD,
 
     // Turn at least one semicolons and any number of newlines into a single token (without this they are skipped)
     r#";+[ \t]*( |\t|\n|\r|;)*"# => SEMICOLON,
