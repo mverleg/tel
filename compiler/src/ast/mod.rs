@@ -89,7 +89,7 @@ impl Identifier {
 pub struct Type {
     //TODO @mark:
     pub iden: Identifier,
-    pub generics: Vec<Type>,
+    pub generics: Box<[Type]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -113,7 +113,7 @@ pub enum Block {
 // even without mut and type, it can be a declaration (with inferred type)
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Assignments {
-    pub dest: Vec<AssignmentDest>,
+    pub dest: Box<[AssignmentDest]>,
     pub op: Option<BinOpCode>,
     pub value: Box<Expr>,
 }
@@ -152,27 +152,27 @@ pub enum Expr {
 pub struct Invoke {
     pub iden: Identifier,
     //TODO @mark: to smallvec or something:
-    pub args: Vec<Expr>,
+    pub args: Box<[Expr]>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Closure {
-    pub blocks: Vec<Block>,
-    pub params: Vec<AssignmentDest>,
+    pub blocks: Box<[Block]>,
+    pub params: Box<[AssignmentDest]>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Struct {
     pub iden: Identifier,
     pub fields: Vec<(Identifier, Type)>,
-    pub generics: Vec<AssignmentDest>,
+    pub generics: Box<[AssignmentDest]>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Enum {
     pub iden: Identifier,
-    pub variants: Vec<EnumVariant>,
-    pub generics: Vec<AssignmentDest>,
+    pub variants: Box<[EnumVariant]>,
+    pub generics: Box<[AssignmentDest]>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
