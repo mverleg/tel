@@ -6,7 +6,7 @@ use ::steel_api::log::debug;
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Ast {
-    pub blocks: Vec<Block>,
+    pub blocks: Box<[Block]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -182,9 +182,9 @@ pub enum EnumVariant {
     Existing(Type),
 }
 
-pub fn vec_and<T>(mut items: Vec<T>, addition: Option<T>) -> Vec<T> {
+pub fn vec_and<T>(mut items: Vec<T>, addition: Option<T>) -> Box<[T]> {
     if let Some(addition) = addition {
         items.push(addition);
     }
-    items
+    items.into_boxed_slice()
 }

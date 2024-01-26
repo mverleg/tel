@@ -277,39 +277,39 @@ Function: Closure = {
 FullFunction: Closure = {
     "fn" "(" <p:ParamList> ")" <r:(":" Br <TypeUse>)?> <f:FunctionBody> =>
         //TODO @mark: use `p`
-        Closure { blocks: f, params: vec![] },
+        Closure { blocks: f, params: Box::new([]) },
 }
 
 Lambda: Closure = {
-    <f:FunctionBody> => Closure { blocks: f, params: vec![] },
+    <f:FunctionBody> => Closure { blocks: f, params: Box::new([]) },
 }
 
-FunctionBody: Vec<Block> = {
+FunctionBody: Box<[Block]> = {
     "{" Br <bs:Statements<BlockNode>> "}" => bs,
 }
 
-ParamList: Vec<AssignmentDest> = {
+ParamList: Box<[AssignmentDest]> = {
     <Comma<AssignDest>>,
 }
 
-GenericList: Vec<AssignmentDest> = {
+GenericList: Box<[AssignmentDest]> = {
     "<" Br <gens:Comma<AssignDest>> ">" => gens,
-    () => Vec::new(),
+    () => Box::new([]),
 }
 
 TypeUse: Type = {
-    <iden:Iden> <gen:("<" <Comma<TypeUse>> ">")?> => Type { iden, generics: gen.unwrap_or_else(|| vec![]), },
+    <iden:Iden> <gen:("<" <Comma<TypeUse>> ">")?> => Type { iden, generics: gen.unwrap_or_else(|| Box::new([])), },
 }
 
 // If this does not match, it may be a reserved keyword
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
 
-Comma<T>: Vec<T> = {
+Comma<T>: Box<[T]> = {
     <mut v:(<T> "," Br)*> <e:T> ","? Br => vec_and(v, Some(e)),
-    () => Vec::new(),
+    () => Box::new([]),
 }
 
-Statements<T>: Vec<T> = {
+Statements<T>: Box<[T]> = {
     <mut v:(<T> End)*> <e:T?> => vec_and(v, e)
 }
 
