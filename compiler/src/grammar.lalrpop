@@ -57,7 +57,7 @@ End: () = { SEMICOLON, NEWLINE }
 Br: () = { NEWLINE? }
 
 pub Prog: Ast = {
-    Br <bs:Statements<BlockNode>> => Ast { blocks: bs },
+    Br <bs:Statements<BlockNode>> => Ast { blocks: bs.into_boxed_slice() },
 }
 
 // todo: guard statement
@@ -159,11 +159,11 @@ Single: Expr = {
 InvokeExpr: Invoke = {
     <iden:Iden> "(" Br <args:Comma<Expression>> ")" <λ:Function?> => Invoke {
             iden,
-            args: vec_and(args, λ.map(|f| Expr::Closure(f)))
+            args: vec_and(args, λ.map(|f| Expr::Closure(f))).into_boxed_slice()
         },
     <iden:Iden> <λ:Function?> => Invoke {
             iden,
-            args: vec_and(vec![], λ.map(|f| Expr::Closure(f)))
+            args: vec_and(Vec::with_capacity(1), λ.map(|f| Expr::Closure(f))).into_boxed_slice()
         },
     // TODO @mark: full functions
     // TODO @mark: should numbers also be supported, for tuples?
@@ -182,7 +182,7 @@ StructDecl: Struct = {
 EnumDecl: Enum = {
     "enum" <n:Iden> <gens:GenericList> Br "{" Br <vs:Comma<EnumVariant>> "}" => Enum {
         iden: n,
-        variants: vs,
+        variants: vs.into_boxed_slice(),
         generics: gens,
     },
 }
@@ -200,12 +200,12 @@ FieldDecl: (Identifier, Type) = {
 
 Assigns: Assignments = {
     <ds:AssignDestEq+> <e:Expression> => Assignments {
-            dest: { ds },
+            dest: { ds.into_boxed_slice() },
             op: None,
             value: Box::new(e),
     },
     <d:UntypedAssignDest> <op:AssignModifier> <e:Expression> => Assignments {
-        dest: { vec![d] },
+        dest: { Box::new([d]) },
         op: Some(op),
         value: Box::new(e),
     },
@@ -285,31 +285,34 @@ Lambda: Closure = {
 }
 
 FunctionBody: Box<[Block]> = {
-    "{" Br <bs:Statements<BlockNode>> "}" => bs,
+    "{" Br <bs:Statements<BlockNode>> "}" => bs.into_boxed_slice(),
 }
 
 ParamList: Box<[AssignmentDest]> = {
-    <Comma<AssignDest>>,
+    <Comma<AssignDest>> => <>.into_boxed_slice(),
 }
 
 GenericList: Box<[AssignmentDest]> = {
-    "<" Br <gens:Comma<AssignDest>> ">" => gens,
+    "<" Br <gens:Comma<AssignDest>> ">" => gens.into_boxed_slice(),
     () => Box::new([]),
 }
 
 TypeUse: Type = {
-    <iden:Iden> <gen:("<" <Comma<TypeUse>> ">")?> => Type { iden, generics: gen.unwrap_or_else(|| Box::new([])), },
+    <iden:Iden> <gen:("<" <Comma<TypeUse>> ">")?> => Type {
+            iden,
+            generics: gen.map(|v| v.into_boxed_slice()).unwrap_or_else(|| Box::new([])),
+    },
 }
 
 // If this does not match, it may be a reserved keyword
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
 
-Comma<T>: Box<[T]> = {
+Comma<T>: Vec<T> = {
     <mut v:(<T> "," Br)*> <e:T> ","? Br => vec_and(v, Some(e)),
-    () => Box::new([]),
+    () => Vec::new(),
 }
 
-Statements<T>: Box<[T]> = {
+Statements<T>: Vec<T> = {
     <mut v:(<T> End)*> <e:T?> => vec_and(v, e)
 }
 

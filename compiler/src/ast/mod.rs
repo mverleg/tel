@@ -182,9 +182,9 @@ pub enum EnumVariant {
     Existing(Type),
 }
 
-pub fn vec_and<T>(mut items: Vec<T>, addition: Option<T>) -> Box<[T]> {
+pub fn vec_and<T>(mut items: Vec<T>, addition: Option<T>) -> Vec<T> {
     if let Some(addition) = addition {
         items.push(addition);
     }
-    items.into_boxed_slice()
+    items
 }
