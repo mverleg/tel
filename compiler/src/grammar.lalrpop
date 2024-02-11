@@ -21,7 +21,7 @@ grammar;
 
 match {
     // Do not count NEWLINE token when preceded by ellipsis
-    r#"\.{3}[ \t\n\r]*"# => { },
+    r#"[ \t]*\.{3}[ \t\n\r]*"# => { },
 } else {
     // Periods have special lexing because a linebreak is allowed before
     r#"[ \t\n\r]*\."# => PERIOD,

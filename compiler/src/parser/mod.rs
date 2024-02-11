@@ -116,8 +116,15 @@ mod bugs {
     }
 
     #[test]
-    fn line_continuation() {
-        let code = "x = 1 ...\n\n+ 2";
+    fn line_continuation_alone() {
+        let code = "...\n\n1 + 2";
+        assert!(Regex::new(r"\.{3}[ \t\n\r]*").unwrap().is_match(code));
+        parse(code);
+    }
+
+    #[test]
+    fn line_continuation_middle() {
+        let code = "1 ...\n\n+ 2";
         assert!(Regex::new(r"\.{3}[ \t\n\r]*").unwrap().is_match(code));
         parse(code);
     }
