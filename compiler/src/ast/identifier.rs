@@ -8,14 +8,14 @@ use ::smartstring::alias::String as SString;
 
 use ::steel_api::log::debug;
 
-const RESERVED: [&'static str; 137] = [
+//TODO @mark: should 'assert' be reserved?
+const RESERVED: [&'static str; 136] = [
     "abstract",
     "alias",
     "all",
     "annotation",
     "any",
     "as",
-    "assert",
     "async",
     "auto",
     "await",
@@ -198,7 +198,7 @@ impl Identifier {
                 return Err(IdentifierErr::InvalidSymbol(name, unexpected));
             }
         }
-        if let Some(res) = RESERVED_SET.get(name.to_lowercase().as_str()) {
+        if let Some(res) = RESERVED_SET.get(name.as_str()) {
             debug!("reject identifier because '{name}' is reserved",);
             return Err(IdentifierErr::Reserved(*res));
         }
