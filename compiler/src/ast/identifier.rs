@@ -166,8 +166,11 @@ impl Serialize for Identifier {
     }
 }
 
+#[derive(Debug)]
+pub enum IdentifierErr { TooShort(SString), InvalidSymbol(SString, char), Reserved(&'static str) }
+
 impl Identifier {
-    pub fn new(name: impl Into<SString>) -> Option<Self> {
+    pub fn new(name: impl Into<SString>) -> Result<Self, IdentifierErr> {
         // [a-zA-Z][a-zA-Z0-9_]*
         let name = name.into();
         for ch in name.chars() {
@@ -178,11 +181,13 @@ impl Identifier {
                 '_' => {}
                 unexpected => {
                     debug!("reject identifier because '{name}' contains '{unexpected}'");
-                    return None;
+                    return Err(IdentifierErr::InvalidSymbol(name, unexpected));
                 }
             }
         }
-        let first = name.chars().next()?;
+        let Some(first) = name.chars().next() else {
+            return Err(IdentifierErr::TooShort(name))
+        };
         match first {
             'a'..='z' => {}
             'A'..='Z' => {}
@@ -190,13 +195,13 @@ impl Identifier {
             //TODO @mark: allow _ as leading char?
             unexpected => {
                 debug!("reject identifier because '{name}' starts with '{unexpected}'");
-                return None;
+                return Err(IdentifierErr::InvalidSymbol(name, unexpected));
             }
         }
-        // if RESERVED_SET.contains(name.to_lowercase().as_str()) {
-        //     debug!("reject identifier because '{name}' is reserved",);
-        //     return None;
-        // }
-        Some(Identifier { name })
+        if let Some(res) = RESERVED_SET.get(name.to_lowercase().as_str()) {
+            debug!("reject identifier because '{name}' is reserved",);
+            return Err(IdentifierErr::Reserved(*res));
+        }
+        Ok(Identifier { name })
     }
 }
