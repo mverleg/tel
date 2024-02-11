@@ -1,8 +1,9 @@
-use:: serde::Serializer;
 use ::serde::Serialize;
 use ::smartstring::alias::String as SString;
 
-use ::steel_api::log::debug;
+pub use self::identifier::Identifier;
+
+mod identifier;
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Ast {
@@ -31,58 +32,6 @@ pub enum BinOpCode {
 pub enum UnaryOpCode {
     Not,
     Min,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-//TODO @mark: serialize as string
-pub struct Identifier {
-    name: SString,
-}
-
-impl Serialize for Identifier {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&self.name)
-    }
-}
-
-impl Identifier {
-    pub fn new(name: impl Into<SString>) -> Option<Self> {
-        // [a-zA-Z][a-zA-Z0-9_]*
-        let name = name.into();
-        for ch in name.chars() {
-            match ch {
-                '0'..='9' => {}
-                'a'..='z' => {}
-                'A'..='Z' => {}
-                '_' => {}
-                unexpected => {
-                    debug!(
-                        "reject identifier because '{}' contains '{}'",
-                        &name, unexpected
-                    );
-                    return None;
-                }
-            }
-        }
-        let first = name.chars().next()?;
-        match first {
-            'a'..='z' => {}
-            'A'..='Z' => {}
-            '_' => {}
-            //TODO @mark: allow _ as leading char?
-            unexpected => {
-                debug!(
-                    "reject identifier because '{}' starts with '{}'",
-                    &name, unexpected
-                );
-                return None;
-            }
-        }
-        Some(Identifier { name })
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
