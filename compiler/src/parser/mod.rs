@@ -111,48 +111,6 @@ mod bugs {
     }
 
     #[test]
-    fn empty_struct() {
-        parse("struct D {\n}");
-    }
-
-    #[test]
-    fn nullary_function_with_parentheses() {
-        parse("f()");
-    }
-
-    #[test]
-    fn semicolon_at_end_of_file() {
-        parse("a=1;");
-    }
-
-    #[test]
-    fn semicolon_between_statements_no_newline() {
-        parse("a=1;b");
-    }
-
-    // Disabled until custom lexer or similar solution, see https://github.com/mverleg/lalrpop_close_block_and_statement
-    // #[test]
-    // fn short_closure_no_newline_at_eof() {
-    //     parse("x\\0").unwrap();
-    // }
-    //
-    // #[test]
-    // fn short_closure_assign() {
-    //     parse("a=\\2*it;b=x\\7\nc=y\\-it").unwrap();
-    // }
-    //
-    // #[test]
-    // fn short_closure_end_statement() {
-    //     let ast = parse("a=f()\\1\nb=1").unwrap();
-    //     assert!(ast.blocks.len() == 2);
-    // }
-    //
-    // #[test]
-    // fn short_closure_period_newline() {
-    //     parse("x.a\\1\n.b;f").unwrap();
-    // }
-
-    #[test]
     fn works_without_trailing_newline() {
         parse("5+\n5");
     }

@@ -20,19 +20,6 @@ use crate::ast::vec_and;
 grammar;
 
 match {
-    // Match double quoted string literals
-    r#""[^"]*""# => DQSTR,
-    //TODO @mark: is this second half correct?
-
-    // Match single quoted string literals
-    r#"('[^']*')"# => SQSTR,
-
-    // Reserved keywords
-    r#"(abstract|alias|all|annotation|any|as|assert|async|auto|await|become|bool|box|break|by|byte|catch|class|closed|companion|const|constructor|continue|data|debug|def|default|defer|del|delegate|delegates|delete|derive|deriving|do|double|dynamic|elementwise|end|eval|except|extends|extern|family|field|final|finally|float|fun|for|get|global|goto|impl|implements|import|in|init|inject|int|interface|internal|intersect|intersection|io|is|lambda|lateinit|lazy|let|local|loop|macro|main|match|module|move|NaN|native|nill|none|null|object|open|operator|out|override|package|param|pass|private|proof|public|pure|raise|real|rec|reified|return|sealed|select|self|set|sizeof|spawn|static|steel|super|switch|sync|synchronized|tailrec|task|test|this|throw|throws|to|trait|transient|try|type|union|unite|unsafe|until|use|val|var|vararg|virtual|volatile|when|where|while|xor|yield)"# => RESERVED,
-
-    // Ignore line comments
-    r#"#[^\r\n]*(\r\n|\n|\r)(\s|\n|\r)*"# => { },
-
     // Do not count NEWLINE token when preceded by ellipsis
     r#"\.{3}[ \t\n\r]*"# => { },
 } else {
@@ -47,7 +34,6 @@ match {
 
     // Ignore any other whitespace (except newlines above)
     r#"[ \t]+"# => { },
-    //TODO @mark: does this mean keywords can be concatenated? that is not desirable
 } else {
     _
 }
@@ -63,9 +49,6 @@ pub Prog: Ast = {
 // todo: guard statement
 
 BlockNode: Block = {
-    <d:StructDecl> => Block::Struct(d),
-    <d:EnumDecl> => Block::Enum(d),
-    <a:Assigns> => Block::Assigns(a),
     <e:Expression> => Block::Expression(e),
 }
 
@@ -85,26 +68,12 @@ Conditional: Expr = {
     // could allow newline after `if` but I prefer not to
     "if" "(" <when:Expression> ")" "{" Br <yes:Expression> "}" <no:("else" "{" <Expression> "}")?> =>
             Expr::If(Box::new(when), Box::new(yes), no.map(|e| Box::new(e))),
-    ForEach,
+    BoolCombineExpr,
 }
 
 // TODO @mark: match/branch/select statement
 
 // TODO @mark: use ~ or ~= for pattern matching? i.e. can do ~= by itself if irrefutable, and inside if/while if refutable
-
-ForEach: Expr = {
-    // could allow newline after `for` but I prefer not to
-    "for" "(" <name:AssignDest> "in" <iter:Expression> ")" "{" Br <body:Expression> "}" =>
-            Expr::ForEach(name, Box::new(iter), Box::new(body)),
-    WhileLoop,
-}
-
-WhileLoop: Expr = {
-    // could allow newline after `if` but I prefer not to
-    "while" "(" <when:Expression> ")" "{" Br <body:Expression> "}" =>
-            Expr::While(Box::new(when), Box::new(body)),
-    BoolCombineExpr,
-}
 
 BoolCombineExpr: Expr = {
     <l:BoolCombineExpr> <o:BoolCombineOp> Br <r:BoolCompareExpr> => Expr::BinOp(o, Box::new(l), Box::new(r)),
@@ -148,8 +117,6 @@ UnaryExpr: Expr = {
 }
 
 Single: Expr = {
-    <s:DQSTR> => Expr::Text(s.to_string().into()),
-    <s:SQSTR> => Expr::Text(s.to_string().into()),
     NumLit => Expr::Num(<>),
     <inv:InvokeExpr> => Expr::Invoke(inv),
     <f:Function> => Expr::Closure(f),
@@ -179,74 +146,17 @@ StructDecl: Struct = {
     },
 }
 
-EnumDecl: Enum = {
-    "enum" <n:Iden> <gens:GenericList> Br "{" Br <vs:Comma<EnumVariant>> "}" => Enum {
-        iden: n,
-        variants: vs.into_boxed_slice(),
-        generics: gens,
-    },
-}
-
-EnumVariant: EnumVariant = {
-    <StructDecl> => EnumVariant::Struct(<>),
-    <EnumDecl> => EnumVariant::Enum(<>),
-    <TypeUse> => EnumVariant::Existing(<>),
-}
-
 //TODO @mark: is type inference possible in this context?
 FieldDecl: (Identifier, Type) = {
     <n:Iden> ":" Br <t:TypeUse> => (n, t),
 }
 
-Assigns: Assignments = {
-    <ds:AssignDestEq+> <e:Expression> => Assignments {
-            dest: { ds.into_boxed_slice() },
-            op: None,
-            value: Box::new(e),
-    },
-    <d:UntypedAssignDest> <op:AssignModifier> <e:Expression> => Assignments {
-        dest: { Box::new([d]) },
-        op: Some(op),
-        value: Box::new(e),
-    },
-}
-
-AssignDestEq: AssignmentDest = {
-    <d:AssignDest> "=" => d,
-}
-
 AssignDest: AssignmentDest = {
-    <UntypedAssignDest>,
-    <TypedAssignDest>,
-}
-
-UntypedAssignDest: AssignmentDest = {
-    <kw:AssignmentKeyword?> <n:Iden> => AssignmentDest {
-            kw: kw.unwrap_or(AssignmentKw::None),
+    <n:Iden> => AssignmentDest {
+            kw: AssignmentKw::None,
             target: n,
             typ: None,
     },
-}
-
-TypedAssignDest: AssignmentDest = {
-    <kw:AssignmentKeyword?> <n:Iden> ":" Br <t: TypeUse> => AssignmentDest {
-            kw: kw.unwrap_or(AssignmentKw::None),
-            target: n,
-            typ: Some(t),
-    },
-}
-
-AssignmentKeyword: AssignmentKw = {
-    "mut" => AssignmentKw::Mut,
-    "local" => AssignmentKw::Local,
-}
-
-AssignModifier: BinOpCode = {
-    // must treat modifier and equals as one token, because lookahead is at most 1 token
-    "+=" => BinOpCode::Add,
-    "-=" => BinOpCode::Sub,
-    "*=" => BinOpCode::Mul,
-    "/=" => BinOpCode::Div,
 }
 
 BoolCompareOp: BinOpCode = {
