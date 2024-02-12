@@ -81,7 +81,7 @@ Expression: Expr = {
 
 Conditional: Expr = {
     // could allow newline after `if` but I prefer not to
-    "if" "(" <when:Expression> ")" "{" Br <yes:Expression> "}" <no:("else" "{" <Expression> "}")?> =>
+    "if" "(" <when:Expression> ")" "{" Br <yes:Expression> Br "}" <no:("else" "{" Br <Expression> Br "}")?> =>
             Expr::If(Box::new(when), Box::new(yes), no.map(|e| Box::new(e))),
     ForEach,
 }
