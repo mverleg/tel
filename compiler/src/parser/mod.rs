@@ -154,13 +154,18 @@ mod bugs {
 
     #[test]
     fn works_without_trailing_newline() {
-        parse("5+\n5");
+        parse("5 +\n5");
+    }
+
+    #[test]
+    fn reject_arithmetic_without_spacing() {
+        assert!(parse_str(PathBuf::new(), "1+\n1".to_owned()).is_err());
+        assert!(parse_str(PathBuf::new(), "1 /1".to_owned()).is_err());
     }
 
     #[test]
     fn line_continuation() {
         let code = "x = 1 ...\n\n+ 2";
-        assert!(Regex::new(r"\.{3}[ \t\n\r]*").unwrap().is_match(code));
         parse(code);
     }
 }
