@@ -2,7 +2,6 @@
 optional = if (108 % 3 == 0) {
     "hello"
 }
-
 optional.then { it.print() }
 
 guaranteed = if (161 % 7 == 0) {
@@ -11,5 +10,14 @@ guaranteed = if (161 % 7 == 0) {
     "see you later"
 }
 guaranteed.print()
+
+result = if (1 % 2 == 1) {
+    x = 7
+    x * x
+} else {
+    y = 9
+    y * y
+}
+result.print()
 
 # TODO @mark: match/branch/select
