@@ -89,8 +89,8 @@ pub enum Expr {
     /// Dot-access a field or method, like x.a or x.f(a)
     Dot(Box<Expr>, Invoke),
     Closure(Closure),
-    /// If, then, else
-    If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
+    /// If, then, else (empty else is same as no else)
+    If(Box<Expr>, Box<[Block]>, Box<[Block]>),
     While(Box<Expr>, Box<Expr>),
     ForEach(AssignmentDest, Box<Expr>, Box<Expr>),
 }
