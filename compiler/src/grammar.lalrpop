@@ -43,6 +43,11 @@ match {
     // Turn any remaining newlines (not preceded by semicolon, in previous rule) into a single token
     r#"[ \t]*(\n|\r)+"# => NEWLINE,
 
+    // Disallow math without whitespace
+    // TODO @mark: make sure all operators are here
+    r#"[ \t]*[a-zA-Z0-9_]+[+\-*/%]"# => TOO_COMPLEX1,
+    r#"[ \t]*[*/%][a-zA-Z0-9_]+"# => TOO_COMPLEX2,
+
     // Ignore any other whitespace (except newlines above)
     r#"[ \t]+"# => { },
     //TODO @mark: does this mean keywords can be concatenated? that is not desirable
@@ -83,7 +88,7 @@ Conditional: Expr = {
     // could allow newline after `if` but I prefer not to
     "if" "(" <when:Expression> ")" "{" Br <yes:Statements<BlockNode>> "}"
         <no:("else" "{" Br <Statements<BlockNode>> "}")?> =>
-            Expr::If(Box::new(when), yes, no.unwrap_or_else(|| Box::new([]))),
+            Expr::If(Box::new(when), yes.into_boxed_slice(), no.map(|s| s.into_boxed_slice()).unwrap_or_else(|| Box::new([]))),
     ForEach,
 }
 
