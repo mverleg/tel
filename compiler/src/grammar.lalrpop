@@ -65,6 +65,7 @@ pub Prog: Ast = {
 
 // todo: guard statement
 
+// This is the closest thing to a single 'statement'
 BlockNode: Block = {
     <d:StructDecl> => Block::Struct(d),
     <d:EnumDecl> => Block::Enum(d),
@@ -98,15 +99,15 @@ Conditional: Expr = {
 
 ForEach: Expr = {
     // could allow newline after `for` but I prefer not to
-    "for" "(" <name:AssignDest> "in" <iter:Expression> ")" "{" Br <body:Expression> "}" =>
-            Expr::ForEach(name, Box::new(iter), Box::new(body)),
+    "for" "(" <name:AssignDest> "in" <iter:Expression> ")" "{" Br <body:Statements> "}" =>
+            Expr::ForEach(name, Box::new(iter), body.into_boxed_slice()),
     WhileLoop,
 }
 
 WhileLoop: Expr = {
     // could allow newline after `if` but I prefer not to
-    "while" "(" <when:Expression> ")" "{" Br <body:Expression> "}" =>
-            Expr::While(Box::new(when), Box::new(body)),
+    "while" "(" <when:Expression> ")" "{" Br <body:Statements> "}" =>
+            Expr::While(Box::new(when), body.into_boxed_slice()),
     BoolCombineExpr,
 }
 

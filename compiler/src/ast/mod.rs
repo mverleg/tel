@@ -91,8 +91,8 @@ pub enum Expr {
     Closure(Closure),
     /// If, then, else (empty else is same as no else)
     If(Box<Expr>, Box<[Block]>, Box<[Block]>),
-    While(Box<Expr>, Box<Expr>),
-    ForEach(AssignmentDest, Box<Expr>, Box<Expr>),
+    While(Box<Expr>, Box<[Block]>),
+    ForEach(AssignmentDest, Box<Expr>, Box<[Block]>),
 }
 
 /// Can be a variable read or a function call. A function call without () cannot be differentiated from
