@@ -90,7 +90,7 @@ pub enum Expr {
     Dot(Box<Expr>, Invoke),
     Closure(Closure),
     /// If, then, else (empty else is same as no else)
-    If(Box<[(Expr, Box<[Block]>)]>, Box<[Block]>),
+    If(Box<[(Expr, Box<[Block]>)]>, Option<Box<[Block]>>),
     While(Box<Expr>, Box<[Block]>),
     ForEach(AssignmentDest, Box<Expr>, Box<[Block]>),
 }
