@@ -1,7 +1,7 @@
 
-double = fn (arg: i32): i32 {
+twice = fn (arg: i32): i32 {
     "doubling number {arg}".print
     2 * arg
 }
 
-double(3).print
+twice(3).print
