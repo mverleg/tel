@@ -1,6 +1,6 @@
 [package]
-name = "steel-api"
-description = "Steel (Statically-Typed Embedded Expression Language) is a scripting language that can be embedded in other applications."
+name = "stale-api"
+description = "Stale (Statically-Typed Algebraic Language for Embedding) is a scripting language that can be embedded in other applications."
 
 edition.workspace = true
 version.workspace = true
@@ -11,7 +11,7 @@ license.workspace = true
 #build = "build.rs"
 
 [lib]
-name = "steel_api"
+name = "stale_api"
 path = "src/lib.rs"
 
 [dependencies]

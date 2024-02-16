@@ -1,8 +1,8 @@
 [package]
-name = "steel-cli"
-description = "Steel (Statically-Typed Embedded Expression Language) is a scripting language that can be embedded in other applications."
+name = "stale-cli"
+description = "Stale (Statically-Typed Algebraic Language for Embedding) is a scripting language that can be embedded in other applications."
 publish = true
-default-run = "steel"
+default-run = "stale"
 
 edition.workspace = true
 version.workspace = true
@@ -13,12 +13,12 @@ license.workspace = true
 #build = "build.rs"
 
 [[bin]]
-name = "steel"
+name = "stale"
 path = "src/main.rs"
 
 [dependencies]
-steel-api = "=0.1.0"
-steel-lang = "=0.1.0"
+stale-api = "=0.1.0"
+stale-lang = "=0.1.0"
 
 clap = { version = "4.4.11", default-features = true, features = ["std", "derive", "unicode"] }
 env_logger = "0.10.1"

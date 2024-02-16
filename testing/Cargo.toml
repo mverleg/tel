@@ -1,6 +1,6 @@
 [package]
-name = "steel-testing"
-description = "Integration tests for Steel"
+name = "stale-testing"
+description = "Integration tests for the Stale language (Statically-Typed Algebraic Language for Embedding)."
 publish = true
 
 edition.workspace = true
@@ -10,12 +10,12 @@ authors.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "steel-testing"
+name = "stale-testing"
 path = "src/main.rs"
 
 [dependencies]
-steel-api = "=0.1.0"
-steel-cli = "=0.1.0"
+stale-api = "=0.1.0"
+stale-cli = "=0.1.0"
 
 #regex = "1.10.2"
 #itertools = "0.11.0"

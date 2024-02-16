@@ -11,10 +11,10 @@ members = [
 version = "0.1.0"
 edition = "2021"
 authors = ["Mark <mverleg.noreply@gmail.com>"]
-homepage = "https://github.com/mverleg/steel"
+homepage = "https://github.com/mverleg/stale"
 license = "Apache-2.0"
 publish = true
 
 [patch.crates-io]
-steel-api = { path = "./api" }
-steel-lang = { path = "./compiler" }
+stale-api = { path = "./api" }
+stale-lang = { path = "./compiler" }
