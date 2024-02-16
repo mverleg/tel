@@ -60,7 +60,7 @@ End: () = { SEMICOLON, NEWLINE }
 Br: () = { NEWLINE? }
 
 pub Prog: Ast = {
-    Br <bs:Statements<BlockNode>> => Ast { blocks: bs.into_boxed_slice() },
+    Br <bs:Statements> => Ast { blocks: bs.into_boxed_slice() },
 }
 
 // todo: guard statement
@@ -86,8 +86,8 @@ Expression: Expr = {
 
 Conditional: Expr = {
     // could allow newline after `if` but I prefer not to
-    "if" "(" <when:Expression> ")" "{" Br <yes:Statements<BlockNode>> "}"
-        <no:("else" "{" Br <Statements<BlockNode>> "}")?> =>
+    "if" "(" <when:Expression> ")" "{" Br <yes:Statements> "}"
+        <no:("else" "{" Br <Statements> "}")?> =>
             Expr::If(Box::new(when), yes.into_boxed_slice(), no.map(|s| s.into_boxed_slice()).unwrap_or_else(|| Box::new([]))),
     ForEach,
 }
@@ -289,7 +289,7 @@ Lambda: Closure = {
 }
 
 FunctionBody: Box<[Block]> = {
-    "{" Br <bs:Statements<BlockNode>> "}" => bs.into_boxed_slice(),
+    "{" Br <bs:Statements> "}" => bs.into_boxed_slice(),
 }
 
 ParamList: Box<[AssignmentDest]> = {
@@ -316,8 +316,8 @@ Comma<T>: Vec<T> = {
     () => Vec::new(),
 }
 
-Statements<T>: Vec<T> = {
-    <mut v:(<T> End)*> <e:T?> => vec_and(v, e)
+Statements: Vec<Block> = {
+    <mut v:(<BlockNode> End)*> <e:BlockNode?> => vec_and(v, e)
 }
 
 //TODO @mark: see if any rules are unused (is there a warning?)
