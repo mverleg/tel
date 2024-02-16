@@ -744,6 +744,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "steel-cli"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "089f29c2246019fb93951b64274638fac5c7204a76523016413de12efcbcad36"
+dependencies = [
+ "clap",
+ "env_logger",
+ "steel-api",
+ "steel-lang",
+]
+
+[[package]]
 name = "steel-lang"
 version = "0.1.0"
 dependencies = [
@@ -760,6 +772,14 @@ dependencies = [
  "smartstring",
  "steel-api",
  "time",
+]
+
+[[package]]
+name = "steel-testing"
+version = "0.1.0"
+dependencies = [
+ "steel-api",
+ "steel-cli 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
