@@ -9,6 +9,12 @@ RUN find . -name target -prune -o -type f &&\
     touch -c build.rs src/main.rs src/lib.rs &&\
     cargo build --release --all-features --locked
 
-# Run test module
+# Update PATH
 RUN find . -executable -type f &&\
-    ./target/x86_64-unknown-linux-musl/release/tel-testing
+    EXPORT PATH=./target/x86_64-unknown-linux-musl/release \
+
+# Cli smoke test
+RUN cat 'compiler/examples/fizzbuzz.tel' | tel script -i
+
+# Run test module
+RUN tel-testing
