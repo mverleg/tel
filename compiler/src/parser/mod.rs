@@ -1,7 +1,7 @@
 #![allow(unused)] //TODO @mark: TEMPORARY! REMOVE THIS!
 
-use ::std::path::PathBuf;
 use ::std::path::Path;
+use ::std::path::PathBuf;
 
 use ::lalrpop_util::lalrpop_mod;
 
@@ -76,22 +76,20 @@ fn count_empty_lines_at_end(text: &str) -> usize {
 }
 
 #[cfg(test)]
-mod bugs {
-    use regex::Regex;
-    use sha2::digest::typenum::Exp;
-
-    use crate::ast::Block;
-    use crate::ast::Closure;
-    use crate::ast::Expr;
-    use crate::ast::Identifier;
-    use crate::ast::Invoke;
-
+mod internal {
     use super::*;
 
+    #[test]
     fn test_count_empty_lines_at_end() {
         assert_eq!(0, count_empty_lines_at_end(""));
         assert_eq!(0, count_empty_lines_at_end("\n"));
+        assert_eq!(1, count_empty_lines_at_end("\n\n"));
     }
+}
+
+#[cfg(test)]
+mod bugs {
+    use super::*;
 
     fn parse(code: &str) -> Ast {
         match parse_str(PathBuf::new(), code.to_owned()) {
