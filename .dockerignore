@@ -7,7 +7,7 @@
 !cli/
 !compiler/
 !testing/
-!ci/
+!ci/bump-dependencies.sh
 !examples/
 !benches/
 !docs/
