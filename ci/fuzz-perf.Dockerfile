@@ -11,7 +11,7 @@ RUN find . -name target -prune -o -type f &&\
 
 # Update PATH
 RUN find . -executable -type f &&\
-    EXPORT PATH=./target/x86_64-unknown-linux-musl/release
+    PATH=./target/x86_64-unknown-linux-musl/release
 
 # Cli smoke test
 RUN cat 'compiler/examples/fizzbuzz.tel' | tel script -i

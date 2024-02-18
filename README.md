@@ -1,5 +1,6 @@
 
-![CI status](https://github.com/mverleg/tel/actions/workflows/test-lint.yml/badge.svg)
+![Test & lint](https://github.com/mverleg/tel/actions/workflows/test-lint.yml/badge.svg)
+![fuzz & perf](https://github.com/mverleg/tel/actions/workflows/fuzz-perf.yml/badge.svg)
 
 **Tel** (Typed Embedded Language) is a statically-typed language that can be embedded in other applications.
 
