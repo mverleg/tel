@@ -5,7 +5,7 @@ use ::rand::rngs::StdRng;
 use ::rand::SeedableRng;
 
 use ::tel::tel_build_str;
-use ::tel_api::telir::TelFile;
+use ::tel_api::lang::TelFile;
 use ::tel_ast_to_code::ast_to_code;
 
 fn main() {
