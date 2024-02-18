@@ -93,7 +93,7 @@ Conditional: Expr = {
             let mut conditions = elif;
             conditions.insert(0, (when, yes));
             Expr::If(
-                conditions.map(|(when, yes)| (when, yes.into_boxed_slice())).collect(),
+                conditions.into_iter().map(|(when, yes)| (when, yes.into_boxed_slice())).collect(),
                 no.map(|s| s.into_boxed_slice()))
         },
     ForEach,

@@ -17,4 +17,5 @@ publish = true
 
 [patch.crates-io]
 tel-api = { path = "./api" }
+tel-cli = { path = "./cli" }
 tel-lang = { path = "./compiler" }

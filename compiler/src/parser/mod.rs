@@ -5,18 +5,18 @@ use ::std::path::Path;
 
 use ::lalrpop_util::lalrpop_mod;
 
-use ::steel_api::log::debug;
+use ::tel_api::log::debug;
 
 use crate::ast::Ast;
 use crate::parser::errors::build_error;
-use crate::SteelErr;
+use crate::TelErr;
 
 mod errors;
 
 lalrpop_mod!(#[allow(clippy::all)] gen_parser, "/grammar.rs");
 include!(concat!(env!("OUT_DIR"), "/parse_tests.rs"));
 
-pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<Ast, SteelErr> {
+pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<Ast, TelErr> {
     if count_empty_lines_at_end(&code) == 0 {
         code.push('\n')
     }
@@ -30,7 +30,7 @@ pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<Ast, SteelErr> {
         }
         Err(err) => {
             let (msg, line) = build_error(err, src_pth.to_str().unwrap(), &code);
-            Err(SteelErr::ParseErr {
+            Err(TelErr::ParseErr {
                 file: src_pth,
                 line,
                 msg,
@@ -40,9 +40,9 @@ pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<Ast, SteelErr> {
     //TODO @mark: no unwrap
 }
 
-fn fail_if_no_newline_at_end(src_pth: &Path, code: &str) -> Result<(), SteelErr> {
+fn fail_if_no_newline_at_end(src_pth: &Path, code: &str) -> Result<(), TelErr> {
     if count_empty_lines_at_end(code) == 0 {
-        return Err(SteelErr::ParseErr {
+        return Err(TelErr::ParseErr {
             file: src_pth.to_owned(),
             line: code.lines().count(),
             //TODO @mark:  test ^
@@ -91,7 +91,7 @@ mod bugs {
     fn parse(code: &str) -> Ast {
         match parse_str(PathBuf::new(), code.to_owned()) {
             Ok(ast) => ast,
-            Err(SteelErr::ParseErr { msg, .. }) => {
+            Err(TelErr::ParseErr { msg, .. }) => {
                 println!("{}", msg);
                 panic!()
             }

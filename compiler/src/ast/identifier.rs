@@ -6,10 +6,10 @@ use ::serde::Serialize;
 use ::serde::Serializer;
 use ::smartstring::alias::String as SString;
 
-use ::steel_api::log::debug;
+use ::tel_api::log::debug;
 
 //TODO @mark: should 'assert' be reserved?
-const RESERVED: [&'static str; 136] = [
+const RESERVED: [&'static str; 137] = [
     "abstract",
     "alias",
     "all",
@@ -122,6 +122,7 @@ const RESERVED: [&'static str; 136] = [
     "synchronized",
     "tailrec",
     "task",
+    "tel",
     "test",
     "this",
     "throw",

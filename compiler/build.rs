@@ -26,7 +26,7 @@ mod tests {
     for pth in fs::read_dir(&examples).unwrap() {
         let pth = pth.unwrap().path();
         let pth_str = pth.to_str().unwrap();
-        if !pth.is_file() || pth.extension() != Some("steel".as_ref()) {
+        if !pth.is_file() || pth.extension() != Some("tel".as_ref()) {
             println!("skipping test generation for '{}' in examples dir", pth_str);
             continue;
         }
@@ -40,7 +40,7 @@ fn parse_{name}() {{
     let code = read_to_string(&pth).unwrap();
     // parse_str should be available in the context where this is included
     let res = parse_str(pth, code);
-    if let Err(SteelErr::ParseErr {{ msg, .. }}) = &res {{
+    if let Err(TelErr::ParseErr {{ msg, .. }}) = &res {{
         eprintln!(\"Failed to parse example file {pth_str}:\\n{{}}\", msg);
     }}
     assert!(res.is_ok());

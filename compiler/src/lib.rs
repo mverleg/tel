@@ -8,8 +8,8 @@ use std::io::{stdout, BufWriter, Write};
 use crate::ast::Ast;
 use ::serde::Serialize;
 use ::serde_json;
-use ::steel_api::log::debug;
-use ::steel_api::log::warn;
+use ::tel_api::log::debug;
+use ::tel_api::log::warn;
 
 use crate::parser::parse_str;
 
@@ -22,11 +22,11 @@ pub struct BuildArgs {
     pub verbose: bool,
 }
 
-pub fn steel_build(args: &BuildArgs) -> Result<(), SteelErr> {
+pub fn tel_build(args: &BuildArgs) -> Result<(), TelErr> {
     let path = find_main_file(&args.path)?;
     let source = fs::read_to_string(&path)
-        .map_err(|err| SteelErr::CouldNotRead(path.clone(), err.to_string()))?;
-    steel_build_str(path, source, false)
+        .map_err(|err| TelErr::CouldNotRead(path.clone(), err.to_string()))?;
+    tel_build_str(path, source, false)
 }
 
 #[derive(Debug, Serialize)]
@@ -34,7 +34,7 @@ struct DebugInfo<'a> {
     ast: &'a Ast,
 }
 
-pub fn steel_build_str(path: PathBuf, code: String, debug: bool) -> Result<(), SteelErr> {
+pub fn tel_build_str(path: PathBuf, code: String, debug: bool) -> Result<(), TelErr> {
     let ast = parse_str(path, code)?;
     debug!("{:?}", ast);
     print_debug(debug, &ast);
@@ -51,16 +51,16 @@ fn print_debug(debug: bool, ast: &Ast) {
     out.flush().unwrap()
 }
 
-fn find_main_file(path: &Path) -> Result<PathBuf, SteelErr> {
+fn find_main_file(path: &Path) -> Result<PathBuf, TelErr> {
     let path = if path.exists() {
         let pth = path.to_owned();
         debug!("select base path as starting point: '{}'", pth.display());
         pth
     } else {
-        let pth_ext = path.with_extension("steel");
+        let pth_ext = path.with_extension("tel");
         if pth_ext.exists() {
             debug!(
-                "select path with '.steel' extension added as starting point: '{}'",
+                "select path with '.tel' extension added as starting point: '{}'",
                 pth_ext.display()
             );
             pth_ext
@@ -70,7 +70,7 @@ fn find_main_file(path: &Path) -> Result<PathBuf, SteelErr> {
                 path.display(),
                 pth_ext.display()
             );
-            return Err(SteelErr::FileNotFound {
+            return Err(TelErr::FileNotFound {
                 file: path.to_owned(),
             });
         }
@@ -79,7 +79,7 @@ fn find_main_file(path: &Path) -> Result<PathBuf, SteelErr> {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum SteelErr {
+pub enum TelErr {
     FileNotFound {
         file: PathBuf,
     },
