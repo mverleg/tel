@@ -55,7 +55,7 @@ fn fail_if_no_newline_at_end(src_pth: &Path, code: &str) -> Result<(), TelErr> {
 fn count_empty_lines_at_end(text: &str) -> usize {
     let text = text.as_bytes();
     let mut lines = 0;
-    let mut i = text.len() - 1;
+    let mut i = text.len().saturating_sub(1);
     while i > 0 {
         while i > 0 && [b' ', b'\t'].contains(&text[i]) {
             i -= 1;
@@ -87,6 +87,11 @@ mod bugs {
     use crate::ast::Invoke;
 
     use super::*;
+
+    fn test_count_empty_lines_at_end() {
+        assert_eq!(0, count_empty_lines_at_end(""));
+        assert_eq!(0, count_empty_lines_at_end("\n"));
+    }
 
     fn parse(code: &str) -> Ast {
         match parse_str(PathBuf::new(), code.to_owned()) {

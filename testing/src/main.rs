@@ -12,8 +12,11 @@ fn main() {
     let rng: StdRng = SeedableRng::seed_from_u64(123_456_789);
     let file = gen_random_file(&rng);
     let code = ast_to_code(file);
-    tel_build_str(PathBuf::from("script-input"), code, false).unwrap();
-    unimplemented!();
+    let res = tel_build_str(PathBuf::from("test-input"), code.clone(), false);
+    if res.is_err() {
+        println!("{}", &code);
+        panic!("failed to parse generated code")
+    }
 }
 
 fn gen_random_file(rng: &impl Rng) -> TelFile {
