@@ -1,4 +1,6 @@
 
+![CI status](https://github.com/mverleg/tel/actions/workflows/test-lint.yml/badge.svg)
+
 **Tel** (Typed Embedded Language) is a statically-typed language that can be embedded in other applications.
 
 **Tel (formerly Steel) is under construction and not ready for use.**
@@ -13,7 +15,7 @@ It is designed to be:
 
 The goal is to provide a simple language that end users can write small or medium scripts in, to run as part of a larger application. It is stable, so no mismatch between script and runtime versions, and no constant updates.
 
-The simplicity, safety and the ease of use from other languages make Tel convenient as a scripting langauge. For example to provide modding capabilities in a video game, or to allow users to provide custom calculations in a financial or scientific model. 
+The simplicity, safety and the ease of use from other languages make Tel convenient as a scripting langauge. For example to provide modding capabilities in a video game, or to allow users to provide custom calculations in a financial or scientific model.
 
 These are nice use cases, but there are [many alternatives](https://github.com/dbohdan/embedded-scripting-languages), why pick Tel?
 
