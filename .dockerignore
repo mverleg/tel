@@ -4,11 +4,12 @@
 !Cargo.lock
 !build.rs
 !api/
+!ir/
+!ast2code/
 !cli/
 !compiler/
 !testing/
 !ci/bump-dependencies.sh
-!examples/
 !benches/
 !docs/
 !deny.toml
