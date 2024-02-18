@@ -1,5 +1,5 @@
 [package]
-name = "tel-api"
+name = "tel-ir"
 description = "Tel (Typed Embedded Language) is a statically-typed language that can be embedded in other applications."
 
 edition.workspace = true

@@ -5,7 +5,7 @@ use ::rand::rngs::StdRng;
 use ::rand::SeedableRng;
 
 use ::tel::tel_build_str;
-use ::tel_api::lang::TelFile;
+use ::tel_api::TelFile;
 use ::tel_ast_to_code::ast_to_code;
 
 fn main() {
@@ -19,6 +19,6 @@ fn main() {
     }
 }
 
-fn gen_random_file(rng: &impl Rng) -> TelFile {
+fn gen_random_file(_rng: &impl Rng) -> TelFile {
     TelFile {}
 }

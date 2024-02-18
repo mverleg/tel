@@ -795,7 +795,6 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "log",
- "rand",
  "serde",
  "serde_json",
 ]
@@ -815,6 +814,16 @@ dependencies = [
  "env_logger",
  "tel-api",
  "tel-lang",
+]
+
+[[package]]
+name = "tel-ir"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "log",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
