@@ -1,7 +1,7 @@
 
 # GENERATED: This file is automatically updated by 'Bump dependencies', local changes will be overwritten!
 
-FROM mverleg/rust_nightly_musl_base:deps_2023-04-30_37
+FROM mverleg/rust_nightly_musl_base:nodeps_2024-02-17_42
 
 # Copy the code (all except .dockerignore).
 COPY ./ ./
@@ -11,6 +11,7 @@ ARG TEST=1
 RUN echo "TEST=$TEST" &&\
     find . -name target -prune -o -type f &&\
     touch -c build.rs src/main.rs src/lib.rs &&\
+    # make sure Cargo.lock is added to git, or --locked will fail \
     if [ "$TEST" != 0 ] ; then \
         cargo build --all-features --tests --locked; \
     else \

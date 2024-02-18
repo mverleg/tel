@@ -1,9 +1,9 @@
 
 ![Steel](./resource/img/steel-header-9.png)
 
-**Steel** (Statically-Typed Embedded Expression Language) is a scripting language that can be embedded in other applications.
+**Stale** (Statically-Typed Algebraic Language for Embedding) is a scripting language that can be embedded in other applications.
 
-**Steel is under construction and not ready for use**
+**Stale (formerly Steel) is under construction and not ready for use.**
 
 It is designed to be:
 
