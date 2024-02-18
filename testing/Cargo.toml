@@ -1,6 +1,6 @@
 [package]
 name = "tel-testing"
-description = "Integration tests for Tel (Typed Embedded Language) is a statically-typed language that can be embedded in other applications."
+description = "Integration tests for Tel (Typed Embedded Language), a statically-typed language that can be embedded in other applications."
 publish = true
 
 edition.workspace = true
@@ -15,22 +15,6 @@ path = "src/main.rs"
 
 [dependencies]
 tel-api = "=0.1.0"
-tel-cli = "=0.1.0"
+tel-lang = "=0.1.0"
+tel-ast-to-code = "=0.1.0"
 rand = "0.8.5"
-
-#regex = "1.10.2"
-#itertools = "0.11.0"
-#time = { version = "0.3.31", features = ["serde"] }
-#env_logger = "0.10.1"
-#sha2 = "0.10.8"
-#lalrpop-util = { version = "0.20.0", features = ["lexer", "unicode"] }
-#serde = "1.0.193"
-#serde_json = "1.0.108"
-#
-#dashmap = "5.5.3"
-#ahash = "0.8.6"
-#smartstring = { version = "1.0.1", features = ["serde"] }
-#
-#[build-dependencies]
-#lalrpop = { version = "0.20.0", features = ["lexer", "unicode"] }
-

@@ -4,6 +4,7 @@ members = [
     "api",
     "compiler",
     "cli",
+    "ast2code",
     "testing",
 ]
 
@@ -19,3 +20,4 @@ publish = true
 tel-api = { path = "./api" }
 tel-cli = { path = "./cli" }
 tel-lang = { path = "./compiler" }
+tel-ast-to-code = { path = "./ast2code" }

@@ -801,6 +801,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tel-ast-to-code"
+version = "0.1.0"
+dependencies = [
+ "tel-api",
+]
+
+[[package]]
 name = "tel-cli"
 version = "0.1.0"
 dependencies = [
@@ -835,7 +842,8 @@ version = "0.1.0"
 dependencies = [
  "rand",
  "tel-api",
- "tel-cli",
+ "tel-ast-to-code",
+ "tel-lang",
 ]
 
 [[package]]

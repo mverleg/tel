@@ -1,0 +1,13 @@
+[package]
+name = "tel-ast-to-code"
+description = "Convert AST objects back to code for Tel (Typed Embedded Language), a statically-typed language that can be embedded in other applications."
+publish = true
+
+edition.workspace = true
+version.workspace = true
+homepage.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+tel-api = "=0.1.0"
