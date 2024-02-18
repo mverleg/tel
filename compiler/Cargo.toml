@@ -1,6 +1,6 @@
 [package]
-name = "stale-lang"
-description = "Stale (Statically-Typed Algebraic Language for Embedding) is a scripting language that can be embedded in other applications."
+name = "tel-lang"
+description = "Tel (Typed Embedded Language) is a statically-typed language that can be embedded in other applications."
 publish = true
 
 edition.workspace = true
@@ -12,11 +12,11 @@ license.workspace = true
 build = "build.rs"
 
 [lib]
-name = "stale"
+name = "tel"
 path = "src/lib.rs"
 
 [dependencies]
-stale-api = "=0.1.0"
+tel-api = "=0.1.0"
 
 regex = "1.10.2"
 itertools = "0.11.0"

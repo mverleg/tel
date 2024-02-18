@@ -1,6 +1,6 @@
 [package]
-name = "stale-testing"
-description = "Integration tests for the Stale language (Statically-Typed Algebraic Language for Embedding)."
+name = "tel-testing"
+description = "Integration tests for Tel (Typed Embedded Language) is a statically-typed language that can be embedded in other applications."
 publish = true
 
 edition.workspace = true
@@ -10,12 +10,12 @@ authors.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "stale-testing"
+name = "tel-testing"
 path = "src/main.rs"
 
 [dependencies]
-stale-api = "=0.1.0"
-stale-cli = "=0.1.0"
+tel-api = "=0.1.0"
+tel-cli = "=0.1.0"
 
 #regex = "1.10.2"
 #itertools = "0.11.0"
