@@ -7,6 +7,8 @@
 
 pub use ::log;
 
+pub mod ops;
+
 #[derive(Debug)]
 pub struct TelFile {
 }

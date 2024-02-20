@@ -1,6 +1,9 @@
 use ::serde::Serialize;
 use ::smartstring::alias::String as SString;
 
+pub use tel_api::ops::BinOpCode;
+pub use tel_api::ops::UnaryOpCode;
+
 pub use self::identifier::Identifier;
 
 mod identifier;
@@ -8,30 +11,6 @@ mod identifier;
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Ast {
     pub blocks: Box<[Block]>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub enum BinOpCode {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Modulo,
-    Eq,
-    Neq,
-    Lt,
-    Gt,
-    Le,
-    Ge,
-    And,
-    Or,
-    Xor,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub enum UnaryOpCode {
-    Not,
-    Min,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -59,7 +38,6 @@ pub enum Block {
     Enum(Enum),
 }
 
-// even without mut and type, it can be a declaration (with inferred type)
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Assignments {
     pub dest: Box<[AssignmentDest]>,
@@ -67,14 +45,12 @@ pub struct Assignments {
     pub value: Box<Expr>,
 }
 
-// even without mut and type, it can be a declaration (with inferred type)
 #[derive(Debug, PartialEq, Serialize)]
 pub struct AssignmentDest {
     pub kw: AssignmentKw,
     pub target: Identifier,
     pub typ: Option<Type>,
 }
-//TODO @mark: type cannot be combined with operation, should I create separate types?
 
 #[derive(Debug, PartialEq, Serialize)]
 pub enum Expr {
@@ -131,6 +107,7 @@ pub enum EnumVariant {
     Existing(Type),
 }
 
+//TODO @mark: not pub?
 pub fn vec_and<T>(mut items: Vec<T>, addition: Option<T>) -> Vec<T> {
     if let Some(addition) = addition {
         items.push(addition);
