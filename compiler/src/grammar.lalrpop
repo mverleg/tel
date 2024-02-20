@@ -248,6 +248,7 @@ TypedAssignDest: AssignmentDest = {
 }
 
 AssignmentKeyword: AssignmentKw = {
+    "outer" => AssignmentKw::Outer,
     "mut" => AssignmentKw::Mut,
     "local" => AssignmentKw::Local,
 }

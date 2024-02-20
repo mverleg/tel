@@ -1,6 +1,8 @@
 use ::serde::Serialize;
 use ::smartstring::alias::String as SString;
-use tel_api::ops::{BinOpCode, UnaryOpCode};
+
+pub use ::tel_api::ops::BinOpCode;
+pub use ::tel_api::ops::UnaryOpCode;
 
 pub use self::identifier::Identifier;
 
@@ -18,18 +20,19 @@ pub struct Type {
     pub generics: Box<[Type]>,
 }
 
-//TODO @mark: change this approach
-// * in blocks like loops, use outer scope by default
-// * in functions, shadow outer scope by default, unless a keyword is used
-// * what about closures? can they capture mutably at all? I think yes
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum AssignmentKw {
     None,
-    Mut,
-    /// This forces the assignment to be a declaration even if it has no explicit type,
-    /// which only really matters when the name already exists in the outer scope but
-    /// you do not want to reassign it (but shadow it in the local scope instead).
+    /// For functions, assigning to a name that exists outside the function creates a local
+    /// shadow instead. Using the 'outer' keyword changes this to reuse the outer name.
+    /// (It will have the same mutability as the outer variable).
+    Outer,
+    /// For local blocks like loops, assigning to a name from the outer scope reuses that
+    /// variable by default. Using the 'local' keyword changes this to immutably shadow
+    /// the outer variable instead.
     Local,
+    /// Like 'local', but creates a mutable variable.
+    Mut,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
