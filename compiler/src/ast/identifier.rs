@@ -9,7 +9,7 @@ use ::smartstring::alias::String as SString;
 use ::tel_api::log::debug;
 
 //TODO @mark: should 'assert' be reserved?
-const RESERVED: [&'static str; 137] = [
+const RESERVED: [&'static str; 138] = [
     "abstract",
     "alias",
     "all",
@@ -95,6 +95,7 @@ const RESERVED: [&'static str; 137] = [
     "open",
     "operator",
     "out",
+    "outer",
     "override",
     "package",
     "param",

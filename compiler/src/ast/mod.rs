@@ -1,8 +1,6 @@
 use ::serde::Serialize;
 use ::smartstring::alias::String as SString;
-
-pub use tel_api::ops::BinOpCode;
-pub use tel_api::ops::UnaryOpCode;
+use tel_api::ops::{BinOpCode, UnaryOpCode};
 
 pub use self::identifier::Identifier;
 
@@ -20,6 +18,10 @@ pub struct Type {
     pub generics: Box<[Type]>,
 }
 
+//TODO @mark: change this approach
+// * in blocks like loops, use outer scope by default
+// * in functions, shadow outer scope by default, unless a keyword is used
+// * what about closures? can they capture mutably at all? I think yes
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum AssignmentKw {
     None,
