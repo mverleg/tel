@@ -1,5 +1,10 @@
 use ::std::str::FromStr;
 
+// TODO @mark: some optimizations are possible:
+// * use string interning, for memory but also fast eq/hash
+// * reclaim vecs (or other memory) used while parsing before turning into Box<[T]>
+// * arena-allocate final types, possibly with smaller indices than usize
+
 use crate::ast::AssignmentDest;
 use crate::ast::AssignmentKw;
 use crate::ast::Assignments;
