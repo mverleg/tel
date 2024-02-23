@@ -1,15 +1,18 @@
 #![feature(lazy_cell)]
 
 use ::std::fs;
+use ::std::io::BufWriter;
+use ::std::io::stdout;
+use ::std::io::Write;
 use ::std::path::Path;
 use ::std::path::PathBuf;
-use std::io::{stdout, BufWriter, Write};
 
-use crate::ast::Ast;
-use ::serde::Serialize;
 use ::serde_json;
+use serde::Serialize;
+
 use ::tel_api::log::debug;
 use ::tel_api::log::warn;
+use ::tel_api::TelFile;
 
 use crate::parser::parse_str;
 
@@ -31,22 +34,22 @@ pub fn tel_build(args: &BuildArgs) -> Result<(), TelErr> {
 
 #[derive(Debug, Serialize)]
 struct DebugInfo<'a> {
-    ast: &'a Ast,
+    ast: &'a TelFile,
 }
 
 pub fn tel_build_str(path: PathBuf, code: String, debug: bool) -> Result<(), TelErr> {
-    let ast = parse_str(path, code)?;
-    debug!("{:?}", ast);
-    print_debug(debug, &ast);
+    let prog = parse_str(path, code)?;
+    debug!("{:?}", prog);
+    print_debug(debug, &prog);
     Ok(())
 }
 
-fn print_debug(debug: bool, ast: &Ast) {
+fn print_debug(debug: bool, file: &TelFile) {
     if !debug {
         return;
     }
     let mut out = BufWriter::new(stdout().lock());
-    serde_json::to_writer_pretty(&mut out, &DebugInfo { ast }).unwrap();
+    serde_json::to_writer_pretty(&mut out, &DebugInfo { ast: file }).unwrap();
     out.write_all(&[b'\n']).unwrap();
     out.flush().unwrap()
 }

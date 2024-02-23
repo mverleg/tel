@@ -6,9 +6,10 @@
 //! * All variable scopes should be correct, but types aren't checked.
 
 pub use ::log;
+use ::serde::Serialize;
 
 pub mod ops;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct TelFile {
 }

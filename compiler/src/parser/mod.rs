@@ -6,6 +6,7 @@ use ::std::path::PathBuf;
 use ::lalrpop_util::lalrpop_mod;
 
 use ::tel_api::log::debug;
+use ::tel_api::TelFile;
 
 use crate::ast::Ast;
 use crate::parser::errors::build_error;
@@ -16,7 +17,17 @@ mod errors;
 lalrpop_mod!(#[allow(clippy::all)] gen_parser, "/grammar.rs");
 include!(concat!(env!("OUT_DIR"), "/parse_tests.rs"));
 
-pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<Ast, TelErr> {
+pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<TelFile, TelErr> {
+    let ast = str_to_ast(src_pth, code)?;
+    ast_to_api(&ast)
+}
+
+fn ast_to_api(ast: &Ast) -> Result<TelFile, TelErr> {
+    //TODO @mark:
+    Ok(TelFile {})
+}
+
+pub fn str_to_ast(src_pth: PathBuf, mut code: String) -> Result<Ast, TelErr> {
     if count_empty_lines_at_end(&code) == 0 {
         code.push('\n')
     }
@@ -91,7 +102,7 @@ mod internal {
 mod bugs {
     use super::*;
 
-    fn parse(code: &str) -> Ast {
+    fn parse(code: &str) -> TelFile {
         match parse_str(PathBuf::new(), code.to_owned()) {
             Ok(ast) => ast,
             Err(TelErr::ParseErr { msg, .. }) => {
