@@ -7,19 +7,18 @@ pub use ::tel_api::ops::UnaryOpCode;
 pub use crate::ast::assign::AssignmentDest;
 pub use crate::ast::assign::AssignmentKw;
 pub use crate::ast::assign::Assignments;
-pub use crate::ast::common::Type;
-pub use crate::ast::datatypes::Enum;
-pub use crate::ast::datatypes::EnumVariant;
-pub use crate::ast::datatypes::Struct;
 pub use crate::ast::function::Closure;
 pub use crate::ast::function::Invoke;
+pub use crate::ast::types::Enum;
+pub use crate::ast::types::EnumVariant;
+pub use crate::ast::types::Struct;
+pub use crate::ast::types::Type;
 
 pub use self::identifier::Identifier;
 
 mod identifier;
-mod common;
 mod assign;
-mod datatypes;
+mod types;
 mod function;
 
 #[derive(Debug, PartialEq, Serialize)]

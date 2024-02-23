@@ -1,5 +1,14 @@
-use serde::Serialize;
-use crate::ast::{AssignmentDest, Identifier, Type};
+use ::serde::Serialize;
+
+use crate::ast::AssignmentDest;
+use crate::ast::Identifier;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Type {
+    //TODO @mark:
+    pub iden: Identifier,
+    pub generics: Box<[Type]>,
+}
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Struct {
