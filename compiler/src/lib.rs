@@ -7,8 +7,8 @@ use ::std::io::Write;
 use ::std::path::Path;
 use ::std::path::PathBuf;
 
+use ::serde::Serialize;
 use ::serde_json;
-use serde::Serialize;
 
 use ::tel_api::log::debug;
 use ::tel_api::log::warn;
@@ -18,6 +18,7 @@ use crate::parser::parse_str;
 
 mod ast;
 mod parser;
+mod scoping;
 
 #[derive(Debug)]
 pub struct BuildArgs {
@@ -39,7 +40,6 @@ struct DebugInfo<'a> {
 
 pub fn tel_build_str(path: PathBuf, code: String, debug: bool) -> Result<(), TelErr> {
     let prog = parse_str(path, code)?;
-    debug!("{:?}", prog);
     print_debug(debug, &prog);
     Ok(())
 }
