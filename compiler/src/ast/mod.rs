@@ -8,12 +8,16 @@ pub use crate::ast::assign::AssignmentDest;
 pub use crate::ast::assign::AssignmentKw;
 pub use crate::ast::assign::Assignments;
 pub use crate::ast::common::Type;
+pub use crate::ast::datatypes::Enum;
+pub use crate::ast::datatypes::EnumVariant;
+pub use crate::ast::datatypes::Struct;
 
 pub use self::identifier::Identifier;
 
 mod identifier;
 mod common;
 mod assign;
+mod datatypes;
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Ast {
@@ -60,27 +64,6 @@ pub struct Invoke {
 pub struct Closure {
     pub blocks: Box<[Block]>,
     pub params: Box<[AssignmentDest]>,
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-pub struct Struct {
-    pub iden: Identifier,
-    pub fields: Vec<(Identifier, Type)>,
-    pub generics: Box<[AssignmentDest]>,
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-pub struct Enum {
-    pub iden: Identifier,
-    pub variants: Box<[EnumVariant]>,
-    pub generics: Box<[AssignmentDest]>,
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-pub enum EnumVariant {
-    Struct(Struct),
-    Enum(Enum),
-    Existing(Type),
 }
 
 pub fn vec_and<T>(mut items: Vec<T>, addition: Option<T>) -> Vec<T> {
