@@ -32,7 +32,7 @@ impl Scope for LinearScope {
         if let Some(_parent) = &self.parent {
             todo!()
         }
-        for known in self.items {
+        for known in &mut self.items {
             if known.iden == iden {
                 return known.binding()
             }

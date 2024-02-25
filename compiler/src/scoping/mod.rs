@@ -37,6 +37,7 @@ fn assignments_to_api(
         todo!()
     }
     for dest in dests.into_iter() {
+        let dest: AssignmentDest = dest;  // enforce that `dest` is not borrowed
         let AssignmentDest { kw, target, typ } = dest;
         let mutable = match kw {
             AssignmentKw::None => false,
