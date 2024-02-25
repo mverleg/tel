@@ -25,21 +25,21 @@ impl LinearScope {
 impl Scope for LinearScope {
     fn get_or_insert(
         &mut self,
-        iden: Identifier,
-        type_annotation: Option<Type>,
+        iden: &Identifier,
+        type_annotation: Option<&Type>,
         mutable: bool
     ) -> Binding {
         if let Some(_parent) = &self.parent {
             todo!()
         }
         for known in &mut self.items {
-            if known.iden == iden {
+            if known.iden == *iden {
                 return known.binding()
             }
         }
         let new_var = Variable {
-            iden,
-            type_annotation,
+            iden: iden.clone(),
+            type_annotation: type_annotation.cloned(),
             mutable,
         };
         self.items.push(new_var);

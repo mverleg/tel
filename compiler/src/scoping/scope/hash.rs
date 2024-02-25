@@ -22,8 +22,8 @@ impl HashScope {
 impl Scope for HashScope {
     fn get_or_insert(
         &mut self,
-        _iden: Identifier,
-        _type_annotation: Option<Type>,
+        _iden: &Identifier,
+        _type_annotation: Option<&Type>,
         _is_mutable: bool
     ) -> Binding {
         todo!()
