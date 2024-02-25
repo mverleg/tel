@@ -9,7 +9,15 @@ pub struct Variable {
     pub mutable: bool,
 }
 
+impl Variable {
+    pub fn binding<'a>(&'a self) -> Binding<'a> {
+        Binding {
+            reference: self,
+        }
+    }
+}
+
 #[derive(Debug)]
-pub struct Binding {
-    //TODO @mark:
+pub struct Binding<'a> {
+    reference: &'a Variable,
 }
