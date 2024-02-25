@@ -1,6 +1,14 @@
 use ::ahash::HashMap;
-use tel_api::Identifier;
-use tel_api::Variable;
+
+use ::tel_api::Identifier;
+use ::tel_api::Variable;
+
+//TODO @mark: compare impl performances
+pub trait Scope {
+    fn new() -> LinearScope {
+        return LinearScope::new_child()
+    }
+}
 
 #[derive(Debug)]
 pub struct ScopeEntry {
@@ -13,14 +21,24 @@ pub struct LinearScope {
 }
 
 impl LinearScope {
-    pub fn new() -> Self {
+    fn new_child() -> Self {
         LinearScope {
             items: vec![]
         }
     }
 }
 
+impl Scope for LinearScope {}
+
 #[derive(Debug)]
 pub struct MapScope {
     pub items: HashMap<Identifier, Variable>,
 }
+
+impl MapScope {
+    fn new_child() -> Self {
+        todo!()
+    }
+}
+
+impl Scope for MapScope {}
