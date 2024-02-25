@@ -20,7 +20,7 @@ include!(concat!(env!("OUT_DIR"), "/parse_tests.rs"));
 
 pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<TelFile, TelErr> {
     let ast = str_to_ast(src_pth, code)?;
-    ast_to_api(&ast)
+    ast_to_api(ast)
 }
 
 pub fn str_to_ast(src_pth: PathBuf, mut code: String) -> Result<Ast, TelErr> {

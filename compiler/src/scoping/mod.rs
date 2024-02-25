@@ -12,10 +12,11 @@ use crate::TelErr;
 
 mod scope;
 
-pub fn ast_to_api(ast: &Ast) -> Result<TelFile, TelErr> {
+pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
     let Ast { blocks } = ast;
     let mut global_scope = <LinearScope as Scope>::new();
     for block in blocks.into_iter() {
+        let block: Block = block;  // enforce that `block` is not borrowed
         match block {
             Block::Assigns(assign) => assignments_to_api(assign, &mut global_scope)?,
             Block::Expression(_expression) => todo!(),
@@ -27,7 +28,7 @@ pub fn ast_to_api(ast: &Ast) -> Result<TelFile, TelErr> {
 }
 
 fn assignments_to_api(
-    assign: &Assignments,
+    assign: Assignments,
     scopes: &mut impl Scope,
 ) -> Result<(), TelErr> {
     let Assignments { dest: dests, op, value } = assign;
@@ -50,7 +51,7 @@ fn assignments_to_api(
     todo!()
 }
 
-fn expression_to_api(expr: &Expr) -> Result<(), TelErr> {
+fn expression_to_api(expr: Box<Expr>) -> Result<(), TelErr> {
     todo!()
 
 }
