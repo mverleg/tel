@@ -12,6 +12,14 @@ pub struct LinearScope {
     pub items: Vec<Variable>,
 }
 
+impl LinearScope {
+    pub fn new() -> Self {
+        LinearScope {
+            items: vec![]
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct MapScope {
     pub items: HashMap<Identifier, Variable>,
