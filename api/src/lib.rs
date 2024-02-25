@@ -1,3 +1,5 @@
+#![feature(lazy_cell)]
+
 //! Source-level representation.
 //! * Supports all valid language inputs.
 //! * Does not encode formatting, but keeps debug info.
@@ -9,6 +11,9 @@ pub use ::log;
 use ::serde::Serialize;
 
 pub mod ops;
+pub mod variable;
+pub mod identifier;
+pub mod typ;
 
 #[derive(Debug, Serialize)]
 pub struct TelFile {

@@ -12,11 +12,7 @@ pub use crate::ast::function::Invoke;
 pub use crate::ast::types::Enum;
 pub use crate::ast::types::EnumVariant;
 pub use crate::ast::types::Struct;
-pub use crate::ast::types::Type;
 
-pub use self::identifier::Identifier;
-
-mod identifier;
 mod assign;
 mod types;
 mod function;

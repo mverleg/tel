@@ -4,9 +4,10 @@ use ::std::sync::LazyLock;
 
 use ::serde::Serialize;
 use ::serde::Serializer;
+
 use ::smartstring::alias::String as SString;
 
-use ::tel_api::log::debug;
+use crate::log::debug;
 
 //TODO @mark: should 'assert' be reserved?
 const RESERVED: [&'static str; 138] = [

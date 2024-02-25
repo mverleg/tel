@@ -1,14 +1,8 @@
 use ::serde::Serialize;
 
-use crate::ast::AssignmentDest;
-use crate::ast::Identifier;
+use ::tel_api::identifier::Identifier;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Type {
-    //TODO @mark:
-    pub iden: Identifier,
-    pub generics: Box<[Type]>,
-}
+use crate::ast::AssignmentDest;
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Struct {
