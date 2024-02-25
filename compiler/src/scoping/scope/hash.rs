@@ -9,11 +9,12 @@ use crate::scoping::Scope;
 
 #[derive(Debug)]
 pub struct HashScope {
+    parent: Option<Box<HashScope>>,
     pub items: HashMap<Identifier, Variable>,
 }
 
 impl HashScope {
-    fn new_child() -> Self {
+    fn new_root() -> Self {
         todo!()
     }
 }
@@ -21,7 +22,7 @@ impl HashScope {
 impl Scope for HashScope {
     fn get_or_insert(
         &mut self, iden: &Identifier,
-        typ_annotation: &Option<Type>,
+        type_annotation: &Option<Type>,
         is_mutable: bool
     ) -> Binding {
         todo!()

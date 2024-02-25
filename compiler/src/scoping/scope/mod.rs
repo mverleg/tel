@@ -16,7 +16,7 @@ pub trait Scope {
     fn get_or_insert(
         &mut self,
         iden: &Identifier,
-        typ_annotation: &Option<Type>,
+        type_annotation: &Option<Type>,
         is_mutable: bool,
     ) -> Binding;
 }

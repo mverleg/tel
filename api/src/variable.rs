@@ -4,7 +4,7 @@ use crate::typ::Type;
 //TODO @mark: mvoe
 #[derive(Debug)]
 pub struct Variable {
-    pub name: Identifier,
+    pub iden: Identifier,
     pub type_annotation: Option<Type>,
     pub mutable: bool,
 }

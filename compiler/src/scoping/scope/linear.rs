@@ -7,12 +7,16 @@ use crate::scoping::Scope;
 
 #[derive(Debug)]
 pub struct LinearScope {
-    pub items: Vec<Variable>,
+    //TODO @mark: scopes have their own tree structure, even though it matches the AST
+    //TODO @mark: for now it seems ot make the code easier (and possibly faster), but might reconsider
+    parent: Option<Box<LinearScope>>,
+    items: Vec<Variable>,
 }
 
 impl LinearScope {
     pub(crate) fn new_root() -> Self {
         LinearScope {
+            parent: None,
             items: vec![]
         }
     }
@@ -22,9 +26,23 @@ impl Scope for LinearScope {
     fn get_or_insert(
         &mut self,
         iden: &Identifier,
-        typ_annotation: &Option<Type>,
-        is_mutable: bool
+        type_annotation: &Option<Type>,
+        mutable: bool
     ) -> Binding {
-        todo!()
+        if let Some(_parent) = &self.parent {
+            todo!()
+        }
+        for known in self.items {
+            if known.iden == *iden {
+                return known.binding()
+            }
+        }
+        let new_var = Variable {
+            iden,
+            type_annotation,
+            mutable,
+        };
+        self.items.push(new_var);
+        self.items.last().expect("just added, cannot fail").binding()
     }
 }
