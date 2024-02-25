@@ -6,15 +6,15 @@ use crate::ast::Assignments;
 use crate::ast::Ast;
 use crate::ast::Block;
 use crate::ast::Expr;
-pub use crate::scoping::scope::LinearScope;
-pub use crate::scoping::scope::Scope;
 use crate::TelErr;
+
+pub use self::scope::Scope;
 
 mod scope;
 
 pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
     let Ast { blocks } = ast;
-    let mut global_scope = <LinearScope as Scope>::new();
+    let mut global_scope = Scope::new_root();
     let blocks = blocks.into_vec();  //TODO @mark: TEMPORARY! REMOVE THIS!
     for block in blocks.into_iter() {
         // let block: Block = block;  // enforce that `block` is not borrowed
@@ -31,7 +31,7 @@ pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
 
 fn assignments_to_api(
     assign: Assignments,
-    scopes: &mut impl Scope,
+    scopes: &mut Scope,
 ) -> Result<(), TelErr> {
     let Assignments { dest: dests, op, value } = assign;
     debug_assert!(dests.len() >= 1);

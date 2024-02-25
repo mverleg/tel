@@ -4,10 +4,12 @@
 //! This implementation stores the values linearly. There are alternative ways,
 //! most obviously a hashmap for fast lookup, but also a mix of the two.
 
-use ::tel_api::VarRead;
+use ::std::rc::Rc;
+
 use ::tel_api::Identifier;
 use ::tel_api::Type;
 use ::tel_api::Variable;
+use ::tel_api::VarRead;
 
 #[derive(Debug)]
 pub struct Scope {
@@ -18,16 +20,17 @@ pub struct Scope {
 }
 
 impl Scope {
-    pub(crate) fn new_root() -> Self {
-        Scope {
+    //TODO @mark: reconsider Rc here (won't be able to add variables if it's Rc anyway)
+    pub fn new_root() -> Rc<Self> {
+        Rc::new(Scope {
             parent: None,
             items: vec![]
-        }
+        })
     }
 }
 
 impl Scope {
-    fn get_or_insert(
+    pub fn get_or_insert(
         &mut self,
         iden: &Identifier,
         type_annotation: Option<&Type>,

@@ -1,7 +1,9 @@
+use ::std::rc::Rc;
+
 use crate::identifier::Identifier;
 use crate::typ::Type;
 
-//TODO @mark: mvoe
+//TODO @mark: can I make this unsized by putting type last?
 #[derive(Debug)]
 pub struct Variable {
     pub iden: Identifier,
@@ -10,9 +12,10 @@ pub struct Variable {
 }
 
 impl Variable {
-    pub fn read<'a>(&'a self) -> VarRead<'a> {
+    pub fn read(&self, scope: Rc<Scope>) -> VarRead {
         VarRead {
-            reference: self,
+            scope,
+            ix,
         }
     }
 
@@ -25,10 +28,12 @@ impl Variable {
 
 #[derive(Debug)]
 pub struct VarRead<'a> {
-    reference: &'a Variable,
+    scope: Rc<Scope>,
+    ix: usize,
 }
 
 #[derive(Debug)]
 pub struct VarWrite<'a> {
-    reference: &'a Variable,
+    scope: Rc<Scope>,
+    ix: usize,
 }
