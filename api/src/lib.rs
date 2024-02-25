@@ -10,10 +10,14 @@
 pub use ::log;
 use ::serde::Serialize;
 
-pub mod ops;
-pub mod variable;
-pub mod identifier;
-pub mod typ;
+pub use self::identifier::Identifier;
+pub use self::typ::Type;
+pub use self::variable::Variable;
+
+pub mod op;
+mod variable;
+mod identifier;
+mod typ;
 
 #[derive(Debug, Serialize)]
 pub struct TelFile {

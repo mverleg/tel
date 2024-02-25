@@ -5,20 +5,21 @@ use ::std::str::FromStr;
 // * reclaim vecs (or other memory) used while parsing before turning into Box<[T]>
 // * arena-allocate final types, possibly with smaller indices than usize
 
+use ::tel_api::Identifier;
+use ::tel_api::Type;
+use ::tel_api::op::BinOpCode;
+
 use crate::ast::AssignmentDest;
 use crate::ast::AssignmentKw;
 use crate::ast::Assignments;
 use crate::ast::Ast;
-use crate::ast::BinOpCode;
 use crate::ast::Block;
 use crate::ast::Closure;
 use crate::ast::Enum;
 use crate::ast::EnumVariant;
 use crate::ast::Expr;
-use crate::ast::Identifier;
 use crate::ast::Invoke;
 use crate::ast::Struct;
-use crate::ast::Type;
 use crate::ast::UnaryOpCode;
 use crate::ast::vec_and;
 

@@ -1,4 +1,6 @@
 use ::ahash::HashMap;
+use tel_api::Identifier;
+use tel_api::Variable;
 
 #[derive(Debug)]
 pub struct ScopeEntry {

@@ -1,8 +1,8 @@
 use ::serde::Serialize;
 use ::smartstring::alias::String as SString;
 
-pub use ::tel_api::ops::BinOpCode;
-pub use ::tel_api::ops::UnaryOpCode;
+pub use ::tel_api::op::BinOpCode;
+pub use ::tel_api::op::UnaryOpCode;
 
 pub use crate::ast::assign::AssignmentDest;
 pub use crate::ast::assign::AssignmentKw;

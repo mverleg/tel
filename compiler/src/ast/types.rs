@@ -1,6 +1,7 @@
 use ::serde::Serialize;
 
-use ::tel_api::identifier::Identifier;
+use tel_api::Identifier;
+use tel_api::Type;
 
 use crate::ast::AssignmentDest;
 
