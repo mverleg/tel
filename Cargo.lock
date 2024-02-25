@@ -837,6 +837,7 @@ dependencies = [
  "itertools 0.11.0",
  "lalrpop",
  "lalrpop-util",
+ "log",
  "regex",
  "serde",
  "serde_json",

@@ -4,8 +4,7 @@ use ::std::fmt;
 use ::std::fmt::Write;
 
 use ::lalrpop_util::ParseError;
-
-use ::tel_api::log::info;
+use log::info;
 
 /// Returns error message and error line (or 0 if unknown)
 pub fn build_error<T, E: fmt::Display>(

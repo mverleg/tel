@@ -7,11 +7,11 @@ use ::std::io::Write;
 use ::std::path::Path;
 use ::std::path::PathBuf;
 
-use ::serde::Serialize;
 use ::serde_json;
 
-use ::tel_api::log::debug;
-use ::tel_api::log::warn;
+use ::log::debug;
+use ::log::warn;
+use serde::Serialize;
 use ::tel_api::TelFile;
 
 use crate::parser::parse_str;

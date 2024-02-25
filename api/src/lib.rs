@@ -7,18 +7,24 @@
 //! * Useful for linting, IDE integration or fuzzing.
 //! * All variable scopes should be correct, but types aren't checked.
 
-pub use ::log;
+use ::std::mem::size_of;
+
+use ::log;
 use ::serde::Serialize;
 
 pub use self::identifier::Identifier;
 pub use self::typ::Type;
-pub use self::variable::VarRead;
 pub use self::variable::Variable;
+pub use self::variable::VarRead;
 
 pub mod op;
 mod variable;
 mod identifier;
 mod typ;
+
+//TODO @mark: replace all usize in structs and enums by Ix if ~1kkk is enough
+pub type Ix = u32;
+const _: () = assert!(size_of::<Ix>() <= size_of::<usize>(), "index is too large for this platform");
 
 #[derive(Debug, Serialize)]
 pub struct TelFile {
