@@ -8,3 +8,8 @@ pub struct Variable {
     pub type_annotation: Option<Type>,
     pub mutable: bool,
 }
+
+#[derive(Debug)]
+pub struct Binding {
+    //TODO @mark:
+}

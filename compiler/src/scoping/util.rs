@@ -1,13 +1,22 @@
 use ::ahash::HashMap;
 
+use ::tel_api::Binding;
 use ::tel_api::Identifier;
 use ::tel_api::Variable;
+use ::tel_api::Type;
 
 //TODO @mark: compare impl performances
 pub trait Scope {
     fn new() -> LinearScope {
         return LinearScope::new_child()
     }
+
+    fn get_or_insert(
+        &mut self,
+        iden: &Identifier,
+        typ_annotation: &Option<Type>,
+        is_mutable: bool,
+    ) -> Binding;
 }
 
 #[derive(Debug)]
@@ -28,7 +37,16 @@ impl LinearScope {
     }
 }
 
-impl Scope for LinearScope {}
+impl Scope for LinearScope {
+    fn get_or_insert(
+        &mut self,
+        iden: &Identifier,
+        typ_annotation: &Option<Type>,
+        is_mutable: bool
+    ) -> Binding {
+        todo!()
+    }
+}
 
 #[derive(Debug)]
 pub struct MapScope {
@@ -41,4 +59,12 @@ impl MapScope {
     }
 }
 
-impl Scope for MapScope {}
+impl Scope for MapScope {
+    fn get_or_insert(
+        &mut self, iden: &Identifier,
+        typ_annotation: &Option<Type>,
+        is_mutable: bool
+    ) -> Binding {
+        todo!()
+    }
+}

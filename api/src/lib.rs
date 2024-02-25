@@ -12,6 +12,7 @@ use ::serde::Serialize;
 
 pub use self::identifier::Identifier;
 pub use self::typ::Type;
+pub use self::variable::Binding;
 pub use self::variable::Variable;
 
 pub mod op;

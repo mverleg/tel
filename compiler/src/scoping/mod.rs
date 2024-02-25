@@ -32,6 +32,9 @@ fn assignments_to_api(
 ) -> Result<(), TelErr> {
     let Assignments { dest: dests, op, value } = assign;
     debug_assert!(dests.len() >= 1);
+    if let Some(_op) = op {
+        todo!()
+    }
     for dest in dests.into_iter() {
         let AssignmentDest { kw, target, typ } = dest;
         let mutable = match kw {
@@ -40,6 +43,7 @@ fn assignments_to_api(
             AssignmentKw::Local => todo!(),
             AssignmentKw::Mut => true,
         };
+        let binding = scopes.get_or_insert(target, typ, mutable);
         todo!();
         let expr = expression_to_api(value)?;
     }
