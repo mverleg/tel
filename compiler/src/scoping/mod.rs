@@ -6,11 +6,11 @@ use crate::ast::Assignments;
 use crate::ast::Ast;
 use crate::ast::Block;
 use crate::ast::Expr;
-use crate::scoping::util::LinearScope;
-use crate::scoping::util::Scope;
+pub use crate::scoping::scope::Scope;
+pub use crate::scoping::scope::LinearScope;
 use crate::TelErr;
 
-pub mod util;
+mod scope;
 
 pub fn ast_to_api(ast: &Ast) -> Result<TelFile, TelErr> {
     let Ast { blocks } = ast;
