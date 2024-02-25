@@ -6,8 +6,8 @@ use crate::ast::Assignments;
 use crate::ast::Ast;
 use crate::ast::Block;
 use crate::ast::Expr;
-pub use crate::scoping::scope::Scope;
 pub use crate::scoping::scope::LinearScope;
+pub use crate::scoping::scope::Scope;
 use crate::TelErr;
 
 mod scope;
@@ -15,7 +15,7 @@ mod scope;
 pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
     let Ast { blocks } = ast;
     let mut global_scope = <LinearScope as Scope>::new();
-    for block in blocks.into_iter() {
+    for &block in blocks.into_iter() {
         let block: Block = block;  // enforce that `block` is not borrowed
         match block {
             Block::Assigns(assign) => assignments_to_api(assign, &mut global_scope)?,
@@ -36,7 +36,7 @@ fn assignments_to_api(
     if let Some(_op) = op {
         todo!()
     }
-    for dest in dests.into_iter() {
+    for &dest in dests.into_iter() {
         let dest: AssignmentDest = dest;  // enforce that `dest` is not borrowed
         let AssignmentDest { kw, target, typ } = dest;
         let mutable = match kw {
