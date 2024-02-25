@@ -1,28 +1,32 @@
+//! Scope contains the variables in a block, like a file, function or loop.
+//! It is a tree structure, where each scope refers to the parent.
+//!
+//! This implementation stores the values linearly. There are alternative ways,
+//! most obviously a hashmap for fast lookup, but also a mix of the two.
+
 use ::tel_api::VarRead;
 use ::tel_api::Identifier;
 use ::tel_api::Type;
 use ::tel_api::Variable;
 
-use crate::scoping::Scope;
-
 #[derive(Debug)]
-pub struct LinearScope {
+pub struct Scope {
     //TODO @mark: scopes have their own tree structure, even though it matches the AST
     //TODO @mark: for now it seems ot make the code easier (and possibly faster), but might reconsider
-    parent: Option<Box<LinearScope>>,
+    parent: Option<Box<Scope>>,
     items: Vec<Variable>,
 }
 
-impl LinearScope {
+impl Scope {
     pub(crate) fn new_root() -> Self {
-        LinearScope {
+        Scope {
             parent: None,
             items: vec![]
         }
     }
 }
 
-impl Scope for LinearScope {
+impl Scope {
     fn get_or_insert(
         &mut self,
         iden: &Identifier,
