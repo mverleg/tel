@@ -10,6 +10,7 @@ use ::tel_api::TelFile;
 
 use crate::ast::Ast;
 use crate::parser::errors::build_error;
+use crate::scoping::ast_to_api;
 use crate::TelErr;
 
 mod errors;
@@ -20,11 +21,6 @@ include!(concat!(env!("OUT_DIR"), "/parse_tests.rs"));
 pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<TelFile, TelErr> {
     let ast = str_to_ast(src_pth, code)?;
     ast_to_api(&ast)
-}
-
-fn ast_to_api(ast: &Ast) -> Result<TelFile, TelErr> {
-    //TODO @mark:
-    Ok(TelFile {})
 }
 
 pub fn str_to_ast(src_pth: PathBuf, mut code: String) -> Result<Ast, TelErr> {
