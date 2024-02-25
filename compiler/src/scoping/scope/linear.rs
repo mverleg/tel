@@ -1,4 +1,4 @@
-use ::tel_api::Binding;
+use ::tel_api::VarRead;
 use ::tel_api::Identifier;
 use ::tel_api::Type;
 use ::tel_api::Variable;
@@ -28,13 +28,13 @@ impl Scope for LinearScope {
         iden: &Identifier,
         type_annotation: Option<&Type>,
         mutable: bool
-    ) -> Binding {
+    ) -> VarRead {
         if let Some(_parent) = &self.parent {
             todo!()
         }
         for known in &mut self.items {
             if known.iden == *iden {
-                return known.binding()
+                return known.read()
             }
         }
         let new_var = Variable {
@@ -43,6 +43,6 @@ impl Scope for LinearScope {
             mutable,
         };
         self.items.push(new_var);
-        self.items.last().expect("just added, cannot fail").binding()
+        self.items.last().expect("just added, cannot fail").read()
     }
 }

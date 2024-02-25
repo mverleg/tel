@@ -1,4 +1,4 @@
-use ::tel_api::Binding;
+use ::tel_api::VarRead;
 use ::tel_api::Identifier;
 use ::tel_api::Type;
 
@@ -18,5 +18,5 @@ pub trait Scope {
         iden: &Identifier,
         type_annotation: Option<&Type>,
         is_mutable: bool,
-    ) -> Binding;
+    ) -> VarRead;
 }

@@ -10,14 +10,25 @@ pub struct Variable {
 }
 
 impl Variable {
-    pub fn binding<'a>(&'a self) -> Binding<'a> {
-        Binding {
+    pub fn read<'a>(&'a self) -> VarRead<'a> {
+        VarRead {
+            reference: self,
+        }
+    }
+
+    pub fn write<'a>(&'a self) -> VarWrite<'a> {
+        VarWrite {
             reference: self,
         }
     }
 }
 
 #[derive(Debug)]
-pub struct Binding<'a> {
+pub struct VarRead<'a> {
+    reference: &'a Variable,
+}
+
+#[derive(Debug)]
+pub struct VarWrite<'a> {
     reference: &'a Variable,
 }

@@ -1,6 +1,6 @@
 use ::ahash::HashMap;
 
-use ::tel_api::Binding;
+use ::tel_api::VarRead;
 use ::tel_api::Identifier;
 use ::tel_api::Type;
 use ::tel_api::Variable;
@@ -25,7 +25,7 @@ impl Scope for HashScope {
         _iden: &Identifier,
         _type_annotation: Option<&Type>,
         _is_mutable: bool
-    ) -> Binding {
+    ) -> VarRead {
         todo!()
     }
 }
