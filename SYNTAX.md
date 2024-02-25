@@ -1,12 +1,22 @@
 
 # Tel syntax
 
+## Goal
+
 The goal of the syntax is to 
 
 * The syntax should be left-recursive with lookahead of 1, to be easy and fast to parse
 * The syntax should look terse for small scripts, while expressive enough for medium programs
 
-Some details about it:
+## Passes
+
+Note that both forward references and recursion are allowed without special syntax (and the
+AST is immutable), therefore resolving variable references is a separate 'pass', after 
+lexing and building the AST.
+
+## Details
+
+Some details about the syntax:
 
 * Indentation is not significant, but newlines are; statements must end with ';' and/or a newline
 * You can split expressions over multiple lines by
