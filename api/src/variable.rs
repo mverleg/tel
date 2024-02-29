@@ -7,7 +7,7 @@ use crate::typ::Type;
 /// In the tree, lightweight indices are used, and this class is passed explicitly.
 #[derive(Debug)]
 pub struct Variables {
-    data: Vec<Variable>,
+    data: Vec<VariableData>,
 }
 
 impl Variables {
@@ -22,9 +22,9 @@ impl Variables {
         iden: Identifier,
         type_annotation: Option<Type>,
         mutable: bool,
-    ) -> VarRef {
+    ) -> Variable {
         let new_ix = self.data.len();
-        self.data.push(Variable {
+        self.data.push(VariableData {
             ix: new_ix as Ix,
             iden,
             type_annotation,
@@ -38,16 +38,16 @@ impl Variables {
 
 //TODO @mark: can I make this unsized by putting type last?
 #[derive(Debug)]
-pub struct Variable {
+pub struct VariableData {
     ix: Ix,
     pub iden: Identifier,
     pub type_annotation: Option<Type>,
     pub mutable: bool,
 }
 
-impl Variable {
-    pub fn refer(&self) -> VarRef {
-        VarRef {
+impl VariableData {
+    pub fn refer(&self) -> Variable {
+        Variable {
             ix: self.ix
         }
     }
@@ -56,8 +56,8 @@ impl Variable {
 /// This is implicitly linked to a specific Variables instance by being in the same TelFile.
 /// There is no safety check for this, calling code must pass the right Variables around.
 #[derive(Debug, Clone, Copy)]
-pub struct VarRef {
+pub struct Variable {
     ix: Ix,
 }
 
-const _: () = assert!(size_of::<VarRef>() == 4);
+const _: () = assert!(size_of::<Variable>() == 4);

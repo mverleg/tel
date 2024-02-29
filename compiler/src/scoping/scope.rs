@@ -6,7 +6,7 @@
 
 use ::tel_api::Identifier;
 use ::tel_api::Type;
-use ::tel_api::VarRef;
+use ::tel_api::Variable;
 use tel_api::Variables;
 
 #[derive(Debug)]
@@ -14,7 +14,7 @@ pub struct Scope {
     //TODO @mark: scopes have their own tree structure, even though it matches the AST
     //TODO @mark: for now it seems ot make the code easier (and possibly faster), but might reconsider
     parent: Option<Box<Scope>>,
-    items: Vec<VarRef>,
+    items: Vec<Variable>,
 }
 
 impl Scope {
@@ -34,7 +34,7 @@ impl Scope {
         iden: &Identifier,
         type_annotation: Option<&Type>,
         mutable: bool
-    ) -> VarRef {
+    ) -> Variable {
         if let Some(_parent) = &self.parent {
             todo!("nested scopes not yet implemented")
         }
