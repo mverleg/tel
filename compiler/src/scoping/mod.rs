@@ -1,4 +1,6 @@
+use std::env::var;
 use ::tel_api::TelFile;
+use tel_api::{Variable, Variables};
 
 use crate::ast::AssignmentDest;
 use crate::ast::AssignmentKw;
@@ -14,6 +16,7 @@ mod scope;
 
 pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
     let Ast { blocks } = ast;
+    let mut variables = Variables::new();
     let mut global_scope = Scope::new_root();
     let blocks = blocks.into_vec();  //TODO @mark: TEMPORARY! REMOVE THIS!
     for block in blocks.into_iter() {
@@ -31,6 +34,7 @@ pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
 
 fn assignments_to_api(
     assign: Assignments,
+    variables: &mut Variables,
     scopes: &mut Scope,
 ) -> Result<(), TelErr> {
     let Assignments { dest: dests, op, value } = assign;
@@ -49,6 +53,7 @@ fn assignments_to_api(
             AssignmentKw::Mut => true,
         };
         let binding = scopes.get_or_insert(
+            variables,
             target,
             typ.as_ref(),
             mutable

@@ -2,6 +2,36 @@ use crate::identifier::Identifier;
 use crate::Ix;
 use crate::typ::Type;
 
+/// All variables per TelFile are owned by this central buffer.
+/// In the tree, lightweight indices are used, and this class is passed explicitly.
+#[derive(Debug)]
+pub struct Variables {
+    data: Vec<Variable>,
+}
+
+impl Variables {
+    pub fn new() -> Self {
+        Variables {
+            data: Vec::new()
+        }
+    }
+
+    pub fn add(
+        &mut self,
+        iden: Identifier,
+        type_annotation: Option<Type>,
+        mutable: bool,
+    ) {
+        let new_ix = self.data.len();
+        self.data.push(Variable {
+            ix: new_ix as Ix,
+            iden,
+            type_annotation,
+            mutable,
+        })
+    }
+}
+
 //TODO @mark: can I make this unsized by putting type last?
 #[derive(Debug)]
 pub struct Variable {
@@ -18,7 +48,7 @@ impl Variable {
         }
     }
 
-    pub fn write(&self) -> VarWrite {
+    pub fn write(&self, variables: &mut Variables) -> VarWrite {
         VarWrite {
             ix: self.ix
         }

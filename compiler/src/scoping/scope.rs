@@ -4,12 +4,11 @@
 //! This implementation stores the values linearly. There are alternative ways,
 //! most obviously a hashmap for fast lookup, but also a mix of the two.
 
-use ::std::rc::Rc;
-
 use ::tel_api::Identifier;
 use ::tel_api::Type;
 use ::tel_api::Variable;
 use ::tel_api::VarRead;
+use tel_api::Variables;
 
 #[derive(Debug)]
 pub struct Scope {
@@ -21,34 +20,35 @@ pub struct Scope {
 
 impl Scope {
     //TODO @mark: reconsider Rc here (won't be able to add variables if it's Rc anyway)
-    pub fn new_root() -> Rc<Self> {
-        Rc::new(Scope {
+    pub fn new_root() -> Self {
+        Scope {
             parent: None,
             items: vec![]
-        })
+        }
     }
 }
 
 impl Scope {
     pub fn get_or_insert(
         &mut self,
+        variables: &mut Variables,
         iden: &Identifier,
         type_annotation: Option<&Type>,
         mutable: bool
     ) -> VarRead {
         if let Some(_parent) = &self.parent {
-            todo!()
+            todo!("nested scopes not yet implemented")
         }
         for known in &mut self.items {
             if known.iden == *iden {
                 return known.read()
             }
         }
-        let new_var = Variable {
-            iden: iden.clone(),
-            type_annotation: type_annotation.cloned(),
+        let new_var = variables.add(
+            iden.clone(),
+            type_annotation.cloned(),
             mutable,
-        };
+        );
         self.items.push(new_var);
         self.items.last().expect("just added, cannot fail").read()
     }

@@ -14,6 +14,7 @@ use ::serde::Serialize;
 
 pub use self::identifier::Identifier;
 pub use self::typ::Type;
+pub use self::variable::Variables;
 pub use self::variable::Variable;
 pub use self::variable::VarRead;
 
@@ -24,8 +25,8 @@ mod typ;
 
 //TODO @mark: replace all usize in structs and enums by Ix if ~1kkk is enough
 pub type Ix = u32;
+
 const _: () = assert!(size_of::<Ix>() <= size_of::<usize>(), "index is too large for this platform");
 
 #[derive(Debug, Serialize)]
-pub struct TelFile {
-}
+pub struct TelFile {}
