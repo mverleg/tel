@@ -1,4 +1,5 @@
 use std::mem::size_of;
+use std::ops::Index;
 use crate::identifier::Identifier;
 use crate::Ix;
 use crate::typ::Type;
@@ -24,15 +25,22 @@ impl Variables {
         mutable: bool,
     ) -> Variable {
         let new_ix = self.data.len();
+        debug_assert!(new_ix < (Ix::MAX as usize), "maximum number of variables per file exceeded ({new_ix})");
         self.data.push(VariableData {
             ix: new_ix as Ix,
             iden,
             type_annotation,
             mutable,
         });
-        self.data.last_mut()
-            .expect("just inserted, always has value")
-            .refer()
+        self.data[new_ix].refer()
+    }
+}
+
+impl Index<Variable> for Variables {
+    type Output = VariableData;
+
+    fn index(&self, var: Variable) -> &Self::Output {
+        &self.data[var.ix as usize]
     }
 }
 
@@ -61,3 +69,22 @@ pub struct Variable {
 }
 
 const _: () = assert!(size_of::<Variable>() == 4);
+
+impl Variable {
+    // Indexing without bound check is safe if we don't do anything weird,
+    // because `variables` never shrinks and Variable is only created on insertion.
+
+    pub fn iden(self, variables: &mut Variables) -> &Identifier {
+        return &variables[self].iden
+    }
+
+    pub fn type_annotation(self, variables: &mut Variables) -> Option<&Type> {
+        return variables[self].type_annotation.as_ref()
+        //TODO @mark: does as_ref have overhead here?
+    }
+
+    pub fn mutable(self, variables: &mut Variables) -> &bool {
+        return &variables[self].mutable
+    }
+
+}

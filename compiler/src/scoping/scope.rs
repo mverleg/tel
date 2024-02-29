@@ -38,9 +38,9 @@ impl Scope {
         if let Some(_parent) = &self.parent {
             todo!("nested scopes not yet implemented")
         }
-        for known in &mut self.items {
-            if known.iden == *iden {
-                return known.refer()
+        for &known in &self.items {
+            if known.iden(variables) == iden {
+                return known
             }
         }
         let new_var = variables.add(
@@ -49,6 +49,6 @@ impl Scope {
             mutable,
         );
         self.items.push(new_var);
-        self.items.last().expect("just added, cannot fail").read()
+        *self.items.last().expect("just added, cannot fail")
     }
 }
