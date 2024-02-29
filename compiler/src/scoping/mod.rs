@@ -1,6 +1,5 @@
-use std::env::var;
 use ::tel_api::TelFile;
-use tel_api::{Variable, Variables};
+use tel_api::Variables;
 
 use crate::ast::AssignmentDest;
 use crate::ast::AssignmentKw;
@@ -23,7 +22,7 @@ pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
         // let block: Block = block;  // enforce that `block` is not borrowed
         //TODO @mark: ^ enable this and remove clones
         match block {
-            Block::Assigns(assign) => assignments_to_api(assign, &mut global_scope)?,
+            Block::Assigns(assign) => assignments_to_api(assign, &mut variables, &mut global_scope)?,
             Block::Expression(_expression) => todo!(),
             Block::Struct(_struct) => todo!(),
             Block::Enum(_enum) => todo!(),

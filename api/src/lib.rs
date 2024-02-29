@@ -16,7 +16,7 @@ pub use self::identifier::Identifier;
 pub use self::typ::Type;
 pub use self::variable::Variables;
 pub use self::variable::Variable;
-pub use self::variable::VarRead;
+pub use self::variable::VarRef;
 
 pub mod op;
 mod variable;

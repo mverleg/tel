@@ -1,3 +1,4 @@
+use std::mem::size_of;
 use crate::identifier::Identifier;
 use crate::Ix;
 use crate::typ::Type;
@@ -21,14 +22,17 @@ impl Variables {
         iden: Identifier,
         type_annotation: Option<Type>,
         mutable: bool,
-    ) {
+    ) -> VarRef {
         let new_ix = self.data.len();
         self.data.push(Variable {
             ix: new_ix as Ix,
             iden,
             type_annotation,
             mutable,
-        })
+        });
+        self.data.last_mut()
+            .expect("just inserted, always has value")
+            .refer()
     }
 }
 
@@ -42,25 +46,18 @@ pub struct Variable {
 }
 
 impl Variable {
-    pub fn read(&self) -> VarRead {
-        VarRead {
-            ix: self.ix
-        }
-    }
-
-    pub fn write(&self, variables: &mut Variables) -> VarWrite {
-        VarWrite {
+    pub fn refer(&self) -> VarRef {
+        VarRef {
             ix: self.ix
         }
     }
 }
 
+/// This is implicitly linked to a specific Variables instance by being in the same TelFile.
+/// There is no safety check for this, calling code must pass the right Variables around.
 #[derive(Debug, Clone, Copy)]
-pub struct VarRead {
+pub struct VarRef {
     ix: Ix,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct VarWrite {
-    ix: Ix,
-}
+const _: () = assert!(size_of::<VarRef>() == 4);
