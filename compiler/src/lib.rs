@@ -92,4 +92,10 @@ pub enum TelErr {
         line: usize,
         msg: String,
     },
+    ScopeErr {
+        // file: PathBuf,
+        // line: usize,
+        //TODO @mark: ^
+        msg: String,
+    },
 }

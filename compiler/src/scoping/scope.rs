@@ -8,6 +8,7 @@ use ::tel_api::Identifier;
 use ::tel_api::Type;
 use ::tel_api::Variable;
 use tel_api::Variables;
+use crate::TelErr;
 
 #[derive(Debug)]
 pub struct Scope {
@@ -28,7 +29,31 @@ impl Scope {
 }
 
 impl Scope {
-    pub fn get_or_insert(
+    pub fn declare_in_scope(
+        &mut self,
+        variables: &mut Variables,
+        iden: &Identifier,
+        type_annotation: Option<&Type>,
+        mutable: bool
+    ) -> Result<Variable, TelErr> {
+        for &known in &self.items {
+            if known.iden(variables) == iden {
+                // or should shadowing in the same scope be allowed? I occasionally use it in other languages
+                return Err(TelErr::ScopeErr {
+                    msg: format!("variable '{iden}' declared twice in this scope")
+                })
+            }
+        }
+        let new_var = variables.add(
+            iden.clone(),
+            type_annotation.cloned(),
+            mutable,
+        );
+        self.items.push(new_var);
+        Ok(*self.items.last().expect("just added, cannot fail"))
+    }
+
+    pub fn assign_or_declare(
         &mut self,
         variables: &mut Variables,
         iden: &Identifier,

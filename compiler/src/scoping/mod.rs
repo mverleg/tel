@@ -48,10 +48,10 @@ fn assignments_to_api(
         let mutable = match kw {
             AssignmentKw::None => false,
             AssignmentKw::Outer => todo!(),
-            AssignmentKw::Local => todo!(),
-            AssignmentKw::Mut => true,
+            AssignmentKw::Local => false,
+            AssignmentKw::Mut => false,
         };
-        let binding = scopes.get_or_insert(
+        let binding = scopes.assign_or_declare(
             variables,
             target,
             typ.as_ref(),

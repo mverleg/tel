@@ -1,6 +1,8 @@
 use ::std::collections::HashSet;
 use ::std::iter::IntoIterator;
 use ::std::sync::LazyLock;
+use std::fmt;
+use std::fmt::Formatter;
 
 use ::serde::Serialize;
 use ::serde::Serializer;
@@ -206,5 +208,11 @@ impl Identifier {
             return Err(IdentifierErr::Reserved(*res));
         }
         Ok(Identifier { name })
+    }
+}
+
+impl fmt::Display for Identifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)
     }
 }
