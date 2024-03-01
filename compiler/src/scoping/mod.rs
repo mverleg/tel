@@ -1,6 +1,6 @@
+use ::tel_api as api;
 use ::tel_api::TelFile;
 use ::tel_api::Variables;
-use ::tel_api as api;
 
 use crate::ast;
 use crate::ast::AssignmentDest;
@@ -76,7 +76,6 @@ fn assignments_to_api(
             var: binding,
             value,
         });
-        todo!("create assignment binding=value");
         value = api::Expr::Read(binding);
     }
     Ok(api_assignments)
@@ -84,7 +83,18 @@ fn assignments_to_api(
 
 fn expression_to_api(expr: &ast::Expr) -> Result<api::Expr, TelErr> {
     //TODO @mark: to owned expression?
-    todo!()
+    Ok(match expr {
+        ast::Expr::Num(num) => api::Expr::Num(*num),
+        ast::Expr::Text(_text) => todo!(),
+        ast::Expr::BinOp(_bin_op, _, _) => todo!(),
+        ast::Expr::UnaryOp(_unary_op, _) => todo!(),
+        ast::Expr::Invoke(_invoke) => todo!(),
+        ast::Expr::Dot(_dot, _) => todo!(),
+        ast::Expr::Closure(_closure) => todo!(),
+        ast::Expr::If(_if, _) => todo!(),
+        ast::Expr::While(_while, _) => todo!(),
+        ast::Expr::ForEach(_for_each, _, _) => todo!(),
+    })
 
 }
 
