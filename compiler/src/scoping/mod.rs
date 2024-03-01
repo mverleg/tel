@@ -1,5 +1,5 @@
 use ::tel_api::TelFile;
-use tel_api::Variables;
+use ::tel_api::Variables;
 
 use crate::ast::AssignmentDest;
 use crate::ast::AssignmentKw;
@@ -70,11 +70,39 @@ fn assignments_to_api(
         let expr = expression_to_api(&value)?;
         value = read_var(binding);
     }
-    todo!()
+    Ok(todo!())
 }
 
 fn expression_to_api(expr: &Expr) -> Result<(), TelErr> {
     //TODO @mark: to owned expression?
     todo!()
 
+}
+
+#[cfg(test)]
+mod tests {
+    use tel_api::Identifier;
+
+    use super::*;
+
+    #[test]
+    fn repeated_assign() {
+        let mut variables = Variables::new();
+        let mut global_scope = Scope::new_root();
+        let assign = Assignments {
+            dest: Box::new([AssignmentDest {
+                kw: AssignmentKw::None,
+                target: Identifier::new("a").unwrap(),
+                typ: None,
+            }, AssignmentDest {
+                kw: AssignmentKw::None,
+                target: Identifier::new("b").unwrap(),
+                typ: None,
+            }]),
+            op: None,
+            value: Box::new(1),
+        };
+        let res = assignments_to_api(assign, &mut variables, &mut global_scope).unwrap();
+        todo!("check that res is double assignment")
+    }
 }
