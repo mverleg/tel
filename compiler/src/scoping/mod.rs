@@ -23,7 +23,7 @@ pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
         //TODO @mark: ^ enable this and remove clones
         match block {
             Block::Assigns(assign) => assignments_to_api(assign, &mut variables, &mut global_scope)?,
-            Block::Expression(_expression) => todo!(),
+            Block::Expression(expression) => expression_to_api(&expression)?,
             Block::Struct(_struct) => todo!(),
             Block::Enum(_enum) => todo!(),
         }
@@ -36,14 +36,14 @@ fn assignments_to_api(
     variables: &mut Variables,
     scopes: &mut Scope,
 ) -> Result<(), TelErr> {
-    let Assignments { dest: dests, op, value } = assign;
+    let Assignments { dest: dests, op, mut value } = assign;
     debug_assert!(dests.len() >= 1);
     if let Some(_op) = op {
         todo!()
     }
-    for dest in dests.into_iter() {
+    for dest in dests.into_iter().rev() {
         // let dest: AssignmentDest = dest;  // enforce that `dest` is not borrowed
-        //TODO @mark: ^ enable this and pass owned values to get_or_insert
+        //TODO @mark: ^ enable this and pass owned values to scope
         let AssignmentDest { kw, target, typ } = dest;
         let (allow_outer, is_mutable) = match (kw, typ) {
             (AssignmentKw::None, None) =>    (true,  false),
@@ -67,13 +67,14 @@ fn assignments_to_api(
                 is_mutable,
             )
         };
-        todo!();
-        let expr = expression_to_api(value)?;
+        let expr = expression_to_api(&value)?;
+        value = read_var(binding);
     }
     todo!()
 }
 
-fn expression_to_api(expr: Box<Expr>) -> Result<(), TelErr> {
+fn expression_to_api(expr: &Expr) -> Result<(), TelErr> {
+    //TODO @mark: to owned expression?
     todo!()
 
 }
