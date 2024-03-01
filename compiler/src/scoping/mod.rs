@@ -45,18 +45,28 @@ fn assignments_to_api(
         // let dest: AssignmentDest = dest;  // enforce that `dest` is not borrowed
         //TODO @mark: ^ enable this and pass owned values to get_or_insert
         let AssignmentDest { kw, target, typ } = dest;
-        let mutable = match kw {
-            AssignmentKw::None => false,
-            AssignmentKw::Outer => todo!(),
-            AssignmentKw::Local => false,
-            AssignmentKw::Mut => false,
+        let (allow_outer, is_mutable) = match (kw, typ) {
+            (AssignmentKw::None, None) =>    (true,  false),
+            (AssignmentKw::None, Some(_)) => (false, false),
+            (AssignmentKw::Outer, _) =>      (true,  false),
+            (AssignmentKw::Local, _) =>      (false, false),
+            (AssignmentKw::Mut, _) =>        (false, true),
         };
-        let binding = scopes.assign_or_declare(
-            variables,
-            target,
-            typ.as_ref(),
-            mutable
-        );
+        let binding = if allow_outer {
+            scopes.declare_in_scope(
+                variables,
+                target,
+                typ.as_ref(),
+                is_mutable,
+            )?
+        } else {
+            scopes.assign_or_declare(
+                variables,
+                target,
+                typ.as_ref(),
+                is_mutable,
+            )
+        };
         todo!();
         let expr = expression_to_api(value)?;
     }
