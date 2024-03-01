@@ -23,7 +23,7 @@ pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
         // let block: Block = block;  // enforce that `block` is not borrowed
         //TODO @mark: ^ enable this and remove clones
         match block {
-            Block::Assigns(assign) => assignments_to_api(assign, &mut variables, &mut global_scope)?,
+            Block::Assigns(assign) => { assignments_to_api(assign, &mut variables, &mut global_scope)?; },
             Block::Expression(expression) => { expression_to_api(&expression)?; },
             //TODO @mark: return ^
             Block::Struct(_struct) => todo!(),
@@ -37,12 +37,14 @@ fn assignments_to_api(
     assign: Assignments,
     variables: &mut Variables,
     scopes: &mut Scope,
-) -> Result<(), TelErr> {
+) -> Result<Vec<api::Assignment>, TelErr> {
+    //TODO @mark: use more efficient vec
     let Assignments { dest: dests, op, value: ast_value } = assign;
     debug_assert!(dests.len() >= 1);
     if let Some(_op) = op {
         todo!()
     }
+    let mut api_assignments = Vec::with_capacity(dests.len());
     let mut value = expression_to_api(&ast_value)?;
     for dest in dests.into_iter().rev() {
         // let dest: AssignmentDest = dest;  // enforce that `dest` is not borrowed
@@ -70,10 +72,14 @@ fn assignments_to_api(
                 is_mutable,
             )
         };
+        api_assignments.push(api::Assignment {
+            var: binding,
+            value,
+        });
         todo!("create assignment binding=value");
         value = api::Expr::Read(binding);
     }
-    Ok(todo!())
+    Ok(api_assignments)
 }
 
 fn expression_to_api(expr: &ast::Expr) -> Result<api::Expr, TelErr> {
@@ -108,6 +114,7 @@ mod tests {
             value: Box::new(ast::Expr::Num(1.0)),
         };
         let res = assignments_to_api(assign, &mut variables, &mut global_scope).unwrap();
+        assert_eq!(res.len(), 2);
         todo!("check that res is double assignment")
     }
 }

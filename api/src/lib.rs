@@ -35,4 +35,10 @@ pub enum Expr {
 }
 
 #[derive(Debug, Serialize)]
+pub struct Assignment {
+    pub var: Variable,
+    pub value: Expr,
+}
+
+#[derive(Debug, Serialize)]
 pub struct TelFile {}
