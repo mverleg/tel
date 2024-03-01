@@ -98,8 +98,8 @@ mod internal {
 mod bugs {
     use super::*;
 
-    fn parse(code: &str) -> TelFile {
-        match parse_str(PathBuf::new(), code.to_owned()) {
+    fn parse(code: &str) -> Ast {
+        match str_to_ast(PathBuf::new(), code.to_owned()) {
             Ok(ast) => ast,
             Err(TelErr::ParseErr { msg, .. }) => {
                 println!("{}", msg);

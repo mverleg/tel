@@ -12,6 +12,7 @@ guaranteed = if (161 % 7 == 0) {
 guaranteed.print()
 
 result = if (1 % 2 == 1) {
+    1
     x = 7
     x * x
 } else {
