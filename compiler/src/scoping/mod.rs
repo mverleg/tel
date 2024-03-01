@@ -1,12 +1,13 @@
 use ::tel_api::TelFile;
 use ::tel_api::Variables;
+use ::tel_api as api;
 
+use crate::ast;
 use crate::ast::AssignmentDest;
 use crate::ast::AssignmentKw;
 use crate::ast::Assignments;
 use crate::ast::Ast;
 use crate::ast::Block;
-use crate::ast::Expr;
 use crate::TelErr;
 
 pub use self::scope::Scope;
@@ -23,7 +24,8 @@ pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
         //TODO @mark: ^ enable this and remove clones
         match block {
             Block::Assigns(assign) => assignments_to_api(assign, &mut variables, &mut global_scope)?,
-            Block::Expression(expression) => expression_to_api(&expression)?,
+            Block::Expression(expression) => { expression_to_api(&expression)?; },
+            //TODO @mark: return ^
             Block::Struct(_struct) => todo!(),
             Block::Enum(_enum) => todo!(),
         }
@@ -36,11 +38,12 @@ fn assignments_to_api(
     variables: &mut Variables,
     scopes: &mut Scope,
 ) -> Result<(), TelErr> {
-    let Assignments { dest: dests, op, mut value } = assign;
+    let Assignments { dest: dests, op, value: ast_value } = assign;
     debug_assert!(dests.len() >= 1);
     if let Some(_op) = op {
         todo!()
     }
+    let mut value = expression_to_api(&ast_value)?;
     for dest in dests.into_iter().rev() {
         // let dest: AssignmentDest = dest;  // enforce that `dest` is not borrowed
         //TODO @mark: ^ enable this and pass owned values to scope
@@ -67,13 +70,13 @@ fn assignments_to_api(
                 is_mutable,
             )
         };
-        let expr = expression_to_api(&value)?;
-        value = read_var(binding);
+        todo!("create assignment binding=value");
+        value = api::Expr::Read(binding);
     }
     Ok(todo!())
 }
 
-fn expression_to_api(expr: &Expr) -> Result<(), TelErr> {
+fn expression_to_api(expr: &ast::Expr) -> Result<api::Expr, TelErr> {
     //TODO @mark: to owned expression?
     todo!()
 
@@ -81,7 +84,9 @@ fn expression_to_api(expr: &Expr) -> Result<(), TelErr> {
 
 #[cfg(test)]
 mod tests {
-    use tel_api::Identifier;
+    use ::tel_api::Identifier;
+
+    use crate::ast;
 
     use super::*;
 
@@ -100,7 +105,7 @@ mod tests {
                 typ: None,
             }]),
             op: None,
-            value: Box::new(1),
+            value: Box::new(ast::Expr::Num(1.0)),
         };
         let res = assignments_to_api(assign, &mut variables, &mut global_scope).unwrap();
         todo!("check that res is double assignment")

@@ -1,5 +1,6 @@
 use std::mem::size_of;
 use std::ops::Index;
+use serde::Serialize;
 use crate::identifier::Identifier;
 use crate::Ix;
 use crate::typ::Type;
@@ -63,7 +64,8 @@ impl VariableData {
 
 /// This is implicitly linked to a specific Variables instance by being in the same TelFile.
 /// There is no safety check for this, calling code must pass the right Variables around.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Serialize, Clone, Copy)]
+#[serde(transparent)]
 pub struct Variable {
     ix: Ix,
 }

@@ -29,4 +29,10 @@ pub type Ix = u32;
 const _: () = assert!(size_of::<Ix>() <= size_of::<usize>(), "index is too large for this platform");
 
 #[derive(Debug, Serialize)]
+pub enum Expr {
+    Num(f64),
+    Read(Variable),
+}
+
+#[derive(Debug, Serialize)]
 pub struct TelFile {}
