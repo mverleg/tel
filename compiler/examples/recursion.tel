@@ -1,0 +1,40 @@
+
+# test (before declaration)
+
+"factorial = ".print_no_break()
+range(10).map({ fac(it) }).join(" ").print()
+
+"female = ".print_no_break()
+range(10).map({ f(it) }).join(" ").print()
+
+"male = ".print_no_break()
+range(10).map({ m(it) }).join(" ").print()
+
+
+# self-recursion
+
+fac = fn (n: u32): u32 {
+    # guard statement?
+    if (n <= 1) {
+        return 1
+    }
+    n * fac(n - 1)
+}
+
+
+# mutual recursion
+
+f = fn (n: u32) -> u32 {
+    if (n <= 0) {
+        return 1
+    }
+    n - m(f(n - 1))
+}
+
+m = fn (n: u32) -> u32 {
+    if (n <= 0) {
+        return 0
+    }
+    n - f(m(n - 1))
+}
+
