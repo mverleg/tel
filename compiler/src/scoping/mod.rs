@@ -101,6 +101,7 @@ fn expression_to_api(expr: &ast::Expr) -> Result<api::Expr, TelErr> {
 #[cfg(test)]
 mod tests {
     use ::tel_api::Identifier;
+    use tel_api::Variable;
 
     use crate::ast;
 
@@ -124,7 +125,15 @@ mod tests {
             value: Box::new(ast::Expr::Num(1.0)),
         };
         let res = assignments_to_api(assign, &mut variables, &mut global_scope).unwrap();
+        dbg!(&res); //TODO @mark: TEMPORARY! REMOVE THIS!
         assert_eq!(res.len(), 2);
-        todo!("check that res is double assignment")
+        let api::Assignment { var: var1, value: value1 } = &res[0];
+        assert_eq!(var1.iden(&variables).to_string(), "b");
+        assert!(matches!(value1, api::Expr::Num(1.0)));
+        let api::Assignment { var: var2, value: value2 } = &res[1];
+        assert_eq!(var2.iden(&variables).to_string(), "a");
+        let api::Expr::Read(read_var) = value2 else { panic!() };
+        assert_eq!(read_var, var1);
+        //res[0].value
     }
 }

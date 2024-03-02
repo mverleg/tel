@@ -64,7 +64,8 @@ impl VariableData {
 
 /// This is implicitly linked to a specific Variables instance by being in the same TelFile.
 /// There is no safety check for this, calling code must pass the right Variables around.
-#[derive(Debug, Serialize, Clone, Copy)]
+/// Note: PartialEq only makes sense within a TelFile
+#[derive(Debug, Serialize, PartialEq, Clone, Copy)]
 #[serde(transparent)]
 pub struct Variable {
     ix: Ix,
@@ -76,16 +77,16 @@ impl Variable {
     // Indexing without bound check is safe if we don't do anything weird,
     // because `variables` never shrinks and Variable is only created on insertion.
 
-    pub fn iden(self, variables: &mut Variables) -> &Identifier {
+    pub fn iden(self, variables: &Variables) -> &Identifier {
         return &variables[self].iden
     }
 
-    pub fn type_annotation(self, variables: &mut Variables) -> Option<&Type> {
+    pub fn type_annotation(self, variables: &Variables) -> Option<&Type> {
         return variables[self].type_annotation.as_ref()
         //TODO @mark: does as_ref have overhead here?
     }
 
-    pub fn mutable(self, variables: &mut Variables) -> &bool {
+    pub fn mutable(self, variables: &Variables) -> &bool {
         return &variables[self].mutable
     }
 
