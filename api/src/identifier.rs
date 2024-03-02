@@ -1,16 +1,14 @@
 use ::std::collections::HashSet;
-use ::std::iter::IntoIterator;
+use ::std::fmt;
 use ::std::sync::LazyLock;
-use std::fmt;
-use std::fmt::Formatter;
 
 use ::serde::Serialize;
 use ::serde::Serializer;
-
 use ::smartstring::alias::String as SString;
 
 use crate::log::debug;
 
+//TODO @mark: should actively-used keywords be in here?
 //TODO @mark: should 'assert' be reserved?
 const RESERVED: [&'static str; 138] = [
     "abstract",
@@ -212,7 +210,7 @@ impl Identifier {
 }
 
 impl fmt::Display for Identifier {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name)
     }
 }

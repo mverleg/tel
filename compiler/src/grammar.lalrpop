@@ -76,7 +76,12 @@ BlockNode: Block = {
     <d:StructDecl> => Block::Struct(d),
     <d:EnumDecl> => Block::Enum(d),
     <a:Assigns> => Block::Assigns(a),
+    <e:Returns> => Block::Return(e),
     <e:Expression> => Block::Expression(e),
+}
+
+Returns: Expr = {
+    "return" <Expression>,
 }
 
 // precedence (though some may be warnings for being confusing):

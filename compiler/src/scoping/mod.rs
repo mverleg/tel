@@ -25,9 +25,10 @@ pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
         match block {
             Block::Assigns(assign) => { assignments_to_api(assign, &mut variables, &mut global_scope)?; },
             Block::Expression(expression) => { expression_to_api(&expression)?; },
+            Block::Return(_expression) => todo!("Return"),
             //TODO @mark: return ^
-            Block::Struct(_struct) => todo!(),
-            Block::Enum(_enum) => todo!(),
+            Block::Struct(_struct) => todo!("Struct"),
+            Block::Enum(_enum) => todo!("Enum"),
         }
     }
     Ok(TelFile {})
@@ -85,15 +86,15 @@ fn expression_to_api(expr: &ast::Expr) -> Result<api::Expr, TelErr> {
     //TODO @mark: to owned expression?
     Ok(match expr {
         ast::Expr::Num(num) => api::Expr::Num(*num),
-        ast::Expr::Text(_text) => todo!(),
-        ast::Expr::BinOp(_bin_op, _, _) => todo!(),
-        ast::Expr::UnaryOp(_unary_op, _) => todo!(),
-        ast::Expr::Invoke(_invoke) => todo!(),
-        ast::Expr::Dot(_dot, _) => todo!(),
-        ast::Expr::Closure(_closure) => todo!(),
-        ast::Expr::If(_if, _) => todo!(),
-        ast::Expr::While(_while, _) => todo!(),
-        ast::Expr::ForEach(_for_each, _, _) => todo!(),
+        ast::Expr::Text(_text) => todo!("Text"),
+        ast::Expr::BinOp(_bin_op, _, _) => todo!("BinOp"),
+        ast::Expr::UnaryOp(_unary_op, _) => todo!("UnaryOp"),
+        ast::Expr::Invoke(_invoke) => todo!("Invoke"),
+        ast::Expr::Dot(_dot, _) => todo!("Dot"),
+        ast::Expr::Closure(_closure) => todo!("Closure"),
+        ast::Expr::If(_if, _) => todo!("If"),
+        ast::Expr::While(_while, _) => todo!("While"),
+        ast::Expr::ForEach(_for_each, _, _) => todo!("ForEach"),
     })
 
 }

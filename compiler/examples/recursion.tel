@@ -24,14 +24,14 @@ fac = fn (n: u32): u32 {
 
 # mutual recursion
 
-f = fn (n: u32) -> u32 {
+f = fn (n: u32): u32 {
     if (n <= 0) {
         return 1
     }
     n - m(f(n - 1))
 }
 
-m = fn (n: u32) -> u32 {
+m = fn (n: u32): u32 {
     if (n <= 0) {
         return 0
     }

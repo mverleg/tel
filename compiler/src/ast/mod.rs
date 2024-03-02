@@ -26,6 +26,7 @@ pub struct Ast {
 pub enum Block {
     Assigns(Assignments),
     Expression(Expr),
+    Return(Expr),
     Struct(Struct),
     Enum(Enum),
 }
