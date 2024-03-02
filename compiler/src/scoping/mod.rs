@@ -125,7 +125,6 @@ mod tests {
             value: Box::new(ast::Expr::Num(1.0)),
         };
         let res = assignments_to_api(assign, &mut variables, &mut global_scope).unwrap();
-        dbg!(&res); //TODO @mark: TEMPORARY! REMOVE THIS!
         assert_eq!(res.len(), 2);
         let api::Assignment { var: var1, value: value1 } = &res[0];
         assert_eq!(var1.iden(&variables).to_string(), "b");

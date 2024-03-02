@@ -14,9 +14,9 @@ use crate::scoping::ast_to_api;
 use crate::TelErr;
 
 mod errors;
+mod examples;
 
 lalrpop_mod!(#[allow(clippy::all)] gen_parser, "/grammar.rs");
-include!(concat!(env!("OUT_DIR"), "/parse_tests.rs"));
 
 pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<TelFile, TelErr> {
     let ast = str_to_ast(src_pth, code)?;
@@ -26,6 +26,7 @@ pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<TelFile, TelErr> 
 pub fn str_to_ast(src_pth: PathBuf, mut code: String) -> Result<Ast, TelErr> {
     if count_empty_lines_at_end(&code) == 0 {
         code.push('\n')
+        //TODO @mark: remove this workaround
     }
     fail_if_no_newline_at_end(&src_pth, &code)?;
     let parser = gen_parser::ProgParser::new();
