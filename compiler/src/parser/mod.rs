@@ -14,6 +14,7 @@ use crate::scoping::ast_to_api;
 use crate::TelErr;
 
 mod errors;
+#[cfg(test)]
 mod examples;
 
 lalrpop_mod!(#[allow(clippy::all)] gen_parser, "/grammar.rs");
