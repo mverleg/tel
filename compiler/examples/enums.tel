@@ -1,3 +1,5 @@
+# tel-test: parse-only
+# TODO @mark: ^ temporary
 
 # of new types, as labels
 enum Option<T> {

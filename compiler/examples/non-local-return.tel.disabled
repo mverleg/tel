@@ -1,5 +1,5 @@
-
-# TODO @mark: enable
+# tel-test: parse-only
+# TODO @mark: ^ temporary
 
 struct Resource {
 

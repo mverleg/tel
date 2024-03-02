@@ -1,7 +1,8 @@
 
+use super::ast_to_api;
+use super::parse_str;
+use super::str_to_ast;
 use super::TelErr;
-pub use super::str_to_ast;
-pub use super::parse_str;
 
 include!(concat!(env!("OUT_DIR"), "/parse_tests.rs"));
 
@@ -18,6 +19,7 @@ fn get_test_modes(code: &str) -> Mode {
     }
     for part in code.lines().next().expect("there is at least one line").split(" ") {
         match part.trim() {
+            "#" | "tel-test:" => {},
             "parse-only" => mode.parse_only = true,
             "should-fail" => mode.should_fail = true,
             unknown => panic!("unknown mode comment at top of test: {unknown}"),

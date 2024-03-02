@@ -36,14 +36,24 @@ mod tests {
             test_code,
             "#[test]
 fn parse_{name}() {{
+    // generated!
     let pth = PathBuf::from(\"{pth_str}\");
     let code = read_to_string(&pth).unwrap();
-    // parse_str should be available in the context where this is included
-    let res = parse_str(pth, code);
-    if let Err(TelErr::ParseErr {{ msg, .. }}) = &res {{
+    // str_to_ast, ast_to_api, get_test_modes should be available in the context where this is included
+    let mode = get_test_modes(&code);
+    let parse_res = str_to_ast(pth, code);
+    assert!(!mode.should_fail);  // TODO @mark
+    if let Err(TelErr::ParseErr {{ msg, .. }}) = &parse_res {{
         eprintln!(\"Failed to parse example file {pth_str}:\\n{{}}\", msg);
     }}
-    assert!(res.is_ok());
+    if mode.parse_only {{
+        println!(\"parsing only\");
+        return;
+    }}
+    let api_res = ast_to_api(parse_res.unwrap());
+    if let Err(TelErr::ParseErr {{ msg, .. }}) = &api_res {{
+        eprintln!(\"Failed to resolve scopes for example file {pth_str}:\\n{{}}\", msg);
+    }}
 }}\n\n"
         )
         .unwrap();

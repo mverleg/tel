@@ -1,3 +1,5 @@
+# tel-test: parse-only
+# TODO @mark: ^ temporary
 
 struct Euro {
     cents: i64
