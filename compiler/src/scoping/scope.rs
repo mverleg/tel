@@ -76,4 +76,20 @@ impl Scope {
         self.items.push(new_var);
         *self.items.last().expect("just added, cannot fail")
     }
+
+    pub fn lookup(
+        &mut self,
+        variables: &mut Variables,
+        iden: &Identifier,
+    ) -> Option<Variable> {
+        for &known in &self.items {
+            if known.iden(variables) == iden {
+                return Some(known)
+            }
+        }
+        if let Some(_parent) = &self.parent {
+            todo!("nested scopes not yet implemented")
+        }
+        None
+    }
 }

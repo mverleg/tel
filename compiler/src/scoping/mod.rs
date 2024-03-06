@@ -46,7 +46,7 @@ fn expression_to_api(
         ast::Expr::Text(_text) => todo!("Text"),
         ast::Expr::BinOp(_bin_op, _, _) => todo!("BinOp"),
         ast::Expr::UnaryOp(_unary_op, _) => todo!("UnaryOp"),
-        ast::Expr::Invoke(invoke) => invoke_to_api(invoke, variables, scope),
+        ast::Expr::Invoke(invoke) => invoke_to_api(invoke, variables, scope)?,
         ast::Expr::Dot(_dot, _) => todo!("Dot"),
         ast::Expr::Closure(_closure) => todo!("Closure"),
         ast::Expr::If(_if, _) => todo!("If"),
@@ -58,7 +58,7 @@ fn expression_to_api(
 fn assignments_to_api(
     assign: Assignments,
     variables: &mut Variables,
-    scopes: &mut Scope,
+    scope: &mut Scope,
 ) -> Result<Vec<api::Assignment>, TelErr> {
     //TODO @mark: use more efficient vec
     let Assignments { dest: dests, op, value: ast_value } = assign;
@@ -67,7 +67,7 @@ fn assignments_to_api(
         todo!()
     }
     let mut api_assignments = Vec::with_capacity(dests.len());
-    let mut value = expression_to_api(&ast_value)?;
+    let mut value = expression_to_api(&ast_value, variables, scope)?;
     for dest in dests.into_iter().rev() {
         // let dest: AssignmentDest = dest;  // enforce that `dest` is not borrowed
         //TODO @mark: ^ enable this and pass owned values to scope
@@ -80,14 +80,14 @@ fn assignments_to_api(
             (AssignmentKw::Mut, _) => (false, true),
         };
         let binding = if allow_outer {
-            scopes.declare_in_scope(
+            scope.declare_in_scope(
                 variables,
                 target,
                 typ.as_ref(),
                 is_mutable,
             )?
         } else {
-            scopes.assign_or_declare(
+            scope.assign_or_declare(
                 variables,
                 target,
                 typ.as_ref(),
