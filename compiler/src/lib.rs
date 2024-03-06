@@ -7,11 +7,12 @@ use ::std::io::Write;
 use ::std::path::Path;
 use ::std::path::PathBuf;
 
-use ::serde_json;
-
 use ::log::debug;
 use ::log::warn;
-use serde::Serialize;
+use ::serde::Serialize;
+use ::serde_json;
+
+use ::tel_api::Identifier;
 use ::tel_api::TelFile;
 
 use crate::parser::parse_str;
@@ -98,4 +99,5 @@ pub enum TelErr {
         //TODO @mark: ^
         msg: String,
     },
+    UnknownIdentifier(Identifier),
 }
