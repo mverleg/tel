@@ -32,7 +32,7 @@ const _: () = assert!(size_of::<Ix>() <= size_of::<usize>(), "index is too large
 pub enum Expr {
     Num(f64),
     Read(Variable),
-    Invoke { iden: Variable, args: Vec<Expr> },
+    Invoke { iden: Variable, args: Box<[Expr]> },
 }
 
 #[derive(Debug, Serialize)]

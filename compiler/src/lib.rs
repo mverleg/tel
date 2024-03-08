@@ -10,7 +10,6 @@ use ::std::path::PathBuf;
 use ::log::debug;
 use ::log::warn;
 use ::serde::Serialize;
-use ::serde_json;
 
 use ::tel_api::Identifier;
 use ::tel_api::TelFile;

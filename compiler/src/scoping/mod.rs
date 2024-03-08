@@ -1,5 +1,5 @@
-
 use ::tel_api as api;
+use ::tel_api::op::UnaryOpCode;
 use ::tel_api::TelFile;
 use ::tel_api::Variables;
 
@@ -45,7 +45,7 @@ fn expression_to_api(
         ast::Expr::Num(num) => api::Expr::Num(*num),
         ast::Expr::Text(_text) => todo!("Text"),
         ast::Expr::BinOp(_bin_op, _, _) => todo!("BinOp"),
-        ast::Expr::UnaryOp(_unary_op, _) => todo!("UnaryOp"),
+        ast::Expr::UnaryOp(op, expr) => invoke_unary_to_api(op, expr, variables, scope)?,
         ast::Expr::Invoke(invoke) => invoke_to_api(invoke, variables, scope)?,
         ast::Expr::Dot(_dot, _) => todo!("Dot"),
         ast::Expr::Closure(_closure) => todo!("Closure"),
@@ -114,6 +114,20 @@ fn invoke_to_api(
         return Err(TelErr::UnknownIdentifier(ast_iden.clone()))
     };
     Ok(api::Expr::Invoke { iden: api_iden, args: vec![] })
+}
+
+fn invoke_unary_to_api(
+    op: &UnaryOpCode,
+    ast_expr: &Box<ast::Expr>,
+    variables: &mut Variables,
+    scope: &mut Scope,
+) -> Result<api::Expr, TelErr> {
+    let builtin_iden = match op {
+        UnaryOpCode::Not => {}
+        UnaryOpCode::Min => {}
+    };
+    let api_expr = expression_to_api(ast_expr, variables, scope)?;
+    api::Expr::Invoke { iden: builtin_iden, args: vec![api_expr] }
 }
 
 #[cfg(test)]
