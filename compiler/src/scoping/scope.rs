@@ -7,7 +7,8 @@
 use ::tel_api::Identifier;
 use ::tel_api::Type;
 use ::tel_api::Variable;
-use tel_api::Variables;
+use ::tel_api::Variables;
+
 use crate::TelErr;
 
 #[derive(Debug)]

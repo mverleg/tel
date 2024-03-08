@@ -109,11 +109,15 @@ fn invoke_to_api(
     scope: &mut Scope,
 ) -> Result<api::Expr, TelErr> {
     //TODO @mark: remove borrow ^
-    let ast::Invoke { iden: ast_iden, args } = invoke;
+    let ast::Invoke { iden: ast_iden, args: ast_args } = invoke;
     let Some(api_iden) = scope.lookup(variables, ast_iden) else {
         return Err(TelErr::UnknownIdentifier(ast_iden.clone()))
     };
-    Ok(api::Expr::Invoke { iden: api_iden, args: vec![] })
+    let api_args: Box<[api::Expr]> = ast_args.into_iter()
+        .map(|e| expression_to_api(e, variables, scope))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_boxed_slice();
+    Ok(api::Expr::Invoke { iden: api_iden, args: api_args })
 }
 
 fn invoke_unary_to_api(
@@ -123,11 +127,12 @@ fn invoke_unary_to_api(
     scope: &mut Scope,
 ) -> Result<api::Expr, TelErr> {
     let builtin_iden = match op {
-        UnaryOpCode::Not => {}
-        UnaryOpCode::Min => {}
+        UnaryOpCode::Not => {},
+        UnaryOpCode::Min => {},
+        //TODO @mark: how to impl preamble? always add to root scope?
     };
     let api_expr = expression_to_api(ast_expr, variables, scope)?;
-    api::Expr::Invoke { iden: builtin_iden, args: vec![api_expr] }
+    api::Expr::Invoke { iden: builtin_iden, args: Box::new([api_expr]) }
 }
 
 #[cfg(test)]
