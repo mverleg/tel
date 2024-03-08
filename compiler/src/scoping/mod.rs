@@ -2,6 +2,7 @@ use ::tel_api as api;
 use ::tel_api::op::UnaryOpCode;
 use ::tel_api::TelFile;
 use ::tel_api::Variables;
+use tel_api::op::BinOpCode;
 
 use crate::ast;
 use crate::ast::AssignmentDest;
@@ -44,8 +45,8 @@ fn expression_to_api(
     Ok(match expr {
         ast::Expr::Num(num) => api::Expr::Num(*num),
         ast::Expr::Text(_text) => todo!("Text"),
-        ast::Expr::BinOp(_bin_op, _, _) => todo!("BinOp"),
-        ast::Expr::UnaryOp(op, expr) => invoke_unary_to_api(op, expr, variables, scope)?,
+        ast::Expr::BinOp(op, left, right) => invoke_binary_to_api(*op, left, right, variables, scope)?,
+        ast::Expr::UnaryOp(op, expr) => invoke_unary_to_api(*op, expr, variables, scope)?,
         ast::Expr::Invoke(invoke) => invoke_to_api(invoke, variables, scope)?,
         ast::Expr::Dot(_dot, _) => todo!("Dot"),
         ast::Expr::Closure(_closure) => todo!("Closure"),
@@ -121,7 +122,7 @@ fn invoke_to_api(
 }
 
 fn invoke_unary_to_api(
-    op: &UnaryOpCode,
+    op: UnaryOpCode,
     ast_expr: &Box<ast::Expr>,
     variables: &mut Variables,
     scope: &mut Scope,
@@ -129,10 +130,38 @@ fn invoke_unary_to_api(
     let builtin_iden = match op {
         UnaryOpCode::Not => {},
         UnaryOpCode::Min => {},
-        //TODO @mark: how to impl preamble? always add to root scope?
+        //TODO @mark: how to impl preamble? always add to root scope? should have some constants, not lookup each time
     };
     let api_expr = expression_to_api(ast_expr, variables, scope)?;
     api::Expr::Invoke { iden: builtin_iden, args: Box::new([api_expr]) }
+}
+
+fn invoke_binary_to_api(
+    op: BinOpCode,
+    ast_left: &Box<ast::Expr>,
+    ast_right: &Box<ast::Expr>,
+    variables: &mut Variables,
+    scope: &mut Scope,
+) -> Result<api::Expr, TelErr> {
+    let builtin_iden = match op {
+        BinOpCode::Add => {}
+        BinOpCode::Sub => {}
+        BinOpCode::Mul => {}
+        BinOpCode::Div => {}
+        BinOpCode::Modulo => {}
+        BinOpCode::Eq => {}
+        BinOpCode::Neq => {}
+        BinOpCode::Lt => {}
+        BinOpCode::Gt => {}
+        BinOpCode::Le => {}
+        BinOpCode::Ge => {}
+        BinOpCode::And => {}
+        BinOpCode::Or => {}
+        BinOpCode::Xor => {}
+    };
+    let api_left = expression_to_api(ast_left, variables, scope)?;
+    let api_right = expression_to_api(ast_right, variables, scope)?;
+    api::Expr::Invoke { iden: builtin_iden, args: Box::new([api_left, api_right]) }
 }
 
 #[cfg(test)]
