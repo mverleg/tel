@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn repeated_assign() {
         let mut variables = Variables::new();
-        let mut global_scope = Scope::new_root();
+        let mut global_scope = Scope::new_root(&mut Vec::new());
         let assign = Assignments {
             dest: Box::new([AssignmentDest {
                 kw: AssignmentKw::None,

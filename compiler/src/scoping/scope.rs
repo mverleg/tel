@@ -11,6 +11,11 @@ use ::tel_api::Variables;
 
 use crate::TelErr;
 
+pub const BUILTINS: [&'static str; 2] = [
+    "Negate.neg",
+    "Minus.minus",
+];
+
 #[derive(Debug)]
 pub struct Scope {
     //TODO @mark: scopes have their own tree structure, even though it matches the AST
@@ -22,16 +27,25 @@ pub struct Scope {
 impl Scope {
     //TODO @mark: reconsider Rc here (won't be able to add variables if it's Rc anyway)
     pub fn new_root(variables: &mut Variables) -> Self {
+        Scope {
+            parent: Some(Box::new(Self::new_builtin(variables))),
+            items: vec![]
+        }
+    }
+
+    fn new_builtin(variables: &mut Variables) -> Self {
+        //TODO @mark: perhaps not the best representation, could be enum or map
         let mut scope = Scope {
             parent: None,
             items: vec![]
         };
-        scope.declare_in_scope(variables, &Identifier::new("Negate.neg").unwrap(), Some(&Type { iden: Identifier::new("bool -> bool").unwrap(), generics: Box::new([]) }), false);
+        // scope.declare_in_scope(variables, &Identifier::new("Negate.neg").unwrap(), Some(&Type { iden: Identifier::new("bool -> bool").unwrap(), generics: Box::new([]) }), false);
+        for builtin_iden in BUILTINS {
+            scope.declare_in_scope(variables, &Identifier::new(builtin_iden).unwrap(), None, false);
+        }
         scope
     }
-}
 
-impl Scope {
     pub fn declare_in_scope(
         &mut self,
         variables: &mut Variables,
