@@ -2,6 +2,7 @@ use ::tel_api as api;
 use ::tel_api::op::UnaryOpCode;
 use ::tel_api::TelFile;
 use ::tel_api::Variables;
+use tel_api::Identifier;
 use tel_api::op::BinOpCode;
 
 use crate::ast;
@@ -10,6 +11,7 @@ use crate::ast::AssignmentKw;
 use crate::ast::Assignments;
 use crate::ast::Ast;
 use crate::ast::Block;
+use crate::scoping::scope::BUILTINS;
 use crate::TelErr;
 
 pub use self::scope::Scope;
@@ -129,7 +131,7 @@ fn invoke_unary_to_api(
     scope: &mut Scope,
 ) -> Result<api::Expr, TelErr> {
     let builtin_iden = match op {
-        UnaryOpCode::Not => {},
+        UnaryOpCode::Not => Identifier::new(builtins.NEG).expect("built-in must be valid"),
         UnaryOpCode::Min => {},
         //TODO @mark: how to impl preamble? always add to root scope? should have some constants, not lookup each time
     };

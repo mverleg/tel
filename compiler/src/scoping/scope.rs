@@ -11,10 +11,10 @@ use ::tel_api::Variables;
 
 use crate::TelErr;
 
-pub const BUILTINS: [&'static str; 2] = [
-    "Negate.neg",
-    "Minus.minus",
-];
+pub mod builtins {
+    pub const NEG: &'static str = "Negate.neg";
+    pub const MINUS: &'static str = "Minus.minus";
+}
 
 #[derive(Debug)]
 pub struct Scope {
