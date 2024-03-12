@@ -10,6 +10,7 @@ use crate::ast::AssignmentKw;
 use crate::ast::Assignments;
 use crate::ast::Ast;
 use crate::ast::Block;
+use crate::scoping::scope::LinearScope;
 use crate::TelErr;
 
 pub use self::scope::Scope;
@@ -20,7 +21,7 @@ mod scope;
 pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
     let Ast { blocks } = ast;
     let mut variables = Variables::new();
-    let mut global_scope = Scope::new_root(&mut variables);
+    let mut global_scope = LinearScope::new_root(&mut variables);
     let blocks = blocks.into_vec();  //TODO @mark: TEMPORARY! REMOVE THIS!
     for block in blocks.into_iter() {
         // let block: Block = block;  // enforce that `block` is not borrowed

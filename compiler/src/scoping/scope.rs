@@ -12,26 +12,28 @@ use ::tel_api::Variables;
 use crate::TelErr;
 
 #[derive(Debug)]
-pub struct Scope {
+pub enum Scope {
+    Linear(Box<LinearScope>),
+}
+
+#[derive(Debug)]
+pub struct LinearScope {
     //TODO @mark: scopes have their own tree structure, even though it matches the AST
     //TODO @mark: for now it seems ot make the code easier (and possibly faster), but might reconsider
-    parent: Option<Box<Scope>>,
+    parent: Option<Scope>,
     items: Vec<Variable>,
 }
 
-impl Scope {
+impl LinearScope {
     //TODO @mark: reconsider Rc here (won't be able to add variables if it's Rc anyway)
-    pub fn new_root(variables: &mut Variables) -> Self {
-        let mut scope = Scope {
+    pub fn new_root(variables: &mut Variables) -> Scope {
+        Scope::Linear(Box::new(LinearScope {
             parent: None,
             items: vec![]
-        };
-        scope.declare_in_scope(variables, &Identifier::new("Negate.neg").unwrap(), Some(&Type { iden: Identifier::new("bool -> bool").unwrap(), generics: Box::new([]) }), false);
-        scope
+        }))
+        //scope.declare_in_scope(variables, &Identifier::new("Negate.neg").unwrap(), Some(&Type { iden: Identifier::new("bool -> bool").unwrap(), generics: Box::new([]) }), false);
     }
-}
 
-impl Scope {
     pub fn declare_in_scope(
         &mut self,
         variables: &mut Variables,
