@@ -14,12 +14,13 @@ use crate::TelErr;
 
 pub use self::scope::Scope;
 
+mod builtin;
 mod scope;
 
 pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
     let Ast { blocks } = ast;
     let mut variables = Variables::new();
-    let mut global_scope = Scope::new_root();
+    let mut global_scope = Scope::new_root(&mut variables);
     let blocks = blocks.into_vec();  //TODO @mark: TEMPORARY! REMOVE THIS!
     for block in blocks.into_iter() {
         // let block: Block = block;  // enforce that `block` is not borrowed

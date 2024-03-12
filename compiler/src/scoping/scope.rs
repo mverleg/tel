@@ -21,11 +21,13 @@ pub struct Scope {
 
 impl Scope {
     //TODO @mark: reconsider Rc here (won't be able to add variables if it's Rc anyway)
-    pub fn new_root() -> Self {
-        Scope {
+    pub fn new_root(variables: &mut Variables) -> Self {
+        let mut scope = Scope {
             parent: None,
             items: vec![]
-        }
+        };
+        scope.declare_in_scope(variables, &Identifier::new("Negate.neg").unwrap(), Some(&Type { iden: Identifier::new("bool -> bool").unwrap(), generics: Box::new([]) }), false);
+        scope
     }
 }
 

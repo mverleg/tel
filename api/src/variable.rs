@@ -1,6 +1,8 @@
-use std::mem::size_of;
-use std::ops::Index;
-use serde::Serialize;
+use ::std::mem::size_of;
+use ::std::ops::Index;
+
+use ::serde::Serialize;
+
 use crate::identifier::Identifier;
 use crate::Ix;
 use crate::typ::Type;
