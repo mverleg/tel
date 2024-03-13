@@ -9,39 +9,33 @@ use crate::scoping::scope::Scope;
 // }
 
 macro_rules! make_builtin_constants {
-    (($iden: ident, $ex: expr)) => {
-        pub const $iden: &'static str = $ex;
+    (($iden: ident, $text: expr)) => {
+        pub const $iden: &'static str = $text;
     };
-    (($iden: ident, $ex: expr), $(($idens: ident, $exs: expr)),+) => {
-        make_builtin_constants!(($iden, $ex));
-        make_builtin_constants!($(($idens, $exs)),+);
+    (($iden: ident, $text: expr), $(($idens: ident, $texts: expr)),+) => {
+        make_builtin_constants!(($iden, $text));
+        make_builtin_constants!($(($idens, $texts)),+);
     };
 }
 
-// macro_rules! make_var_ref {
-    // (($iden: ident, $ex: expr)) => {
-    //     Variable { ix: 0 }
-    // };
-    // (($iden: ident, $ex: expr), $(($idens: ident, $exs: expr)),+) => {
-    //     make_var_ref!(($iden, $ex));
-    //     make_var_ref!($(($idens, $exs)),+);
-    // };
-// }
-
 macro_rules! make_var {
-    ($($iden: ident),*) => {
-        Variable { ix: 0 }
-    }
+    ($nr: expr, $iden: ident) => {
+        Variable { ix: $nr + 0 }
+    };
+    (($nr: expr, $iden: ident), $(($nrs: expr, $idens: ident)),+) => {
+        make_var!(($nr + 1, $iden));
+        make_var!($(($nrs, $idens)),+);
+    };
 }
 
 macro_rules! make_builtins {
-    ($(($idens: ident, $exs: expr)),*) => {
-        make_builtin_constants!($(($idens, $exs)),+);
+    ($(($idens: ident, $texts: expr)),*) => {
+        make_builtin_constants!($(($idens, $texts)),+);
         fn make_builtin_scope() -> Scope {
             Scope {
                 parent: None,
                 items: vec![
-                    $(make_var!($idens),)+
+                    make_var!($((0, $idens)),*)
                     //make_var_ref!($(($idens, $exs)),+);
                 ],
             }
