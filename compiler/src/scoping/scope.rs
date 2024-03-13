@@ -11,11 +11,6 @@ use ::tel_api::Variables;
 
 use crate::TelErr;
 
-pub mod builtins {
-    pub const NEG: &'static str = "Negate.neg";
-    pub const MINUS: &'static str = "Minus.minus";
-}
-
 #[derive(Debug)]
 pub struct Scope {
     //TODO @mark: scopes have their own tree structure, even though it matches the AST
@@ -40,9 +35,10 @@ impl Scope {
             items: vec![]
         };
         // scope.declare_in_scope(variables, &Identifier::new("Negate.neg").unwrap(), Some(&Type { iden: Identifier::new("bool -> bool").unwrap(), generics: Box::new([]) }), false);
-        for builtin_iden in BUILTINS {
-            scope.declare_in_scope(variables, &Identifier::new(builtin_iden).unwrap(), None, false);
-        }
+        // for builtin_iden in BUILTINS {
+        //     scope.declare_in_scope(variables, &Identifier::new(builtin_iden).unwrap(), None, false);
+        // }
+        todo!();
         scope
     }
 
