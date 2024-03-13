@@ -170,8 +170,6 @@ fn invoke_binary_to_api(
 
 #[cfg(test)]
 mod tests {
-    use ::tel_api::Identifier;
-
     use super::*;
 
     #[test]

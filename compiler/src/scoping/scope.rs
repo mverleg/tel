@@ -29,6 +29,7 @@ impl Scope {
     }
 
     fn new_builtin(variables: &mut Variables) -> Self {
+        todo!();
         //TODO @mark: perhaps not the best representation, could be enum or map
         let mut scope = Scope {
             parent: None,
