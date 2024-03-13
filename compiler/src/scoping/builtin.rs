@@ -23,8 +23,8 @@ macro_rules! make_var {
         Variable { ix: $nr + 0 }
     };
     (($nr: expr, $iden: ident), $(($nrs: expr, $idens: ident)),+) => {
-        make_var!(($nr + 1, $iden));
-        make_var!($(($nrs, $idens)),+);
+        make_var!(($nr + 1, $iden))
+        make_var!($(($nrs, $idens)),+)
     };
 }
 
@@ -34,10 +34,10 @@ macro_rules! make_builtins {
         fn make_builtin_scope() -> Scope {
             Scope {
                 parent: None,
-                items: vec![
-                    make_var!($((0, $idens)),*)
+                items: (
+                    make_var!($((0, $idens)),+)
                     //make_var_ref!($(($idens, $exs)),+);
-                ],
+                ),
             }
         }
     };
