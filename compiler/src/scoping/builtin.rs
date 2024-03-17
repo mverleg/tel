@@ -19,12 +19,12 @@ macro_rules! make_builtin_constants {
 }
 
 macro_rules! make_var {
-    ($nr: expr, $iden: ident) => {
-        Variable { ix: $nr + 0 }
+    (($nr: expr, $iden: ident)) => {
+        Variable { ix: $nr + 0, name: stringify!($iden) }
     };
     (($nr: expr, $iden: ident), $(($nrs: expr, $idens: ident)),+) => {
-        make_var!(($nr + 1, $iden))
-        make_var!($(($nrs, $idens)),+)
+        make_var!(($nr + 1, $iden)),
+        make_var!($(($nrs, $idens)),+);
     };
 }
 
