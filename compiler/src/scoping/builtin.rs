@@ -3,49 +3,23 @@
 use crate::scoping::api::Variable;
 use crate::scoping::scope::Scope;
 
-// pub mod builtins {
-//     pub const NEG: &'static str = "Negate.neg";
-//     pub const MINUS: &'static str = "Minus.minus";
-// }
+pub const NEG: &'static str = "Negate.neg";
+pub const MINUS: &'static str = "Minus.minus";
+pub const TEST: &'static str = "Test.test";
 
-macro_rules! make_builtin_constants {
-    (($iden: ident, $text: expr)) => {
-        pub const $iden: &'static str = $text;
-    };
-    (($iden: ident, $text: expr), $(($idens: ident, $texts: expr)),+) => {
-        make_builtin_constants!(($iden, $text));
-        make_builtin_constants!($(($idens, $texts)),+);
-    };
+fn make_builtin_scope() -> Scope {
+    Scope {
+        parent: None,
+        items: (Variable { ix: 0, }),
+    }
 }
 
-// https://danielkeep.github.io/tlborm/book/pat-push-down-accumulation.html
-macro_rules! make_var {
-    ($nr: expr, $iden: ident) => {
-        Variable { ix: $nr + 0, name: stringify!($iden) }
-    };
-    ($nr: expr, $iden: ident, $($idens: ident),+) => {
-        make_var!($nr, $iden);
-        make_var!($nr + 1, $($idens),+)
-    };
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-macro_rules! make_builtins {
-    ($(($idens: ident, $texts: expr)),*) => {
-        make_builtin_constants!($(($idens, $texts)),+);
-        fn make_builtin_scope() -> Scope {
-            Scope {
-                parent: None,
-                items: (
-                    make_var!(0, $($idens),+)
-                    //make_var_ref!($(($idens, $exs)),+);
-                ),
-            }
-        }
-    };
+    #[test]
+    fn implement_test() {
+        unimplemented!();  //TODO @mark
+    }
 }
-
-make_builtins!(
-    (NEG, "Negate.neg"),
-    (MINUS, "Minus.minus"),
-    (TEST, "Test.test")
-);
