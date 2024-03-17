@@ -18,12 +18,13 @@ macro_rules! make_builtin_constants {
     };
 }
 
+// https://danielkeep.github.io/tlborm/book/pat-push-down-accumulation.html
 macro_rules! make_var {
     ($nr: expr, $iden: ident) => {
         Variable { ix: $nr + 0, name: stringify!($iden) }
     };
-    ($nr: expr, ($iden: ident), $($idens: ident),+) => {
-        make_var!($nr, $iden)
+    ($nr: expr, $iden: ident, $($idens: ident),+) => {
+        make_var!($nr, $iden);
         make_var!($nr + 1, $($idens),+)
     };
 }
