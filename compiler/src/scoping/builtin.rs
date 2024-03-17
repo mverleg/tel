@@ -19,12 +19,12 @@ macro_rules! make_builtin_constants {
 }
 
 macro_rules! make_var {
-    (($nr: expr, $iden: ident)) => {
+    ($nr: expr, $iden: ident) => {
         Variable { ix: $nr + 0, name: stringify!($iden) }
     };
-    (($nr: expr, $iden: ident), $(($nrs: expr, $idens: ident)),+) => {
-        make_var!(($nr + 1, $iden)),
-        make_var!($(($nrs, $idens)),+);
+    ($nr: expr, ($iden: ident), $($idens: ident),+) => {
+        make_var!($nr, $iden)
+        make_var!($nr + 1, $($idens),+)
     };
 }
 
@@ -35,7 +35,7 @@ macro_rules! make_builtins {
             Scope {
                 parent: None,
                 items: (
-                    make_var!($((0, $idens)),+)
+                    make_var!(0, $($idens),+)
                     //make_var_ref!($(($idens, $exs)),+);
                 ),
             }
