@@ -43,7 +43,11 @@ impl Index<Variable> for Variables {
     type Output = VariableData;
 
     fn index(&self, var: Variable) -> &Self::Output {
-        &self.data[var.ix as usize]
+        if var.ix >= 0 {
+            &self.data[var.ix as usize]
+        } else {
+            builtin_var_data(var.ix)
+        }
     }
 }
 

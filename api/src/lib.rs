@@ -24,7 +24,8 @@ mod identifier;
 mod typ;
 
 //TODO @mark: replace all usize in structs and enums by Ix if ~1kkk is enough
-pub type Ix = u32;
+/// Negative indices are used for built-ins
+pub type Ix = i32;
 
 const _: () = assert!(size_of::<Ix>() <= size_of::<usize>(), "index is too large for this platform");
 
