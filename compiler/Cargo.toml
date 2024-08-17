@@ -18,22 +18,22 @@ path = "src/lib.rs"
 [dependencies]
 tel-api = "=0.1.0"
 
-regex = "1.10.2"
+regex = "1.10.6"
 itertools = "0.11.0"
-time = { version = "0.3.31", features = ["serde"] }
-env_logger = "0.10.1"
+time = { version = "0.3.36", features = ["serde"] }
+env_logger = "0.10.2"
 sha2 = "0.10.8"
-lalrpop-util = { version = "0.20.0", features = ["lexer", "unicode"] }
-serde = "1.0.193"
-serde_json = "1.0.108"
+lalrpop-util = { version = "0.20.2", features = ["lexer", "unicode"] }
+serde = "1.0.208"
+serde_json = "1.0.125"
 
 dashmap = "5.5.3"
-ahash = "0.8.6"
+ahash = "0.8.11"
 smartstring = { version = "1.0.1", features = ["serde"] }
-log = "0.4.20"
+log = "0.4.22"
 
 [build-dependencies]
-lalrpop = { version = "0.20.0", features = ["lexer", "unicode"] }
+lalrpop = { version = "0.20.2", features = ["lexer", "unicode"] }
 
 
 
