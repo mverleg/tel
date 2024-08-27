@@ -1,5 +1,3 @@
-#![feature(lazy_cell)]
-
 //! Source-level representation.
 //! * Supports all valid language inputs.
 //! * Does not encode formatting, but keeps debug info.

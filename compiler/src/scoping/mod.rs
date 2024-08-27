@@ -1,9 +1,9 @@
 use ::tel_api as api;
+use ::tel_api::op::BinOpCode;
 use ::tel_api::op::UnaryOpCode;
+use ::tel_api::Identifier;
 use ::tel_api::TelFile;
 use ::tel_api::Variables;
-use tel_api::Identifier;
-use tel_api::op::BinOpCode;
 
 use crate::ast;
 use crate::ast::AssignmentDest;
@@ -47,9 +47,12 @@ fn expression_to_api(
     Ok(match expr {
         ast::Expr::Num(num) => api::Expr::Num(*num),
         ast::Expr::Text(_text) => todo!("Text"),
-        ast::Expr::BinOp(op, left, right) => invoke_binary_to_api(*op, left, right, variables, scope)?,
-        ast::Expr::UnaryOp(op, expr) => invoke_unary_to_api(*op, expr, variables, scope)?,
-        ast::Expr::Invoke(invoke) => invoke_to_api(invoke, variables, scope)?,
+        //ast::Expr::BinOp(op, left, right) => invoke_binary_to_api(*op, left, right, variables, scope)?,
+        //ast::Expr::UnaryOp(op, expr) => invoke_unary_to_api(*op, expr, variables, scope)?,
+        //ast::Expr::Invoke(invoke) => invoke_to_api(invoke, variables, scope)?,
+        ast::Expr::BinOp(op, left, right) => unimplemented!(),
+        ast::Expr::UnaryOp(op, expr) => unimplemented!(),
+        ast::Expr::Invoke(invoke) => unimplemented!(),
         ast::Expr::Dot(_dot, _) => todo!("Dot"),
         ast::Expr::Closure(_closure) => todo!("Closure"),
         ast::Expr::If(_if, _) => todo!("If"),

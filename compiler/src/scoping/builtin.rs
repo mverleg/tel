@@ -15,7 +15,6 @@ pub fn builtin_var_data(ix: usize) -> VariableData {
         type_annotation: None,
         mutable: false,
     }
-    
 }
 
 fn make_builtin_scope() -> Scope {

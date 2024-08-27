@@ -46,7 +46,8 @@ impl Index<Variable> for Variables {
         if var.ix >= 0 {
             &self.data[var.ix as usize]
         } else {
-            builtin_var_data(var.ix)
+            todo!()
+            // builtin_var_data(var.ix)
         }
     }
 }
