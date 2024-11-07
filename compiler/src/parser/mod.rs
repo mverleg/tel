@@ -4,7 +4,7 @@ use ::std::path::Path;
 use ::std::path::PathBuf;
 
 use ::lalrpop_util::lalrpop_mod;
-use log::debug;
+use ::log::debug;
 
 use ::tel_api::TelFile;
 

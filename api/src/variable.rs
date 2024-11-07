@@ -55,7 +55,7 @@ impl Index<Variable> for Variables {
 //TODO @mark: can I make this unsized by putting type last?
 #[derive(Debug)]
 pub struct VariableData {
-    ix: Ix,
+    pub ix: Ix,
     pub iden: Identifier,
     pub type_annotation: Option<Type>,
     pub mutable: bool,

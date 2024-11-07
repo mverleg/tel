@@ -5,4 +5,6 @@
 //! * Useful as input for code generation backends.
 //! * Type checking has completed.
 
+pub mod builtin;
+
 pub use ::log;

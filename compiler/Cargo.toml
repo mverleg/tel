@@ -12,7 +12,7 @@ license.workspace = true
 build = "build.rs"
 
 [lib]
-name = "tel"
+name = "telc"
 path = "src/lib.rs"
 
 [dependencies]

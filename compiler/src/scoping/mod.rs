@@ -1,7 +1,6 @@
 use ::tel_api as api;
 use ::tel_api::op::BinOpCode;
 use ::tel_api::op::UnaryOpCode;
-use ::tel_api::Identifier;
 use ::tel_api::TelFile;
 use ::tel_api::Variables;
 
@@ -15,7 +14,6 @@ use crate::TelErr;
 
 pub use self::scope::Scope;
 
-mod builtin;
 mod scope;
 
 pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
@@ -174,6 +172,7 @@ fn invoke_binary_to_api(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ::tel_api::Identifier;
 
     #[test]
     fn repeated_assign() {
