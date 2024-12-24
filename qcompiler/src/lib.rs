@@ -3,6 +3,18 @@ trait FileSystem {
     fn read(iden: FileIden) -> String;
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Error {
+    SourceNotFound
+}
+
+#[derive(Debug)]
+struct Stat<T> {
+    value: Result<T, Error>,
+    msgs: Vec<String>,
+    //TODO @mark: tinyvec
+}
+
 #[derive(Debug)]
 struct FileIden {
     iden: String,
@@ -22,6 +34,7 @@ struct FileCode {
 
 #[derive(Debug)]
 struct AST {
+    // ...
 }
 
 #[derive(Debug)]
@@ -33,7 +46,6 @@ enum Query<F: FileSystem> {
 
 #[derive(Debug)]
 enum Answer {
-    Source(FileCode),
-    Parsed(AST),
+    Source(Stat<FileCode>),
+    Parsed(Stat<AST>),
 }
-

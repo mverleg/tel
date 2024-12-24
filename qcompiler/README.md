@@ -14,8 +14,10 @@ This is a new query-based compiler architecture (for the same language), intende
   * Per run only resolve each query once, to avoid having to traverse tree to leafs each time
   * Cache is smart - even if source leaf changed, if that doesn't change the answer of e.g. `type of X`, then dependencies of that aren't executed
 * Leafs are (only?) source files, which can have different impls (disk vs web ide)
+* Two versions of many queries: fast compile mode (no meta) and ide mode (full metadata)
+  * The latter is also used for generating errors, so compiler will try fast mode first, and if any error, re-try in meta mode to get good messages
 
-* Questions:
+### Questions:
 
 * How does swappable codegen fit into this? Is it just separate?
 * How to impl memory vs disk caching? it should keep 'most popular' in memory but put everything on disk
