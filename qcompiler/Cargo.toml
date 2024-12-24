@@ -11,8 +11,6 @@ homepage.workspace = true
 authors.workspace = true
 license.workspace = true
 
-build = "build.rs"
-
 [lib]
 name = "qtelc"
 path = "src/lib.rs"

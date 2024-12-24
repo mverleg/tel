@@ -1,4 +1,3 @@
-#![feature(lazy_cell)]
 
 use ::std::fs;
 use ::std::io::BufWriter;
