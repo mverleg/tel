@@ -27,3 +27,5 @@ This is a new query-based compiler architecture (for the same language), intende
   - which cache?
   - compiler flags like debug/opt mode
   - compiler mode or ide mode (latter has source locations etc)
+* How to do cycle detection? It could happen for e.g. circular imports, right? Keep a hashset, maybe only when dependency step is 'higher' or equal?
+
