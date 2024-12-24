@@ -4,6 +4,7 @@ members = [
     "api",
     "ir",
     "compiler",
+    "qcompiler",
     "cli",
     "ast2code",
     "testing",
