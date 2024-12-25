@@ -3,6 +3,8 @@
 
 This is a new query-based compiler architecture (for the same language), intended to eventually replace the other one.
 
+Similar projects in Rust: [salsa](https://salsa-rs.netlify.app/overview), [rock](https://github.com/ollef/rock).
+
 ## Properties
 
 * This is for the 'front-end'; backend codegen is not considered _yet_.

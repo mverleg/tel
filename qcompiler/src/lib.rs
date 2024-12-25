@@ -1,4 +1,9 @@
-use std::{fmt, hash};
+use ::std::fmt;
+use ::std::hash;
+
+mod step;
+mod source;
+mod parse;
 
 trait FileSystem {
     fn read(iden: FileIden) -> String;
@@ -7,13 +12,6 @@ trait FileSystem {
 #[derive(Debug, Clone, Copy)]
 enum Error {
     SourceNotFound
-}
-
-#[derive(Debug)]
-struct Stat<T> {
-    value: Result<T, Error>,
-    msgs: Vec<String>,
-    //TODO @mark: tinyvec
 }
 
 #[derive(Debug)]
@@ -51,17 +49,6 @@ struct AST {
 //     Source(Stat<FileCode>),
 //     Parsed(Stat<AST>),
 // }
-
-trait Query: fmt::Debug + PartialEq + Eq + hash::Hash {}
-//TODO @mark: eq and hash should depend on all dependencies too right?
-
-trait Answer: fmt::Debug + PartialEq + Eq {}
-
-trait CompileStep<Q: Query> {
-    type A: Answer;
-
-    fn compile(query: Q) -> Stat<Self::A>;
-}
 
 #[derive(Debug)]
 struct SourceStep {}
