@@ -1,3 +1,4 @@
+use crate::engine::Engine;
 use crate::Error;
 use ::std::fmt;
 use ::std::hash;
@@ -17,6 +18,8 @@ trait Query: fmt::Debug + PartialEq + Eq + hash::Hash {}
 /// If an answer is the same as given a previous time, then subsequent
 /// steps will reuse their cache. So equality & hash should cover everything.
 trait Answer: fmt::Debug + PartialEq + Eq {}
+
+//TODO @mark: if a query was re-run and provided the same answer, is the answer saved once or twice?
 
 /// Step that takes a `Query` and provides an `Answer` for it.
 ///
@@ -39,12 +42,13 @@ trait Step<Q: Query> {
 
     /// Perform whatever action is needed to answer the query.
     ///
-    /// * If this uses any external input (anything not in the arguments), then
-    ///   `input_state` _must_ return a value that changes when the external input
-    ///   changes. Otherwise, the Answer will remain cached even if input changes.
-    /// * Any number of other queries may be done. The result of this step will remain
+    /// The result may remain cached as long as both:
     ///
-    fn perform(query: Q, state: &Self::S) -> Stat<Self::A>;
+    /// * The `InputState` does not change. It is vitally important that any data that
+    ///   this step uses except for its argument is included in `input_state_`.
+    /// * Any queries performed in this method are either still cached, or ran but
+    ///   yielded the same answer as last time.
+    fn perform(query: Q, engine: &Engine, state: &Self::S) -> Stat<Self::A>;
 }
 
 #[derive(Debug)]
