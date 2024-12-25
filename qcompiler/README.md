@@ -19,8 +19,10 @@ Similar projects in Rust: [salsa](https://salsa-rs.netlify.app/overview), [rock]
 * Two versions of many queries: fast compile mode (no meta) and ide mode (full metadata)
   * The latter is also used for generating errors, so compiler will try fast mode first, and if any error, re-try in meta mode to get good messages
 
-### Questions:
+### Questions
 
+* In incremental mode (like editing one file in IDE), it's probably faster to invalidate from source file up, instead of check everything from edit down
+  * Is it really a problem though? If circular imports aren't allowed, then if you only change one file and only care about problems in that file, it means you don't need to walk the whole tree
 * How does swappable codegen fit into this? Is it just separate?
 * How to impl memory vs disk caching? it should keep 'most popular' in memory but put everything on disk
 * How to deal with compiler vs IDE? they need different levels of detail, are they separate queries?
@@ -30,4 +32,13 @@ Similar projects in Rust: [salsa](https://salsa-rs.netlify.app/overview), [rock]
   - compiler flags like debug/opt mode
   - compiler mode or ide mode (latter has source locations etc)
 * How to do cycle detection? It could happen for e.g. circular imports, right? Keep a hashset, maybe only when dependency step is 'higher' or equal?
+* How to deal with results that are being computed?
+  * Could it possibly be faster to ignore races and just compute twice when it happens?
+* I don't think we can handle panics right? Have to trash the whole cache in that case
+* Should a parallel async runtime be used? It seems all popular Rust async runtimes use some locking anyway
+
+### Notes
+
+* Insert some boxes around specific awaits to move the futures onto to heap and prevent stack overflow
+* Perhaps store the hashcodes in the query/answer objects 
 

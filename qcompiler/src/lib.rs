@@ -34,40 +34,6 @@ struct AST {
     // ...
 }
 
-// #[derive(Debug)]
-// enum Query<F: FileSystem> {
-//     Source(FileIden),
-//     Parsed(FileIden),
-//     Import(Import),
-//     IR(String),
-// }
-//
-// #[derive(Debug)]
-// enum Answer {
-//     Source(Stat<FileCode>),
-//     Parsed(Stat<AST>),
-// }
-
-#[derive(Debug)]
-struct SourceStep {}
-
-impl CompileStep<FileIden> for SourceStep {
-    type A = FileCode;
-
-    fn compile(query: FileIden) -> Stat<FileCode> {
-        todo!()
-    }
-}
-
-trait FullQE {
-    fn ir(&mut self, q: TelirQ) {
-    }
-}
-
-struct QE {}
-
-impl FullQE for QE {}
-
 //TODO @mark: example use
 fn compile() {
     let mut qe = QE {};

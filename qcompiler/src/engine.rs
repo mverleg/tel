@@ -7,13 +7,22 @@ impl Engine {
     /// Load the source as text
     fn source(&mut self, module: ()) {}
 
-    /// Parse into syntax tree
-    fn parse(&mut self, module: ()) {}
+    /// Parse into abstract syntax tree; fast but sparse, no error messages
+    fn parse_lean(&mut self, module: ()) {}
+
+    /// Parse into a rich syntax tree; preserves data about code structure,
+    /// and collects good error messages
+    fn parse_rich(&mut self, module: ()) {}
+
+    /// List all functions and datatypes defined in a module
+    //TODO @mark: this should get either rick if cached and lean otherwise
+    fn list(&mut self, module: ()) {}
 
     /// Resolve all references in the function or datatype
     fn resolve(&mut self, code_unit: ()) {}
 
     /// Infer and check the types for a function or datatype
+    //TODO @mark: how to do type errors? need rich parse version, only on error?
     fn generic_typ(&mut self, code_unit: ()) {}
 
     /// Based on a generic type, create a concrete impl based on given usage,
