@@ -23,6 +23,18 @@ type Ix = u32;
 const _: () = assert!(Ix::MAX as u128 <= std::usize::MAX as u128, "Ix type is bigger than usize, this is useless");
 const _: () = assert_eq!(Ix::MIN, 0, "Ix allows negative values, this is a waste of bytes");
 
+// use ::tokio::sync::Mutex;
+// use ::std::sync::Arc;
+use ::tokio::sync::OnceCell;
+
+#[tokio::main]
+async fn main() {
+    let mut data = vec![];
+    data.push(OnceCell::new());
+    let val = data.last().unwrap().get_or_init(|| async { "hello world".to_owned() }).await;
+    println!("value = {}", val);
+}
+
 struct Id<K, V> {
     ix: Ix,
 }
