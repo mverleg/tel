@@ -1,6 +1,7 @@
 use either::Either;
 use ::std::fmt::Debug;
 use ::std::hash::Hash;
+use std::ops::Index;
 
 /// There are a lot of requirements for the cache:
 ///
@@ -17,6 +18,14 @@ use ::std::hash::Hash;
 //TODO @mark: ^ let's start with memory only for the first version
 
 //TODO @mark: Mocka exists, but only memory
+
+type Ix = u32;
+const _: () = assert!(Ix::MAX as u128 <= std::usize::MAX as u128, "Ix type is bigger than usize, this is useless");
+const _: () = assert_eq!(Ix::MIN, 0, "Ix allows negative values, this is a waste of bytes");
+
+struct Id<K, V> {
+    ix: Ix,
+}
 
 struct Db<K, V>
 where
@@ -37,6 +46,8 @@ where
         todo!()
     }
 }
+
+//TODO @mark: impl Index<Ix<_>> for Db {}
 
 struct Res<V>
 where
