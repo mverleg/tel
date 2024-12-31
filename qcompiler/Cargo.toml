@@ -16,6 +16,7 @@ name = "qtelc"
 path = "src/lib.rs"
 
 [dependencies]
+either = "1.12"
 
 
 [build-dependencies]

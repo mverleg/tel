@@ -1,3 +1,4 @@
+use either::Either;
 use ::std::fmt::Debug;
 use ::std::hash::Hash;
 
@@ -17,12 +18,12 @@ use ::std::hash::Hash;
 
 //TODO @mark: Mocka exists, but only memory
 
-struct Cache<K, V>
+struct Db<K, V>
 where
     K: Debug + PartialEq + Eq + Hash,
     V: Debug + PartialEq + Eq, {}
 
-impl<K, V> Cache<K, V>
+impl<K, V> Db<K, V>
 where
     K: Debug + PartialEq + Eq + Hash,
     V: Debug + PartialEq + Eq,

@@ -847,6 +847,9 @@ dependencies = [
 [[package]]
 name = "tel-lang-tmp"
 version = "0.1.0"
+dependencies = [
+ "either",
+]
 
 [[package]]
 name = "tel-testing"
