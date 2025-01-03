@@ -90,6 +90,15 @@ checksum = "0c4b4d0bd25bd0b74681c0ad21497610ce1b7c91b1022cd21c80c6fbdd9476b0"
 
 [[package]]
 name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "bincode"
 version = "2.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f11ea1a0346b94ef188834a65c068a03aec181c94896d481d7a0a40d85b0ce95"
@@ -860,7 +869,7 @@ dependencies = [
 name = "tel-api"
 version = "0.1.0"
 dependencies = [
- "bincode",
+ "bincode 2.0.0-rc.3",
  "log",
  "serde",
  "serde_json",
@@ -888,7 +897,7 @@ dependencies = [
 name = "tel-ir"
 version = "0.1.0"
 dependencies = [
- "bincode",
+ "bincode 2.0.0-rc.3",
  "log",
  "serde",
  "serde_json",
@@ -936,6 +945,7 @@ dependencies = [
 name = "telc-cache"
 version = "0.1.0"
 dependencies = [
+ "bincode 1.3.3",
  "log",
  "rusqlite",
  "serde",
