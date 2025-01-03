@@ -1,6 +1,6 @@
 use ::std::collections::HashMap;
 use ::std::fmt::Debug;
-use crate::rev::Rev;
+use crate::common::Rev;
 
 #[derive(Debug)]
 pub struct MemoryStoreConf {

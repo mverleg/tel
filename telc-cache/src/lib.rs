@@ -8,7 +8,7 @@
 ///
 /// This is just the storage backend; hashing and lookups should happen in `db`.
 
-mod rev;
+mod common;
 mod store;
 mod memory;
 mod disk;

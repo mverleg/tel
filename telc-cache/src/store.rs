@@ -1,6 +1,7 @@
+use crate::common::Insert;
+use crate::common::Rev;
 use crate::disk::DiskStore;
 use crate::memory::MemoryStore;
-use crate::rev::Rev;
 use ::std::ops::Index;
 
 pub struct Store<E: serde::Serialize + serde::de::DeserializeOwned> {
@@ -12,17 +13,18 @@ pub struct Store<E: serde::Serialize + serde::de::DeserializeOwned> {
 impl <'s, E: serde::Serialize + serde::de::DeserializeOwned> Index<Rev> for &'s Store<E> {
     type Output = Option<&'s E>;
 
-    fn index(&self, index: Rev) -> &Self::Output {
-        self.get(index)
+    fn index(&self, rev: Rev) -> &Self::Output {
+        todo!()
     }
 }
+
 impl <E: serde::Serialize + serde::de::DeserializeOwned> Store<E> {
 
-    pub fn get(&self, re: Rev) -> &Option<&E> {
+    pub fn get(&self, rev: Rev) -> Option<&E> {
         todo!()
     }
 
-    pub fn set(&mut self, value: E) -> (Rev, &E) {
+    pub fn set(&mut self, value: E) -> Insert<E> {
         todo!()
     }
 
