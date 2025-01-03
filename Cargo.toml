@@ -8,6 +8,7 @@ members = [
     "cli",
     "ast2code",
     "testing",
+    "telc-cache",
 ]
 
 [workspace.package]
