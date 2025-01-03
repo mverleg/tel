@@ -2,6 +2,7 @@ mod step;
 mod engine;
 mod source;
 mod parse;
+mod store;
 mod db;
 
 trait FileSystem {

@@ -1,7 +1,7 @@
 use either::Either;
 use ::std::fmt::Debug;
 use ::std::hash::Hash;
-use std::ops::Index;
+use ::std::ops::Index;
 
 /// There are a lot of requirements for the cache:
 ///
