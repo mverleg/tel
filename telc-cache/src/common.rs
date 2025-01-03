@@ -9,3 +9,18 @@ pub enum Insert<'e, E> {
 pub struct Rev {
     ix: usize,
 }
+
+#[derive(Debug)]
+pub enum Next {
+    Ok(Rev),
+    Overflow(Rev),
+}
+
+impl Rev {
+    pub(crate) fn next(self) -> Next {
+        match self.ix.checked_add(1) {
+            Some(n) => Next::Ok(Self { ix: n }),
+            None => Next::Overflow(Self { ix: 0 }),
+        }
+    }
+}

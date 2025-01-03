@@ -1,7 +1,9 @@
-use crate::common::Insert;
 use crate::common::Rev;
+use crate::common::Insert;
+use crate::common::Next;
 use crate::disk::DiskStore;
 use crate::memory::MemoryStore;
+use ::log::info;
 use ::std::ops::Index;
 
 pub struct Store<E: serde::Serialize + serde::de::DeserializeOwned> {
@@ -25,7 +27,16 @@ impl <E: serde::Serialize + serde::de::DeserializeOwned> Store<E> {
     }
 
     pub fn set(&mut self, value: E) -> Insert<E> {
-        todo!()
+        match self.top.next() {
+            Next::Ok(n) => self.top = n,
+            Next::Overflow(n) => {
+                info!("cache full, index ({} bytes) overflow; clearing!", size_of::<Rev>());
+                self.clear();
+                self.top = n;
+                return Insert::CacheWipe
+            },
+        }
+        ()
     }
 
     pub fn clear(&mut self) -> (Rev, Option<&E>) {

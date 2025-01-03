@@ -936,6 +936,7 @@ dependencies = [
 name = "telc-cache"
 version = "0.1.0"
 dependencies = [
+ "log",
  "rusqlite",
  "serde",
 ]
