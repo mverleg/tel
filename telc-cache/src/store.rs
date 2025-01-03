@@ -1,5 +1,8 @@
+use ::std::collections::HashMap;
 use ::std::fmt::Debug;
-use ::std::hash::Hash;
+use ::std::ops::Index;
+use ::std::path::PathBuf;
+use std::marker::PhantomData;
 
 /// Storage on disk and in memory, cleaning up lower utility items when too full.
 ///
@@ -11,20 +14,57 @@ use ::std::hash::Hash;
 ///
 /// This is just the storage backend; hashing and lookups should happen in `db`.
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Ref {
     ix: usize,
 }
 
-struct DiskStore<E: serde::Serialize + serde::Deserialize> {
+#[derive(Debug)]
+struct DiskStoreConf {
+    path: PathBuf,
+    //TODO @mark: cache invalidation policy
+}
 
+struct DiskStore<E> {
+    conf: DiskStoreConf,
+    phantom: PhantomData<E>,
+    //TODO @mark: needed? ^
+}
+
+#[derive(Debug)]
+struct MemoryStoreConf {
+    //TODO @mark: cache invalidation policy
 }
 
 struct MemoryStore<E> {
-
+    conf: MemoryStoreConf,
+    data: HashMap<Ref, E>,
 }
 
-pub struct Store<E: serde::Serialize + serde::Deserialize> {
+pub struct Store<E: serde::Serialize + serde::de::DeserializeOwned> {
     top: Ref,
     disk: DiskStore<E>,
     memory: MemoryStore<E>,
+}
+
+impl <'s, E: serde::Serialize + serde::de::DeserializeOwned> Index<Ref> for &'s Store<E> {
+    type Output = Option<&'s E>;
+
+    fn index(&self, index: Ref) -> &Self::Output {
+        self.get(index)
+    }
+}
+impl <E: serde::Serialize + serde::de::DeserializeOwned> Store<E> {
+
+    pub fn get(&self, re: Ref) -> &Option<&E> {
+        todo!()
+    }
+
+    pub fn set(&mut self, value: E) -> (Ref, Option<&E>) {
+        todo!()
+    }
+
+    pub fn clear(&mut self) -> (Ref, Option<&E>) {
+        todo!()
+    }
 }
