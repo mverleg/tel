@@ -26,17 +26,23 @@ impl <E: serde::Serialize + serde::de::DeserializeOwned> Store<E> {
         todo!()
     }
 
+    //TODO @mark: async?
     pub fn set(&mut self, value: E) -> Insert<E> {
-        match self.top.next() {
-            Next::Ok(n) => self.top = n,
+        let rev = match self.top.next() {
+            Next::Ok(n) => {
+                self.top = n;
+                n
+            },
             Next::Overflow(n) => {
                 info!("cache full, index ({} bytes) overflow; clearing!", size_of::<Rev>());
                 self.clear();
                 self.top = n;
                 return Insert::CacheWipe
             },
-        }
-        ()
+        };
+        let memory_value = self.memory.insert(rev, value);
+        self.disk.insert(rev, memory_value);
+        Insert::Value(rev, memory_value)
     }
 
     pub fn clear(&mut self) -> (Rev, Option<&E>) {
