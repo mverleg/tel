@@ -45,7 +45,8 @@ impl <E: serde::Serialize + serde::de::DeserializeOwned> Store<E> {
         Insert::Value(rev, memory_value)
     }
 
-    pub fn clear(&mut self) -> (Rev, Option<&E>) {
-        todo!()
+    pub fn clear(&mut self) {
+        self.disk.clear();
+        self.memory.clear();
     }
 }

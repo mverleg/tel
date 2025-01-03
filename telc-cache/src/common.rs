@@ -5,7 +5,7 @@ pub enum Insert<'e, E> {
     CacheWipe,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Rev {
     ix: usize,
 }
