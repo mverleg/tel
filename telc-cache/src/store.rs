@@ -6,6 +6,8 @@ use crate::memory::MemoryStore;
 use ::log::info;
 use ::std::ops::Index;
 
+//TODO @mark: maybe add some duplication id, like filename or identifier, because older duplicates may be better to remove
+
 pub struct Store<E: serde::Serialize + serde::de::DeserializeOwned> {
     top: Rev,
     disk: DiskStore<E>,

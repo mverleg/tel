@@ -1,7 +1,7 @@
 
 # Compiler design
 
-This is a new query-based compiler architecture (for the same language), intended to eventually replace the other one.
+This is a new query-based compiler architecture (for the same Tel language), intended to eventually replace the other one.
 
 Similar projects in Rust: [salsa](https://salsa-rs.netlify.app/overview), [rock](https://github.com/ollef/rock).
 Salsa looks good, but it doesn't include IO, and queries are mutable. How does it deal with concurrency, duplicate results, and pending results? Can it store to disk?
