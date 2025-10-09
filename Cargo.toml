@@ -3,7 +3,8 @@ resolver = "1"  # lalrpop breaks with 2, did not investigate
 members = [
     "api",
     "compiler",
-    "qcompiler",
+#    "qcompiler",
+    # TODO @mark: enable again
     "cli",
     "testing",
     "telc-cache",
