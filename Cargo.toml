@@ -2,11 +2,9 @@
 resolver = "1"  # lalrpop breaks with 2, did not investigate
 members = [
     "api",
-    "ir",
     "compiler",
     "qcompiler",
     "cli",
-    "ast2code",
     "testing",
     "telc-cache",
 ]
@@ -23,4 +21,3 @@ publish = true
 tel-api = { path = "./api" }
 tel-cli = { path = "./cli" }
 tel-lang = { path = "./compiler" }
-tel-ast-to-code = { path = "./ast2code" }
