@@ -1459,6 +1459,7 @@ dependencies = [
  "smartstring",
  "tel-api",
  "time",
+ "xolir",
 ]
 
 [[package]]

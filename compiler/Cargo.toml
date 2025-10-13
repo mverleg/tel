@@ -31,6 +31,7 @@ dashmap = "5.5.3"
 ahash = "0.8.11"
 smartstring = { version = "1.0.1", features = ["serde"] }
 log = "0.4.22"
+xolir = "0.1.0"
 
 [build-dependencies]
 lalrpop = { version = "0.20.2", features = ["lexer", "unicode"] }
