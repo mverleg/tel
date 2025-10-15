@@ -1,9 +1,7 @@
 use ::serde::Serialize;
 
-use tel_api::Identifier;
-use tel_api::Type;
-
 use crate::ast::AssignmentDest;
+use crate::ast::identifier::Identifier;
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Struct {

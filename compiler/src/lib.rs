@@ -1,19 +1,15 @@
-
 use ::std::fs;
-use ::std::io::BufWriter;
 use ::std::io::stdout;
+use ::std::io::BufWriter;
 use ::std::io::Write;
 use ::std::path::Path;
 use ::std::path::PathBuf;
 
+use crate::parser::parse_str;
 use ::log::debug;
 use ::log::warn;
 use ::serde::Serialize;
-
-use ::tel_api::Identifier;
-use ::tel_api::TelFile;
-
-use crate::parser::parse_str;
+use ::xolir::SourceFile;
 
 mod ast;
 mod parser;
@@ -34,7 +30,7 @@ pub fn tel_build(args: &BuildArgs) -> Result<(), TelErr> {
 
 #[derive(Debug, Serialize)]
 struct DebugInfo<'a> {
-    ast: &'a TelFile,
+    ast: &'a SourceFile,
 }
 
 pub fn tel_build_str(path: PathBuf, code: String, debug: bool) -> Result<(), TelErr> {

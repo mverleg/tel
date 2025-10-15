@@ -16,21 +16,19 @@ name = "telc"
 path = "src/lib.rs"
 
 [dependencies]
-tel-api = "=0.1.0"
-
-regex = "1.10.6"
+regex = "1.12.2"
 itertools = "0.11.0"
-time = { version = "0.3.36", features = ["serde"] }
+time = { version = "0.3.44", features = ["serde"] }
 env_logger = "0.10.2"
-sha2 = "0.10.8"
+sha2 = "0.10.9"
 lalrpop-util = { version = "0.20.2", features = ["lexer", "unicode"] }
-serde = "1.0.208"
-serde_json = "1.0.125"
+serde = "1.0.228"
+serde_json = "1.0.145"
 
 dashmap = "5.5.3"
-ahash = "0.8.11"
+ahash = "0.8.12"
 smartstring = { version = "1.0.1", features = ["serde"] }
-log = "0.4.22"
+log = "0.4.28"
 xolir = "0.1.0"
 
 [build-dependencies]

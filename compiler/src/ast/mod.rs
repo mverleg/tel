@@ -1,14 +1,12 @@
 use ::serde::Serialize;
 use ::smartstring::alias::String as SString;
 
-pub use ::tel_api::op::BinOpCode;
-pub use ::tel_api::op::UnaryOpCode;
-
 pub use crate::ast::assign::AssignmentDest;
 pub use crate::ast::assign::AssignmentKw;
 pub use crate::ast::assign::Assignments;
 pub use crate::ast::function::Closure;
 pub use crate::ast::function::Invoke;
+use crate::ast::op::{BinOpCode, UnaryOpCode};
 pub use crate::ast::types::Enum;
 pub use crate::ast::types::EnumVariant;
 pub use crate::ast::types::Struct;
@@ -16,13 +14,15 @@ pub use crate::ast::types::Struct;
 mod assign;
 mod types;
 mod function;
+mod op;
+mod identifier;
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq)]
 pub struct Ast {
     pub blocks: Box<[Block]>,
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq)]
 pub enum Block {
     Assigns(Assignments),
     Expression(Expr),
@@ -31,7 +31,7 @@ pub enum Block {
     Enum(Enum),
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq)]
 pub enum Expr {
     Num(f64),
     Text(SString),

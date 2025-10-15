@@ -14,6 +14,5 @@ name = "tel-testing"
 path = "src/main.rs"
 
 [dependencies]
-tel-api = "=0.1.0"
 tel-lang = "=0.1.0"
 rand = "0.8.5"
