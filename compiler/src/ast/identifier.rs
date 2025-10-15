@@ -6,8 +6,6 @@ use ::serde::Serialize;
 use ::serde::Serializer;
 use ::smartstring::alias::String as SString;
 
-use crate::log::debug;
-
 //TODO @mark: should actively-used keywords be in here?
 const RESERVED: [&'static str; 139] = [
     "abstract",
