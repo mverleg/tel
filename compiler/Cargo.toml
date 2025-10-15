@@ -16,7 +16,9 @@ name = "telc"
 path = "src/lib.rs"
 
 [dependencies]
-tel-api = "=0.1.0"
+tel-common = "=0.1.0"
+tel-hir = "=0.1.0"
+tel-ast = "=0.1.0"
 
 regex = "1.10.6"
 itertools = "0.11.0"

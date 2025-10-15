@@ -1,0 +1,22 @@
+[package]
+name = "tel-hir"
+description = "Tel (Typed Embedded Language) is a statically-typed language that can be embedded in other applications."
+
+edition.workspace = true
+version.workspace = true
+homepage.workspace = true
+authors.workspace = true
+license.workspace = true
+
+#build = "build.rs"
+
+[lib]
+name = "tel_hir"
+path = "src/lib.rs"
+
+[dependencies]
+tel-common = "0.1.0"
+serde = { version = "1.0.208", features = ["derive"] }
+serde_json = "1.0.125"
+bincode = "2.0.0-rc.3"
+log = "0.4.22"

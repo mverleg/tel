@@ -17,7 +17,6 @@ name = "tel"
 path = "src/main.rs"
 
 [dependencies]
-tel-api = "=0.1.0"
 tel-lang = "=0.1.0"
 
 clap = { version = "4.5.16", default-features = true, features = ["std", "derive", "unicode"] }
