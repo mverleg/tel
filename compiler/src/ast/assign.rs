@@ -1,8 +1,5 @@
 use ::serde::Serialize;
 
-use ::tel_api::op::BinOpCode;
-use tel_api::{Identifier, Type};
-
 use crate::ast::Expr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

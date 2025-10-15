@@ -2,8 +2,7 @@ use ::std::mem::size_of;
 use ::std::ops::Index;
 
 use ::serde::Serialize;
-
-use crate::identifier::Identifier;
+use tel_common::Identifier;
 use crate::Ix;
 use crate::typ::Type;
 

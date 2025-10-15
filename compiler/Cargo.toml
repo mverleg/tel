@@ -9,6 +9,8 @@ homepage.workspace = true
 authors.workspace = true
 license.workspace = true
 
+build = "build.rs"
+
 [lib]
 name = "telc"
 path = "src/lib.rs"

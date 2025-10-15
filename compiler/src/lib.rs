@@ -9,11 +9,6 @@ use ::log::debug;
 use ::log::warn;
 use ::serde::Serialize;
 
-use ::tel_api::Identifier;
-use ::tel_api::TelFile;
-
-use crate::parser::parse_str;
-
 mod ast;
 mod scoping;
 mod examples;

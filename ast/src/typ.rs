@@ -1,6 +1,5 @@
 use ::serde::Serialize;
-
-use crate::identifier::Identifier;
+use tel_common::Identifier;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Type {

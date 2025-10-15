@@ -5,8 +5,7 @@ use ::std::sync::LazyLock;
 use ::serde::Serialize;
 use ::serde::Serializer;
 use ::smartstring::alias::String as SString;
-
-use crate::log::debug;
+use log::debug;
 
 //TODO @mark: should actively-used keywords be in here?
 //TODO @mark: should 'assert' be reserved?

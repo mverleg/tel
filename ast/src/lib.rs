@@ -9,7 +9,6 @@ use ::std::mem::size_of;
 use ::log;
 use ::serde::Serialize;
 
-pub use self::identifier::Identifier;
 pub use self::typ::Type;
 pub use self::variable::Variables;
 pub use self::variable::VariableData;
@@ -17,7 +16,6 @@ pub use self::variable::Variable;
 
 pub mod op;
 mod variable;
-mod identifier;
 mod typ;
 
 //TODO @mark: replace all usize in structs and enums by Ix if ~1kkk is enough
