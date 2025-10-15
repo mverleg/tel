@@ -6,15 +6,17 @@ use ::serde::Serialize;
 use ::serde::Serializer;
 use ::smartstring::alias::String as SString;
 
+use crate::log::debug;
+
 //TODO @mark: should actively-used keywords be in here?
-const RESERVED: [&'static str; 139] = [
+//TODO @mark: should 'assert' be reserved?
+const RESERVED: [&'static str; 138] = [
     "abstract",
     "alias",
     "all",
     "annotation",
     "any",
     "as",
-    "assert",
     "async",
     "auto",
     "await",
@@ -160,7 +162,7 @@ pub struct Identifier {
 
 impl Serialize for Identifier {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer,
+        where S: Serializer,
     {
         serializer.serialize_str(&self.name)
     }

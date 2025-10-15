@@ -1,8 +1,11 @@
-use crate::ast::op::BinOpCode;
-use crate::ast::Expr;
-use crate::ast::identifier::Identifier;
+use ::serde::Serialize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use ::tel_api::op::BinOpCode;
+use tel_api::{Identifier, Type};
+
+use crate::ast::Expr;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum AssignmentKw {
     None,
     /// For functions, assigning to a name that exists outside the function creates a local
@@ -17,14 +20,14 @@ pub enum AssignmentKw {
     Mut,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Assignments {
     pub dest: Box<[AssignmentDest]>,
     pub op: Option<BinOpCode>,
     pub value: Box<Expr>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct AssignmentDest {
     pub kw: AssignmentKw,
     pub target: Identifier,

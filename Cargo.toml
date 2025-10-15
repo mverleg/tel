@@ -1,6 +1,7 @@
 [workspace]
 resolver = "1"  # lalrpop breaks with 2, did not investigate
 members = [
+    "api",
     "compiler",
 #    "qcompiler",
     # TODO @mark: enable again
@@ -18,5 +19,6 @@ license = "CC-BY-NC-ND-4.0"
 publish = true
 
 [patch.crates-io]
+tel-api = { path = "./api" }
 tel-cli = { path = "./cli" }
 tel-lang = { path = "./compiler" }
