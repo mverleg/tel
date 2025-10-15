@@ -24,5 +24,6 @@ publish = true
 tel-common = { path = "./common" }
 tel-ast = { path = "./ast" }
 tel-hir = { path = "./hir" }
-tel-cli = { path = "./cli" }
+tel-parser = { path = "./parser" }
 tel-lang = { path = "./compiler" }
+tel-cli = { path = "./cli" }

@@ -16,4 +16,5 @@ path = "src/lib.rs"
 
 [dependencies]
 serde = { version = "1.0.208", features = ["derive"] }
+smartstring = { version = "1.0.1", features = ["serde"] }
 log = "0.4.22"

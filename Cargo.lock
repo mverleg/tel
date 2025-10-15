@@ -1420,14 +1420,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bf256ce5efdfa370213c1dabab5935a12e49f2c58d15e9eac2870d3b4f27263"
 
 [[package]]
-name = "tel-api"
+name = "tel-ast"
 version = "0.1.0"
 dependencies = [
- "bincode 2.0.1",
  "log",
  "serde",
- "serde_json",
- "smartstring",
+ "tel-common",
 ]
 
 [[package]]
@@ -1436,8 +1434,27 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "env_logger",
- "tel-api",
  "tel-lang",
+]
+
+[[package]]
+name = "tel-common"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "serde",
+ "smartstring",
+]
+
+[[package]]
+name = "tel-hir"
+version = "0.1.0"
+dependencies = [
+ "bincode 2.0.1",
+ "log",
+ "serde",
+ "serde_json",
+ "tel-common",
 ]
 
 [[package]]
@@ -1455,8 +1472,30 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "smartstring",
- "tel-api",
+ "tel-ast",
+ "tel-common",
+ "tel-hir",
+ "time",
+ "xolir",
+]
+
+[[package]]
+name = "tel-parser"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "dashmap",
+ "env_logger",
+ "itertools",
+ "lalrpop",
+ "lalrpop-util",
+ "log",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tel-ast",
+ "tel-common",
  "time",
  "xolir",
 ]
@@ -1466,8 +1505,11 @@ name = "tel-testing"
 version = "0.1.0"
 dependencies = [
  "rand",
- "tel-api",
+ "tel-ast",
+ "tel-common",
+ "tel-hir",
  "tel-lang",
+ "tel-parser",
 ]
 
 [[package]]

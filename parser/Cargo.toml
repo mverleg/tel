@@ -1,5 +1,5 @@
 [package]
-name = "tel-lang"
+name = "tel-parser"
 description = "Tel (Typed Embedded Language) is a statically-typed language that can be embedded in other applications."
 publish = true
 
@@ -9,13 +9,14 @@ homepage.workspace = true
 authors.workspace = true
 license.workspace = true
 
+build = "build.rs"
+
 [lib]
-name = "telc"
+name = "tel_parser"
 path = "src/lib.rs"
 
 [dependencies]
 tel-common = "=0.1.0"
-tel-hir = "=0.1.0"
 tel-ast = "=0.1.0"
 
 regex = "1.10.6"

@@ -1,7 +1,6 @@
-
 use ::std::fs;
-use ::std::io::BufWriter;
 use ::std::io::stdout;
+use ::std::io::BufWriter;
 use ::std::io::Write;
 use ::std::path::Path;
 use ::std::path::PathBuf;
@@ -16,8 +15,8 @@ use ::tel_api::TelFile;
 use crate::parser::parse_str;
 
 mod ast;
-mod parser;
 mod scoping;
+mod examples;
 
 #[derive(Debug)]
 pub struct BuildArgs {

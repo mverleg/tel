@@ -1,6 +1,4 @@
-use super::ast_to_api;
 use super::str_to_ast;
-use super::TelErr;
 
 include!(concat!(env!("OUT_DIR"), "/parse_tests.rs"));
 
