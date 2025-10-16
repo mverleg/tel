@@ -6,7 +6,7 @@ use ::std::path::PathBuf;
 use ::lalrpop_util::lalrpop_mod;
 use ::log::debug;
 
-use ::tel_api::TelFile;
+use ::tel_ast::TelFile;
 
 use crate::ast::Ast;
 use crate::parser::errors::build_error;

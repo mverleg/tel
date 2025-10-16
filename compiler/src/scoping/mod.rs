@@ -1,9 +1,7 @@
-use ::tel_api as api;
-use ::tel_api::op::BinOpCode;
-use ::tel_api::op::UnaryOpCode;
-use ::tel_api::TelFile;
-use ::tel_api::Variables;
-
+use ::tel_ast::op::BinOpCode;
+use ::tel_ast::op::UnaryOpCode;
+use ::tel_ast::TelFile;
+use ::tel_ast::Variables;
 use crate::ast;
 use crate::ast::AssignmentDest;
 use crate::ast::AssignmentKw;
@@ -172,7 +170,7 @@ fn invoke_binary_to_api(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::tel_api::Identifier;
+    use ::tel_ast::Identifier;
 
     #[test]
     fn repeated_assign() {

@@ -5,9 +5,9 @@ use ::std::str::FromStr;
 // * reclaim vecs (or other memory) used while parsing before turning into Box<[T]>
 // * arena-allocate final types, possibly with smaller indices than usize
 
-use ::tel_api::Identifier;
-use ::tel_api::Type;
-use ::tel_api::op::BinOpCode;
+use ::tel_ast::Identifier;
+use ::tel_ast::Type;
+use ::tel_ast::op::BinOpCode;
 
 use crate::ast::AssignmentDest;
 use crate::ast::AssignmentKw;
