@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use lalrpop_util::lalrpop_mod;
 use log::debug;
 
-use tel_ast::{ParseErr, TelFile};
+use tel_ast::{Ast, ParseErr, TelFile};
 
 use crate::parser::errors::build_error;
 

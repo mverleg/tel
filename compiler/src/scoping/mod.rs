@@ -1,6 +1,7 @@
 use crate::TelErr;
 use tel_ast::op::BinOpCode;
 use tel_ast::op::UnaryOpCode;
+use tel_ast::Block;
 use tel_ast::TelFile;
 use tel_ast::Variables;
 
