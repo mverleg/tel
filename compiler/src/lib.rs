@@ -8,12 +8,16 @@ use std::path::PathBuf;
 use log::debug;
 use log::warn;
 use serde::Serialize;
-use tel_ast::TelFile;
+use tel_ast::{ParseErr, TelFile};
 use tel_common::Identifier;
 
-mod ast;
 mod scoping;
 mod examples;
+
+pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<TelFile, ParseErr> {
+    let ast = str_to_ast(src_pth, code)?;
+    ast_to_api(ast)
+}
 
 #[derive(Debug)]
 pub struct BuildArgs {

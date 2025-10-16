@@ -1,6 +1,6 @@
-use crate::ast::AssignmentDest;
+use crate::assign::AssignmentDest;
+use crate::Type;
 use serde::Serialize;
-use tel_ast::Type;
 use tel_common::Identifier;
 
 #[derive(Debug, PartialEq, Serialize)]

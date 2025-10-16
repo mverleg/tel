@@ -1,7 +1,6 @@
-use crate::ast::Expr;
 use serde::Serialize;
-use tel_ast::op::BinOpCode;
-use tel_ast::Type;
+use crate::op::BinOpCode;
+use crate::{Expr, Type};
 use tel_common::Identifier;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

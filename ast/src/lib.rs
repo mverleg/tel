@@ -13,10 +13,16 @@ pub use self::typ::Type;
 pub use self::variable::Variable;
 pub use self::variable::VariableData;
 pub use self::variable::Variables;
+pub use self::error::ParseErr;
 
 pub mod op;
+mod block;
 mod variable;
 mod typ;
+mod error;
+mod assign;
+mod types;
+mod function;
 
 //TODO @mark: replace all usize in structs and enums by Ix if ~1kkk is enough
 /// Negative indices are used for built-ins
@@ -24,7 +30,7 @@ pub type Ix = i32;
 
 const _: () = assert!(size_of::<Ix>() <= size_of::<usize>(), "index is too large for this platform");
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum Expr {
     Num(f64),
     Read(Variable),

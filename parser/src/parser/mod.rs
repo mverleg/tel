@@ -6,25 +6,16 @@ use std::path::PathBuf;
 use lalrpop_util::lalrpop_mod;
 use log::debug;
 
-use tel_ast::TelFile;
+use tel_ast::{ParseErr, TelFile};
 
-use crate::ast::Ast;
 use crate::parser::errors::build_error;
-use crate::scoping::ast_to_api;
-use crate::TelErr;
 
 mod errors;
 #[cfg(test)]
-mod examples;
 
 lalrpop_mod!(#[allow(clippy::all)] gen_parser, "/grammar.rs");
 
-pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<TelFile, TelErr> {
-    let ast = str_to_ast(src_pth, code)?;
-    ast_to_api(ast)
-}
-
-pub fn str_to_ast(src_pth: PathBuf, mut code: String) -> Result<Ast, TelErr> {
+pub fn str_to_ast(src_pth: PathBuf, mut code: String) -> Result<Ast, ParseErr> {
     if count_empty_lines_at_end(&code) == 0 {
         code.push('\n')
         //TODO @mark: remove this workaround
@@ -39,7 +30,7 @@ pub fn str_to_ast(src_pth: PathBuf, mut code: String) -> Result<Ast, TelErr> {
         }
         Err(err) => {
             let (msg, line) = build_error(err, src_pth.to_str().unwrap(), &code);
-            Err(TelErr::ParseErr {
+            Err(ParseErr::ParseErr {
                 file: src_pth,
                 line,
                 msg,
@@ -49,9 +40,9 @@ pub fn str_to_ast(src_pth: PathBuf, mut code: String) -> Result<Ast, TelErr> {
     //TODO @mark: no unwrap
 }
 
-fn fail_if_no_newline_at_end(src_pth: &Path, code: &str) -> Result<(), TelErr> {
+fn fail_if_no_newline_at_end(src_pth: &Path, code: &str) -> Result<(), ParseErr> {
     if count_empty_lines_at_end(code) == 0 {
-        return Err(TelErr::ParseErr {
+        return Err(ParseErr::ParseErr {
             file: src_pth.to_owned(),
             line: code.lines().count(),
             //TODO @mark:  test ^
@@ -103,7 +94,7 @@ mod bugs {
     fn parse(code: &str) -> Ast {
         match str_to_ast(PathBuf::new(), code.to_owned()) {
             Ok(ast) => ast,
-            Err(TelErr::ParseErr { msg, .. }) => {
+            Err(ParseErr::ParseErr { msg, .. }) => {
                 println!("{}", msg);
                 panic!()
             }

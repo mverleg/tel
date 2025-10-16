@@ -1,9 +1,3 @@
-use crate::ast;
-use crate::ast::AssignmentDest;
-use crate::ast::AssignmentKw;
-use crate::ast::Assignments;
-use crate::ast::Ast;
-use crate::ast::Block;
 use crate::TelErr;
 use tel_ast::op::BinOpCode;
 use tel_ast::op::UnaryOpCode;
