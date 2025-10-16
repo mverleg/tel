@@ -1,8 +1,8 @@
-use ::serde::Serialize;
-use tel_common::Identifier;
-use crate::ast::Expr;
-use crate::ast::Block;
 use crate::ast::AssignmentDest;
+use crate::ast::Block;
+use crate::ast::Expr;
+use serde::Serialize;
+use tel_common::Identifier;
 
 /// Can be a variable read or a function call. A function call without () cannot be differentiated from
 /// a function call by the parser, this must be done later.

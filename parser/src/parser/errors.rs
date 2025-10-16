@@ -1,9 +1,9 @@
-use ::std::any::type_name;
-use ::std::cmp::max;
-use ::std::fmt;
-use ::std::fmt::Write;
+use std::any::type_name;
+use std::cmp::max;
+use std::fmt;
+use std::fmt::Write;
 
-use ::lalrpop_util::ParseError;
+use lalrpop_util::ParseError;
 use log::info;
 
 /// Returns error message and error line (or 0 if unknown)

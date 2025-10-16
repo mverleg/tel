@@ -4,10 +4,10 @@
 //! This implementation stores the values linearly. There are alternative ways,
 //! most obviously a hashmap for fast lookup, but also a mix of the two.
 
+use tel_ast::Type;
+use tel_ast::Variable;
+use tel_ast::Variables;
 use tel_common::Identifier;
-use ::tel_ast::Type;
-use ::tel_ast::Variable;
-use ::tel_ast::Variables;
 
 use crate::TelErr;
 

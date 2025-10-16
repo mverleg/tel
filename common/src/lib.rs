@@ -5,3 +5,4 @@
 
 mod identifier;
 pub use crate::identifier::Identifier;
+pub use smartstring::alias::String as SString;

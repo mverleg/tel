@@ -1,4 +1,4 @@
-use ::serde::Serialize;
+use serde::Serialize;
 use tel_common::Identifier;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

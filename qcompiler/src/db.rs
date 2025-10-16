@@ -1,7 +1,6 @@
 use either::Either;
-use ::std::fmt::Debug;
-use ::std::hash::Hash;
-use ::std::ops::Index;
+use std::fmt::Debug;
+use std::hash::Hash;
 
 /// There are a lot of requirements for the cache:
 ///
@@ -23,9 +22,9 @@ type Ix = u32;
 const _: () = assert!(Ix::MAX as u128 <= std::usize::MAX as u128, "Ix type is bigger than usize, this is useless");
 const _: () = assert_eq!(Ix::MIN, 0, "Ix allows negative values, this is a waste of bytes");
 
-// use ::tokio::sync::Mutex;
-// use ::std::sync::Arc;
-use ::tokio::sync::OnceCell;
+// use tokio::sync::Mutex;
+// use std::sync::Arc;
+use tokio::sync::OnceCell;
 
 #[tokio::main]
 async fn main() {

@@ -1,12 +1,12 @@
-use ::std::path::PathBuf;
+use std::path::PathBuf;
 
-use ::rand::Rng;
-use ::rand::rngs::StdRng;
-use ::rand::SeedableRng;
+use rand::rngs::StdRng;
+use rand::Rng;
+use rand::SeedableRng;
 
-use ::tel::tel_build_str;
-use ::tel_ast::TelFile;
-use ::tel_ast_to_code::ast_to_code;
+use tel::tel_build_str;
+use tel_ast::TelFile;
+use tel_ast_to_code::ast_to_code;
 
 fn main() {
     let rng: StdRng = SeedableRng::seed_from_u64(123_456_789);

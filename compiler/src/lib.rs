@@ -1,13 +1,15 @@
-use ::std::fs;
-use ::std::io::stdout;
-use ::std::io::BufWriter;
-use ::std::io::Write;
-use ::std::path::Path;
-use ::std::path::PathBuf;
+use std::fs;
+use std::io::stdout;
+use std::io::BufWriter;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
 
-use ::log::debug;
-use ::log::warn;
-use ::serde::Serialize;
+use log::debug;
+use log::warn;
+use serde::Serialize;
+use tel_ast::TelFile;
+use tel_common::Identifier;
 
 mod ast;
 mod scoping;

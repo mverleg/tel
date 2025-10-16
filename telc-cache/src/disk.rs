@@ -1,7 +1,7 @@
 use crate::common::Rev;
-use ::std::fmt::Debug;
-use ::std::marker::PhantomData;
-use ::std::path::PathBuf;
+use std::fmt::Debug;
+use std::marker::PhantomData;
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct DiskStoreConf {

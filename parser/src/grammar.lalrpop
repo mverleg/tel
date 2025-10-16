@@ -1,13 +1,13 @@
-use ::std::str::FromStr;
+use std::str::FromStr;
 
 // TODO @mark: some optimizations are possible:
 // * use string interning, for memory but also fast eq/hash
 // * reclaim vecs (or other memory) used while parsing before turning into Box<[T]>
 // * arena-allocate final types, possibly with smaller indices than usize
 
-use ::tel_ast::Identifier;
-use ::tel_ast::Type;
-use ::tel_ast::op::BinOpCode;
+use tel_common::Identifier;
+use tel_ast::Type;
+use tel_ast::op::BinOpCode;
 
 use crate::ast::AssignmentDest;
 use crate::ast::AssignmentKw;

@@ -1,3 +1,3 @@
-use ::std::io::Write;
+use std::io::Write;
 
 mod parser;

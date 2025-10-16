@@ -1,13 +1,13 @@
-use ::std::io;
-use ::std::io::Read;
-use ::std::path::PathBuf;
+use std::io;
+use std::io::Read;
+use std::path::PathBuf;
 
-use ::clap::Parser;
-use ::clap::Subcommand;
+use clap::Parser;
+use clap::Subcommand;
 
-use ::tel::tel_build;
-use ::tel::tel_build_str;
-use ::tel::BuildArgs;
+use tel::tel_build;
+use tel::tel_build_str;
+use tel::BuildArgs;
 
 #[derive(Parser, Debug)]
 #[command(name = "tel")]

@@ -4,15 +4,15 @@
 //! * Useful for linting, IDE integration or fuzzing.
 //! * All variable scopes should be correct, but types aren't checked.
 
-use ::std::mem::size_of;
+use std::mem::size_of;
 
-use ::log;
-use ::serde::Serialize;
+use log;
+use serde::Serialize;
 
 pub use self::typ::Type;
-pub use self::variable::Variables;
-pub use self::variable::VariableData;
 pub use self::variable::Variable;
+pub use self::variable::VariableData;
+pub use self::variable::Variables;
 
 pub mod op;
 mod variable;

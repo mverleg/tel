@@ -1,5 +1,3 @@
-use super::str_to_ast;
-
 include!(concat!(env!("OUT_DIR"), "/parse_tests.rs"));
 
 #[derive(Debug, Clone, Copy)]

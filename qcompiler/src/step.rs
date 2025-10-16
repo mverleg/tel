@@ -1,7 +1,7 @@
 use crate::engine::Engine;
 use crate::Error;
-use ::std::fmt;
-use ::std::hash;
+use std::fmt;
+use std::hash;
 
 trait InputState: fmt::Debug + PartialEq + Eq {}
 

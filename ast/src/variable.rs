@@ -1,10 +1,10 @@
-use ::std::mem::size_of;
-use ::std::ops::Index;
+use std::mem::size_of;
+use std::ops::Index;
 
-use ::serde::Serialize;
-use tel_common::Identifier;
-use crate::Ix;
 use crate::typ::Type;
+use crate::Ix;
+use serde::Serialize;
+use tel_common::Identifier;
 
 /// All variables per TelFile are owned by this central buffer.
 /// In the tree, lightweight indices are used, and this class is passed explicitly.

@@ -1,11 +1,11 @@
-use ::std::collections::HashSet;
-use ::std::fmt;
-use ::std::sync::LazyLock;
+use std::collections::HashSet;
+use std::fmt;
+use std::sync::LazyLock;
 
-use ::serde::Serialize;
-use ::serde::Serializer;
-use ::smartstring::alias::String as SString;
+use crate::SString;
 use log::debug;
+use serde::Serialize;
+use serde::Serializer;
 
 //TODO @mark: should actively-used keywords be in here?
 //TODO @mark: should 'assert' be reserved?
