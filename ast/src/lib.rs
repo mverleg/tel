@@ -19,6 +19,8 @@ pub use self::assign::Assignments;
 pub use self::assign::AssignmentKw;
 pub use self::assign::AssignmentDest;
 pub use self::block::Ast;
+pub use self::function::Invoke;
+pub use self::function::Closure;
 
 pub mod op;
 mod expr;
@@ -29,7 +31,6 @@ mod error;
 mod assign;
 mod types;
 mod function;
-mod util;
 
 //TODO @mark: replace all usize in structs and enums by Ix if ~1kkk is enough
 /// Negative indices are used for built-ins

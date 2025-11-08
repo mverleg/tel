@@ -6,8 +6,8 @@ pub use self::scope::Scope;
 
 mod scope;
 
-pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
-    let Ast { blocks } = ast;
+pub fn ast_to_api(ast: ast::Ast) -> Result<TelFile, TelErr> {
+    let ast::Ast { blocks } = ast;
     let mut variables = Variables::new();
     let mut global_scope = Scope::new_root(&mut variables);
     let blocks = blocks.into_vec();  //TODO @mark: TEMPORARY! REMOVE THIS!

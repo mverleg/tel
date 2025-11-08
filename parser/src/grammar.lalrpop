@@ -21,7 +21,7 @@ use crate::ast::Expr;
 use crate::ast::Invoke;
 use crate::ast::Struct;
 use crate::ast::UnaryOpCode;
-use crate::ast::vec_and;
+use crate::tel_common::parse_util::vec_and;
 
 grammar;
 

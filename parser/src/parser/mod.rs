@@ -11,7 +11,6 @@ use tel_ast::{Ast, ParseErr, TelFile};
 use crate::parser::errors::build_error;
 
 mod errors;
-#[cfg(test)]
 
 lalrpop_mod!(#[allow(clippy::all)] gen_parser, "/grammar.rs");
 
