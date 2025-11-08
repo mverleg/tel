@@ -6,7 +6,6 @@
 
 use std::mem::size_of;
 
-use log;
 use serde::Serialize;
 
 pub use self::typ::Type;
