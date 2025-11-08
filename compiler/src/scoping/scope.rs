@@ -7,9 +7,7 @@
 use tel_ast::Type;
 use tel_ast::Variable;
 use tel_ast::Variables;
-use tel_common::Identifier;
-
-use crate::TelErr;
+use tel_common::{Identifier, TelErr};
 
 #[derive(Debug)]
 pub struct Scope {

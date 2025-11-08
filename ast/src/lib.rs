@@ -16,6 +16,8 @@ pub use self::error::ParseErr;
 pub use self::expr::Expr;
 pub use self::block::Block;
 pub use self::assign::Assignments;
+pub use self::assign::AssignmentKw;
+pub use self::assign::AssignmentDest;
 pub use self::block::Ast;
 
 pub mod op;

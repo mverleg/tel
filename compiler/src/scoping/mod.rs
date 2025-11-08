@@ -1,8 +1,7 @@
-use crate::TelErr;
 use tel_ast::TelFile;
 use tel_ast::Variables;
 use tel_ast as ast;
-
+use tel_common::TelErr;
 pub use self::scope::Scope;
 
 mod scope;
@@ -16,12 +15,12 @@ pub fn ast_to_api(ast: Ast) -> Result<TelFile, TelErr> {
         // let block: Block = block;  // enforce that `block` is not borrowed
         //TODO @mark: ^ enable this and remove clones
         match block {
-            Block::Assigns(assign) => { assignments_to_api(assign, &mut variables, &mut global_scope)?; }
-            Block::Expression(expression) => { expression_to_api(&expression, &mut variables, &mut global_scope)?; }
-            Block::Return(_expression) => todo!("Return"),
+            ast::Block::Assigns(assign) => { assignments_to_api(assign, &mut variables, &mut global_scope)?; }
+            ast::Block::Expression(expression) => { expression_to_api(&expression, &mut variables, &mut global_scope)?; }
+            ast::Block::Return(_expression) => todo!("Return"),
             //TODO @mark: return ^
-            Block::Struct(_struct) => todo!("Struct"),
-            Block::Enum(_enum) => todo!("Enum"),
+            ast::Block::Struct(_struct) => todo!("Struct"),
+            ast::Block::Enum(_enum) => todo!("Enum"),
         }
     }
     Ok(TelFile {})
@@ -31,10 +30,10 @@ fn expression_to_api(
     expr: &ast::Expr,
     variables: &mut Variables,
     scope: &mut Scope,
-) -> Result<api::Expr, TelErr> {
+) -> Result<ast::Expr, TelErr> {
     //TODO @mark: to owned expression?
     Ok(match expr {
-        ast::Expr::Num(num) => api::Expr::Num(*num),
+        ast::Expr::Num(num) => ast::Expr::Num(*num),
         ast::Expr::Text(_text) => todo!("Text"),
         //ast::Expr::BinOp(op, left, right) => invoke_binary_to_api(*op, left, right, variables, scope)?,
         //ast::Expr::UnaryOp(op, expr) => invoke_unary_to_api(*op, expr, variables, scope)?,
@@ -51,12 +50,12 @@ fn expression_to_api(
 }
 
 fn assignments_to_api(
-    assign: Assignments,
+    assign: ast::Assignments,
     variables: &mut Variables,
     scope: &mut Scope,
-) -> Result<Vec<api::Assignment>, TelErr> {
+) -> Result<Vec<ast::Assignment>, TelErr> {
     //TODO @mark: use more efficient vec
-    let Assignments { dest: dests, op, value: ast_value } = assign;
+    let ast::Assignments { dest: dests, op, value: ast_value } = assign;
     debug_assert!(dests.len() >= 1);
     if let Some(_op) = op {
         todo!()
@@ -66,13 +65,13 @@ fn assignments_to_api(
     for dest in dests.into_iter().rev() {
         // let dest: AssignmentDest = dest;  // enforce that `dest` is not borrowed
         //TODO @mark: ^ enable this and pass owned values to scope
-        let AssignmentDest { kw, target, typ } = dest;
+        let ast::AssignmentDest { kw, target, typ } = dest;
         let (allow_outer, is_mutable) = match (kw, typ) {
-            (AssignmentKw::None, None) => (true, false),
-            (AssignmentKw::None, Some(_)) => (false, false),
-            (AssignmentKw::Outer, _) => (true, false),
-            (AssignmentKw::Local, _) => (false, false),
-            (AssignmentKw::Mut, _) => (false, true),
+            (ast::AssignmentKw::None, None) => (true, false),
+            (ast::AssignmentKw::None, Some(_)) => (false, false),
+            (ast::AssignmentKw::Outer, _) => (true, false),
+            (ast::AssignmentKw::Local, _) => (false, false),
+            (ast::AssignmentKw::Mut, _) => (false, true),
         };
         let binding = if allow_outer {
             scope.declare_in_scope(
@@ -89,11 +88,11 @@ fn assignments_to_api(
                 is_mutable,
             )
         };
-        api_assignments.push(api::Assignment {
+        api_assignments.push(ast::Assignment {
             var: binding,
             value,
         });
-        value = api::Expr::Read(binding);
+        value = ast::Expr::Read(binding);
     }
     Ok(api_assignments)
 }
@@ -102,17 +101,17 @@ fn invoke_to_api(
     invoke: &ast::Invoke,
     variables: &mut Variables,
     scope: &mut Scope,
-) -> Result<api::Expr, TelErr> {
+) -> Result<ast::Expr, TelErr> {
     //TODO @mark: remove borrow ^
     let ast::Invoke { iden: ast_iden, args: ast_args } = invoke;
     let Some(api_iden) = scope.lookup(variables, ast_iden) else {
         return Err(TelErr::UnknownIdentifier(ast_iden.clone()))
     };
-    let api_args: Box<[api::Expr]> = ast_args.into_iter()
+    let api_args: Box<[ast::Expr]> = ast_args.into_iter()
         .map(|e| expression_to_api(e, variables, scope))
         .collect::<Result<Vec<_>, _>>()?
         .into_boxed_slice();
-    Ok(api::Expr::Invoke { iden: api_iden, args: api_args })
+    Ok(ast::Expr::Invoke { iden: api_iden, args: api_args })
 }
 
 fn invoke_unary_to_api(
@@ -120,7 +119,7 @@ fn invoke_unary_to_api(
     ast_expr: &Box<ast::Expr>,
     variables: &mut Variables,
     scope: &mut Scope,
-) -> Result<api::Expr, TelErr> {
+) -> Result<ast::Expr, TelErr> {
     let builtin_iden = match op {
         //UnaryOpCode::Not => Identifier::new(builtins.NEG).expect("built-in must be valid"),
         //TODO @mark:
@@ -129,35 +128,35 @@ fn invoke_unary_to_api(
         //TODO @mark: how to impl preamble? always add to root scope? should have some constants, not lookup each time
     };
     let api_expr = expression_to_api(ast_expr, variables, scope)?;
-    api::Expr::Invoke { iden: builtin_iden, args: Box::new([api_expr]) }
+    ast::Expr::Invoke { iden: builtin_iden, args: Box::new([api_expr]) }
 }
 
 fn invoke_binary_to_api(
-    op: BinOpCode,
+    op: ast::BinOpCode,
     ast_left: &Box<ast::Expr>,
     ast_right: &Box<ast::Expr>,
     variables: &mut Variables,
     scope: &mut Scope,
-) -> Result<api::Expr, TelErr> {
+) -> Result<ast::Expr, TelErr> {
     let builtin_iden = match op {
-        BinOpCode::Add => {}
-        BinOpCode::Sub => {}
-        BinOpCode::Mul => {}
-        BinOpCode::Div => {}
-        BinOpCode::Modulo => {}
-        BinOpCode::Eq => {}
-        BinOpCode::Neq => {}
-        BinOpCode::Lt => {}
-        BinOpCode::Gt => {}
-        BinOpCode::Le => {}
-        BinOpCode::Ge => {}
-        BinOpCode::And => {}
-        BinOpCode::Or => {}
-        BinOpCode::Xor => {}
+        ast::BinOpCode::Add => {}
+        ast::BinOpCode::Sub => {}
+        ast::BinOpCode::Mul => {}
+        ast::BinOpCode::Div => {}
+        ast::BinOpCode::Modulo => {}
+        ast::BinOpCode::Eq => {}
+        ast::BinOpCode::Neq => {}
+        ast::BinOpCode::Lt => {}
+        ast::BinOpCode::Gt => {}
+        ast::BinOpCode::Le => {}
+        ast::BinOpCode::Ge => {}
+        ast::BinOpCode::And => {}
+        ast::BinOpCode::Or => {}
+        ast::BinOpCode::Xor => {}
     };
     let api_left = expression_to_api(ast_left, variables, scope)?;
     let api_right = expression_to_api(ast_right, variables, scope)?;
-    api::Expr::Invoke { iden: builtin_iden, args: Box::new([api_left, api_right]) }
+    ast::Expr::Invoke { iden: builtin_iden, args: Box::new([api_left, api_right]) }
 }
 
 #[cfg(test)]
@@ -184,12 +183,12 @@ mod tests {
         };
         let res = assignments_to_api(assign, &mut variables, &mut global_scope).unwrap();
         assert_eq!(res.len(), 2);
-        let api::Assignment { var: var1, value: value1 } = &res[0];
+        let ast::Assignment { var: var1, value: value1 } = &res[0];
         assert_eq!(var1.iden(&variables).to_string(), "b");
-        assert!(matches!(value1, api::Expr::Num(1.0)));
-        let api::Assignment { var: var2, value: value2 } = &res[1];
+        assert!(matches!(value1, ast::Expr::Num(1.0)));
+        let ast::Assignment { var: var2, value: value2 } = &res[1];
         assert_eq!(var2.iden(&variables).to_string(), "a");
-        let api::Expr::Read(read_var) = value2 else { panic!() };
+        let ast::Expr::Read(read_var) = value2 else { panic!() };
         assert_eq!(read_var, var1);
         //res[0].value
     }
