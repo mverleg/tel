@@ -76,7 +76,7 @@ fn assignments_to_api(
         let binding = if allow_outer {
             scope.declare_in_scope(
                 variables,
-                target,
+                &target,
                 typ.as_ref(),
                 is_mutable,
             )?
@@ -115,7 +115,7 @@ fn invoke_to_api(
 }
 
 fn invoke_unary_to_api(
-    op: UnaryOpCode,
+    op: ast::UnaryOpCode,
     ast_expr: &Box<ast::Expr>,
     variables: &mut Variables,
     scope: &mut Scope,
@@ -123,8 +123,8 @@ fn invoke_unary_to_api(
     let builtin_iden = match op {
         //UnaryOpCode::Not => Identifier::new(builtins.NEG).expect("built-in must be valid"),
         //TODO @mark:
-        UnaryOpCode::Not => {},
-        UnaryOpCode::Min => {},
+        ast::UnaryOpCode::Not => {},
+        ast::UnaryOpCode::Min => {},
         //TODO @mark: how to impl preamble? always add to root scope? should have some constants, not lookup each time
     };
     let api_expr = expression_to_api(ast_expr, variables, scope)?;
@@ -168,13 +168,13 @@ mod tests {
     fn repeated_assign() {
         let mut variables = Variables::new();
         let mut global_scope = Scope::new_root(&mut Vec::new());
-        let assign = Assignments {
-            dest: Box::new([AssignmentDest {
-                kw: AssignmentKw::None,
+        let assign = ast::Assignments {
+            dest: Box::new([ast::AssignmentDest {
+                kw: ast::AssignmentKw::None,
                 target: Identifier::new("a").unwrap(),
                 typ: None,
-            }, AssignmentDest {
-                kw: AssignmentKw::None,
+            }, ast::AssignmentDest {
+                kw: ast::AssignmentKw::None,
                 target: Identifier::new("b").unwrap(),
                 typ: None,
             }]),

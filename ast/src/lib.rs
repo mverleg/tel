@@ -9,6 +9,9 @@ use std::mem::size_of;
 use serde::Serialize;
 
 pub use self::typ::Type;
+pub use self::types::Enum;
+pub use self::types::EnumVariant;
+pub use self::types::Struct;
 pub use self::variable::Variable;
 pub use self::variable::VariableData;
 pub use self::variable::Variables;
@@ -21,6 +24,8 @@ pub use self::assign::AssignmentDest;
 pub use self::block::Ast;
 pub use self::function::Invoke;
 pub use self::function::Closure;
+pub use self::op::UnaryOpCode;
+pub use self::op::BinOpCode;
 
 pub mod op;
 mod expr;

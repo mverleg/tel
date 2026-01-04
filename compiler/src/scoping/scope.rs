@@ -15,6 +15,7 @@ pub struct Scope {
     //TODO @mark: for now it seems ot make the code easier (and possibly faster), but might reconsider
     parent: Option<Box<Scope>>,
     items: Vec<Variable>,
+    //TODO @mark: smallvec
 }
 
 impl Scope {

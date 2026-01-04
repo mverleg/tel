@@ -10,7 +10,7 @@ use log::debug;
 use log::warn;
 use serde::Serialize;
 use tel_ast::{ParseErr, TelFile};
-use tel_common::Identifier;
+use tel_common::{Identifier, TelErr};
 
 mod scoping;
 mod examples;

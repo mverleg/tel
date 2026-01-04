@@ -9,19 +9,19 @@ use tel_common::Identifier;
 use tel_ast::Type;
 use tel_ast::op::BinOpCode;
 
-use crate::ast::AssignmentDest;
-use crate::ast::AssignmentKw;
-use crate::ast::Assignments;
-use crate::ast::Ast;
-use crate::ast::Block;
-use crate::ast::Closure;
-use crate::ast::Enum;
-use crate::ast::EnumVariant;
-use crate::ast::Expr;
-use crate::ast::Invoke;
-use crate::ast::Struct;
-use crate::ast::UnaryOpCode;
-use crate::tel_common::parse_util::vec_and;
+use tel_ast::AssignmentDest;
+use tel_ast::AssignmentKw;
+use tel_ast::Assignments;
+use tel_ast::Ast;
+use tel_ast::Block;
+use tel_ast::Closure;
+use tel_ast::Enum;
+use tel_ast::EnumVariant;
+use tel_ast::Expr;
+use tel_ast::Invoke;
+use tel_ast::Struct;
+use tel_ast::UnaryOpCode;
+use tel_common::parse_util::vec_and;
 
 grammar;
 
