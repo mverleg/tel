@@ -10,14 +10,25 @@ use log::debug;
 use log::warn;
 use serde::Serialize;
 use tel_ast::{ParseErr, TelFile};
-use tel_common::{Identifier, TelErr};
+use tel_common::TelErr;
+use tel_parser::str_to_ast;
 
 mod scoping;
 mod examples;
 
-pub fn parse_str(src_pth: PathBuf, mut code: String) -> Result<TelFile, ParseErr> {
-    let ast = str_to_ast(src_pth, code)?;
+pub fn parse_str(src_pth: PathBuf, code: String) -> Result<TelFile, TelErr> {
+    let ast = str_to_ast(src_pth, code).map_err(parse_err_to_tel_err)?;
     ast_to_api(ast)
+}
+
+fn parse_err_to_tel_err(err: ParseErr) -> TelErr {
+    match err {
+        ParseErr::FileNotFound { file } => TelErr::FileNotFound { file },
+        ParseErr::CouldNotRead(path, msg) => TelErr::CouldNotRead(path, msg),
+        ParseErr::ParseErr { file, line, msg } => TelErr::ParseErr { file, line, msg },
+        ParseErr::ScopeErr { msg } => TelErr::ScopeErr { msg },
+        ParseErr::UnknownIdentifier(iden) => TelErr::UnknownIdentifier(iden),
+    }
 }
 
 #[derive(Debug)]

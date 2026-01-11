@@ -1429,6 +1429,7 @@ dependencies = [
  "tel-ast",
  "tel-common",
  "tel-hir",
+ "tel-parser",
  "time",
  "xolir",
 ]

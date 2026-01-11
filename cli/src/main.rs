@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use clap::Parser;
 use clap::Subcommand;
 
-use tel::tel_build;
-use tel::tel_build_str;
-use tel::BuildArgs;
+use telc::tel_build;
+use telc::tel_build_str;
+use telc::BuildArgs;
 
 #[derive(Parser, Debug)]
 #[command(name = "tel")]

@@ -92,7 +92,10 @@ fn assignments_to_api(
             var: binding,
             value,
         });
-        value = ast::Expr::Read(binding);
+        value = ast::Expr::Invoke(ast::Invoke {
+            iden: binding.iden(&variables).clone(),
+            args: Box::new([]),
+        });
     }
     Ok(api_assignments)
 }
@@ -111,7 +114,7 @@ fn invoke_to_api(
         .map(|e| expression_to_api(e, variables, scope))
         .collect::<Result<Vec<_>, _>>()?
         .into_boxed_slice();
-    Ok(ast::Expr::Invoke { iden: api_iden, args: api_args })
+    Ok(ast::Expr::Invoke(ast::Invoke { iden: api_iden.iden(&variables).clone(), args: api_args }))
 }
 
 fn invoke_unary_to_api(
@@ -120,15 +123,15 @@ fn invoke_unary_to_api(
     variables: &mut Variables,
     scope: &mut Scope,
 ) -> Result<ast::Expr, TelErr> {
-    let builtin_iden = match op {
+    let _builtin_iden = match op {
         //UnaryOpCode::Not => Identifier::new(builtins.NEG).expect("built-in must be valid"),
         //TODO @mark:
         ast::UnaryOpCode::Not => {},
         ast::UnaryOpCode::Min => {},
         //TODO @mark: how to impl preamble? always add to root scope? should have some constants, not lookup each time
     };
-    let api_expr = expression_to_api(ast_expr, variables, scope)?;
-    ast::Expr::Invoke { iden: builtin_iden, args: Box::new([api_expr]) }
+    let _api_expr = expression_to_api(ast_expr, variables, scope)?;
+    todo!("invoke_unary_to_api not yet implemented")
 }
 
 fn invoke_binary_to_api(
@@ -138,7 +141,7 @@ fn invoke_binary_to_api(
     variables: &mut Variables,
     scope: &mut Scope,
 ) -> Result<ast::Expr, TelErr> {
-    let builtin_iden = match op {
+    let _builtin_iden = match op {
         ast::BinOpCode::Add => {}
         ast::BinOpCode::Sub => {}
         ast::BinOpCode::Mul => {}
@@ -154,9 +157,9 @@ fn invoke_binary_to_api(
         ast::BinOpCode::Or => {}
         ast::BinOpCode::Xor => {}
     };
-    let api_left = expression_to_api(ast_left, variables, scope)?;
-    let api_right = expression_to_api(ast_right, variables, scope)?;
-    ast::Expr::Invoke { iden: builtin_iden, args: Box::new([api_left, api_right]) }
+    let _api_left = expression_to_api(ast_left, variables, scope)?;
+    let _api_right = expression_to_api(ast_right, variables, scope)?;
+    todo!("invoke_binary_to_api not yet implemented")
 }
 
 #[cfg(test)]
@@ -188,8 +191,9 @@ mod tests {
         assert!(matches!(value1, ast::Expr::Num(1.0)));
         let ast::Assignment { var: var2, value: value2 } = &res[1];
         assert_eq!(var2.iden(&variables).to_string(), "a");
-        let ast::Expr::Read(read_var) = value2 else { panic!() };
-        assert_eq!(read_var, var1);
+        let ast::Expr::Invoke(ast::Invoke { iden: read_iden, args: read_args }) = value2 else { panic!() };
+        assert_eq!(read_iden, var1.iden(&variables));
+        assert_eq!(read_args.len(), 0);
         //res[0].value
     }
 }
