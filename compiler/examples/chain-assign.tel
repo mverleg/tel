@@ -1,3 +1,4 @@
+# tel-test: parse-only
 
 a = mut b = 1 + 2
 (a == 3).assert

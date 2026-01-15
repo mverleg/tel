@@ -62,7 +62,7 @@ fn assignments_to_api(
     }
     let mut api_assignments = Vec::with_capacity(dests.len());
     let mut value = expression_to_api(&ast_value, variables, scope)?;
-    for dest in dests.into_iter().rev() {
+    for dest in dests.iter().rev() {
         // let dest: AssignmentDest = dest;  // enforce that `dest` is not borrowed
         //TODO @mark: ^ enable this and pass owned values to scope
         let ast::AssignmentDest { kw, target, typ } = dest;
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn repeated_assign() {
         let mut variables = Variables::new();
-        let mut global_scope = Scope::new_root(&mut Vec::new());
+        let mut global_scope = Scope::new_root(&mut variables);
         let assign = ast::Assignments {
             dest: Box::new([ast::AssignmentDest {
                 kw: ast::AssignmentKw::None,

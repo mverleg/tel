@@ -13,10 +13,7 @@ fn main() {
 fn generate_example_parse_tests() {
     let examples = PathBuf::from("./examples");
     println!("cargo:rerun-if-changed={}", examples.to_str().unwrap());
-    let mut test_code = "// Generated
-    use std::path::PathBuf;
-    use std::fs::read_to_string;\n\n"
-        .to_owned();
+    let mut test_code = "// Generated\n\n".to_owned();
     let mut test_cnt = 0;
     for pth in fs::read_dir(&examples).unwrap() {
         let pth = pth.unwrap().path();
@@ -38,7 +35,7 @@ fn parse_{name}() {{
     let mode = get_test_modes(&code);
     let parse_res = str_to_ast(pth, code);
     assert!(!mode.should_fail);  // TODO @mark
-    if let Err(TelErr::ParseErr {{ msg, .. }}) = &parse_res {{
+    if let Err(ParseErr::ParseErr {{ msg, .. }}) = &parse_res {{
         eprintln!(\"Failed to parse example file {pth_str}:\\n{{}}\", msg);
     }}
     if mode.parse_only {{

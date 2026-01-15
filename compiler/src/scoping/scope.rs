@@ -27,10 +27,9 @@ impl Scope {
         }
     }
 
-    fn new_builtin(variables: &mut Variables) -> Self {
-        todo!();
+    fn new_builtin(_variables: &mut Variables) -> Self {
         //TODO @mark: perhaps not the best representation, could be enum or map
-        let mut scope = Scope {
+        let scope = Scope {
             parent: None,
             items: vec![]
         };
@@ -38,7 +37,6 @@ impl Scope {
         // for builtin_iden in BUILTINS {
         //     scope.declare_in_scope(variables, &Identifier::new(builtin_iden).unwrap(), None, false);
         // }
-        todo!();
         scope
     }
 
