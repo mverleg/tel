@@ -16,5 +16,5 @@ path = "src/lib.rs"
 
 [dependencies]
 tel-common = "0.1.0"
-serde = { version = "1.0.208", features = ["derive"] }
-log = "0.4.22"
+serde = { version = "1.0.228", features = ["derive"] }
+log = "0.4.29"
