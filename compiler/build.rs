@@ -11,7 +11,7 @@ fn main() {
 }
 
 fn generate_example_parse_tests() {
-    let examples = PathBuf::from("../examples");
+    let examples = PathBuf::from("./examples");
     println!("cargo:rerun-if-changed={}", examples.to_str().unwrap());
     let mut test_code = "// Generated
     use std::path::PathBuf;
