@@ -17,10 +17,10 @@ name = "tel"
 path = "src/main.rs"
 
 [dependencies]
-tel-lang = "=0.1.0"
+tel-lang.workspace = true
 
-clap = { version = "4.5.54", default-features = true, features = ["std", "derive", "unicode"] }
-env_logger = "0.11.8"
+clap.workspace = true
+env_logger.workspace = true
 
 [dev-dependencies]
 

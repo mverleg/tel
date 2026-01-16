@@ -20,6 +20,34 @@ homepage = "https://github.com/mverleg/tel"
 license = "CC-BY-NC-ND-4.0"
 publish = true
 
+[workspace.dependencies]
+# Internal dependencies
+tel-common = { path = "./common", version = "=0.1.0" }
+tel-ast = { path = "./ast", version = "=0.1.0" }
+tel-hir = { path = "./hir", version = "=0.1.0" }
+tel-parser = { path = "./parser", version = "=0.1.0" }
+tel-lang = { path = "./compiler", version = "=0.1.0" }
+
+# External dependencies
+ahash = "0.8.12"
+clap = { version = "4.5.54", default-features = true, features = ["std", "derive", "unicode"] }
+dashmap = "6.1.0"
+env_logger = "0.11.8"
+itertools = "0.14.0"
+lalrpop = { version = "0.22.2", features = ["lexer", "unicode"] }
+lalrpop-util = { version = "0.22.2", features = ["lexer", "unicode"] }
+log = "0.4.29"
+postcard = { version = "1.1.1", features = ["alloc"] }
+rand = "0.9.2"
+regex = "1.12.2"
+rusqlite = { version = "0.38.0", features = ["bundled"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+sha2 = "0.10.9"
+smartstring = { version = "1.0.1", features = ["serde"] }
+time = { version = "0.3.45", features = ["serde"] }
+xolir = "0.1.0"
+
 [patch.crates-io]
 tel-common = { path = "./common" }
 tel-ast = { path = "./ast" }

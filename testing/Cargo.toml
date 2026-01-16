@@ -14,9 +14,9 @@ name = "tel-testing"
 path = "src/main.rs"
 
 [dependencies]
-tel-common = "=0.1.0"
-tel-ast = "=0.1.0"
-tel-hir = "=0.1.0"
-tel-parser = "=0.1.0"
-tel-lang = "=0.1.0"
-rand = "0.9.2"
+tel-common.workspace = true
+tel-ast.workspace = true
+tel-hir.workspace = true
+tel-parser.workspace = true
+tel-lang.workspace = true
+rand.workspace = true
