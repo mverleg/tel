@@ -20,11 +20,11 @@ range(1, 101).for_each {
 # TODO @mark: if
 
 for (i in range(1, 101)) {
-    msg = if (it % 15 == 0) {
+    msg = if (i % 15 == 0) {
         "FizzBuzz"
-    } elif (it % 3 == 0) {
+    } elif (i % 3 == 0) {
         "Fizz"
-    } elif (it % 5 == 0) {
+    } elif (i % 5 == 0) {
         "Buzz"
     } else {
         it

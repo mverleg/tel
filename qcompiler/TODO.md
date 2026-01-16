@@ -1,7 +1,7 @@
 
 ## Would this work for the query graph?
 
-THe gooal is essentially the equivalent of:
+The goal is essentially the equivalent of:
 
     fn parse(query: Query, engine: Engine, finish: impl FnOnce<Result<PreAST>>) {
         engine.read_file(&query.file, |source| {

@@ -1,6 +1,6 @@
 
 a = 3 ; b = 4
-c2 = a * a + b.sqrt
+c2 = a * a + b * b
 c = c2.sqrt
 
 "sqrt({a}^2 + {b}^2) = {c}".print

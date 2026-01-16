@@ -1,0 +1,47 @@
+# tel-test: parse-only
+
+struct Temperature {
+    celsius: f64
+}
+
+celsius_to_fahrenheit = fn (c: f64): f64 {
+    c * 9.0 / 5.0 + 32.0
+}
+
+fahrenheit_to_celsius = fn (f: f64): f64 {
+    (f - 32.0) * 5.0 / 9.0
+}
+
+describe_temp = fn (temp: Temperature): Text {
+    myF = celsius_to_fahrenheit(temp.celsius)
+
+    myFeeling = if (temp.celsius < 0.0) {
+        "freezing"
+    } elif (temp.celsius < 10.0) {
+        "cold"
+    } elif (temp.celsius < 20.0) {
+        "cool"
+    } elif (temp.celsius < 30.0) {
+        "warm"
+    } else {
+        "hot"
+    }
+
+    "It's {myFeeling} at {temp.celsius}°C ({myF}°F)"
+}
+
+# Test with a range of temperatures
+temps = [-10.0, 0.0, 15.0, 25.0, 35.0]
+
+for (myTemp in temps) {
+    myDescription = describe_temp(Temperature { celsius: myTemp })
+    myDescription.print
+}
+
+# Calculate average temperature
+mySum = temps.iter()
+    .map { it }
+    .sum()
+
+myAvg = mySum / temps.len()
+"Average temperature: {myAvg}°C".print
