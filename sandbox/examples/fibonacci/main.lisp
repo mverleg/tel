@@ -1,0 +1,10 @@
+(import fib.lisp)
+
+(print (call fib 0 0))
+(print (call fib 1 0))
+(print (call fib 2 0))
+(print (call fib 3 0))
+(print (call fib 4 0))
+(print (call fib 5 0))
+(print (call fib 6 0))
+(print (call fib 7 0))

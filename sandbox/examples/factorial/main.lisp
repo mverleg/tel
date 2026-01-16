@@ -1,0 +1,5 @@
+(import fact_helper.lisp)
+
+(let n 5)
+(let result (call fact_helper n 1))
+(print result)

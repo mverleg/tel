@@ -1,0 +1,15 @@
+(import max.lisp)
+(import min.lisp)
+(import abs.lisp)
+
+(let a 15)
+(let b 20)
+
+(print (call max a b))
+(print (call min a b))
+(print (call abs -42 0))
+(print (call abs 42 0))
+
+(let x -10)
+(let y -5)
+(print (call max x y))

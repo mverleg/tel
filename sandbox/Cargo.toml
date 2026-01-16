@@ -1,0 +1,18 @@
+[package]
+name = "sandbox"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+
+[[example]]
+name = "run_factorial"
+path = "examples_bin/run_factorial.rs"
+
+[[example]]
+name = "run_fibonacci"
+path = "examples_bin/run_fibonacci.rs"
+
+[[example]]
+name = "run_math"
+path = "examples_bin/run_math.rs"
