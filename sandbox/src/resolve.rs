@@ -98,7 +98,7 @@ impl Resolver {
             }
             PreExpr::Let { name, value } => {
                 let resolved_value = Box::new(self.resolve_expr(*value)?);
-                let var_id = self.declare_var(name);
+                let var_id = self.declare_var(name)?;
                 Ok(Expr::Let {
                     var: var_id,
                     value: resolved_value,
@@ -178,32 +178,24 @@ impl Resolver {
     fn process_imports(&mut self, pre_ast: &PreExpr) -> Result<(), ResolveError> {
         let imports = self.extract_imports(pre_ast)?;
 
-        for import_path in imports {
-            let import_with_ext = if import_path.ends_with(".telsb") {
-                import_path.clone()
-            } else {
-                format!("{}.telsb", import_path)
-            };
-            let full_path = self.base_path.join(&import_with_ext);
+        for import_name in imports {
+            if import_name.contains('.') {
+                return Err(ResolveError::InvalidImportPath(import_name.clone()));
+            }
+            let full_path = self.base_path.join(format!("{}.telsb", import_name));
 
             let source = crate::io::load_file(full_path.to_str().unwrap())
-                .map_err(|_| ResolveError::UndefinedFunction(import_path.clone()))?;
+                .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
 
             let imported_pre_ast = crate::parse::parse(&source)
-                .map_err(|_| ResolveError::UndefinedFunction(import_path.clone()))?;
-
-            let func_name = Path::new(&import_with_ext)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or(&import_path)
-                .to_string();
+                .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
 
             let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf());
             func_resolver.in_function = true;
             func_resolver.process_imports(&imported_pre_ast)?;
 
             let placeholder_id = FuncId(self.symbol_table.funcs.len() + func_resolver.symbol_table.funcs.len());
-            func_resolver.funcs.insert(func_name.clone(), placeholder_id);
+            func_resolver.funcs.insert(import_name.clone(), placeholder_id);
 
             let mut func_ast = func_resolver.resolve_body(&imported_pre_ast)?;
 
@@ -221,8 +213,8 @@ impl Resolver {
                 self.funcs.insert(name, new_id);
             }
 
-            let func_id = self.symbol_table.add_func(func_name.clone(), func_ast);
-            self.funcs.insert(func_name, func_id);
+            let func_id = self.symbol_table.add_func(import_name.clone(), func_ast);
+            self.funcs.insert(import_name, func_id);
         }
 
         Ok(())

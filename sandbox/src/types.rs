@@ -159,6 +159,7 @@ impl std::error::Error for ParseError {}
 pub enum ResolveError {
     UndefinedVariable(String),
     UndefinedFunction(String),
+    InvalidImportPath(String),
     VariableAlreadyDefined(String),
     ArgOutsideFunction,
     InvalidArgNumber(u8),
@@ -170,6 +171,7 @@ impl fmt::Display for ResolveError {
         match self {
             ResolveError::UndefinedVariable(name) => write!(f, "Undefined variable: {}", name),
             ResolveError::UndefinedFunction(name) => write!(f, "Undefined function: {}", name),
+            ResolveError::InvalidImportPath(name) => write!(f, "Invalid import: {}", name),
             ResolveError::VariableAlreadyDefined(name) => write!(f, "Variable already defined: {}", name),
             ResolveError::ArgOutsideFunction => write!(f, "Arg used outside of function"),
             ResolveError::InvalidArgNumber(n) => write!(f, "Invalid arg number: {} (must be 1 or 2)", n),
