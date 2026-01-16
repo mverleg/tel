@@ -3,17 +3,23 @@ use sandbox::qcompiler2::CompilationLog;
 fn main() {
     let mut my_log = CompilationLog::new();
 
-    my_log.log_read("examples/factorial/main.telsb");
-    my_log.log_parse("examples/factorial/main.telsb");
+    my_log.in_resolve("main", |log| {
+        log.in_read("examples/factorial/main.telsb", |log| {
+            log.in_parse("examples/factorial/main.telsb", |_log| {
+            })
+        });
 
-    my_log.log_read("examples/factorial/fact_helper.telsb");
-    my_log.log_parse("examples/factorial/fact_helper.telsb");
+        log.in_resolve("fact_helper", |log| {
+            log.in_read("examples/factorial/fact_helper.telsb", |log| {
+                log.in_parse("examples/factorial/fact_helper.telsb", |_log| {
+                })
+            })
+        });
 
-    my_log.log_resolve("fact_helper");
-    my_log.log_resolve("main");
+        log.in_exec("main", |_log| {
+        })
+    });
 
-    my_log.log_exec("main");
-
-    println!("\n=== Complete compilation log (JSON) ===");
+    println!("\n=== Dependency Graph (JSON) ===");
     println!("{}", my_log.to_json());
 }

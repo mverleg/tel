@@ -38,6 +38,10 @@ pub enum PreExpr {
     Print(Box<PreExpr>),
     Return(Box<PreExpr>),
     Import(String),
+    FunctionDef {
+        name: String,
+        body: Box<PreExpr>,
+    },
     Call {
         func: String,
         arg1: Box<PreExpr>,
@@ -164,6 +168,8 @@ pub enum ResolveError {
     ArgOutsideFunction,
     InvalidArgNumber(u8),
     ImportNotAtTop,
+    FunctionDefNotAfterImports,
+    FunctionAlreadyDefined(String),
 }
 
 impl fmt::Display for ResolveError {
@@ -176,6 +182,8 @@ impl fmt::Display for ResolveError {
             ResolveError::ArgOutsideFunction => write!(f, "Arg used outside of function"),
             ResolveError::InvalidArgNumber(n) => write!(f, "Invalid arg number: {} (must be 1 or 2)", n),
             ResolveError::ImportNotAtTop => write!(f, "Import statements must be at the top of the file"),
+            ResolveError::FunctionDefNotAfterImports => write!(f, "Function definitions must be after imports and before other code"),
+            ResolveError::FunctionAlreadyDefined(name) => write!(f, "Function already defined: {}", name),
         }
     }
 }

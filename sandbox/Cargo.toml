@@ -22,3 +22,7 @@ path = "examples_bin/run_math.rs"
 [[example]]
 name = "qcompiler2_demo"
 path = "examples_bin/qcompiler2_demo.rs"
+
+[[example]]
+name = "run_local_funcs"
+path = "examples_bin/run_local_funcs.rs"

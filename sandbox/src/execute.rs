@@ -1,3 +1,4 @@
+use crate::qcompiler2::CompilationLog;
 use crate::types::{BinOp, ExecuteError, Expr, SymbolTable, VarId};
 use std::collections::HashMap;
 
@@ -132,8 +133,10 @@ impl<'a> Interpreter<'a> {
     }
 }
 
-pub fn execute(ast: Expr, symbols: &SymbolTable) -> Result<(), ExecuteError> {
-    let mut interpreter = Interpreter::new(symbols);
-    interpreter.eval(&ast)?;
-    Ok(())
+pub fn execute(ast: Expr, symbols: &SymbolTable, a_log: &mut CompilationLog) -> Result<(), ExecuteError> {
+    a_log.in_exec("main", |_log| {
+        let mut interpreter = Interpreter::new(symbols);
+        interpreter.eval(&ast)?;
+        Ok(())
+    })
 }

@@ -1,3 +1,4 @@
+use crate::qcompiler2::CompilationLog;
 use crate::types::{BinOp, ParseError, PreExpr};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -219,6 +220,15 @@ impl Parser {
                         self.expect(Token::RParen)?;
                         Ok(PreExpr::Import(path))
                     }
+                    "function" => {
+                        let name = match self.advance() {
+                            Some(Token::Ident(s)) => s,
+                            _ => return Err(ParseError::UnexpectedToken("expected function name".to_string())),
+                        };
+                        let body = Box::new(self.parse_expr()?);
+                        self.expect(Token::RParen)?;
+                        Ok(PreExpr::FunctionDef { name, body })
+                    }
                     "call" => {
                         let func = match self.advance() {
                             Some(Token::Ident(s)) => s,
@@ -262,8 +272,10 @@ impl Parser {
     }
 }
 
-pub fn parse(source: &str) -> Result<PreExpr, ParseError> {
-    let tokens = tokenize(source)?;
-    let mut parser = Parser::new(tokens);
-    parser.parse_all()
+pub fn parse(source: &str, file_path: &str, a_log: &mut CompilationLog) -> Result<PreExpr, ParseError> {
+    a_log.in_parse(file_path, |_log| {
+        let tokens = tokenize(source)?;
+        let mut parser = Parser::new(tokens);
+        parser.parse_all()
+    })
 }

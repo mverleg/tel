@@ -72,17 +72,28 @@ Example:
 
 ### Functions
 
-**Import** a function from another file:
+**Import** a file-function from another file:
 ```lisp
 (import module_name)  # Automatically appends .telsb extension
 ```
+
+**Define** a local function (within a file):
+```lisp
+(function name body)
+```
+
+Local functions:
+- Must be declared after imports and before other code
+- Take exactly 2 arguments (accessed via `arg 1` and `arg 2`)
+- Cannot capture variables (not closures)
+- Can only be called within the same file (not exported)
 
 **Call** a function:
 ```lisp
 (call func_name arg1 arg2)
 ```
 
-**Access** function arguments (inside function files):
+**Access** function arguments (inside functions):
 ```lisp
 (arg 1)  # First argument
 (arg 2)  # Second argument
@@ -93,7 +104,7 @@ Example:
 (return value)
 ```
 
-All functions take exactly 2 arguments. The function name is derived from the imported filename (without extension).
+All functions take exactly 2 arguments. File-function names are derived from the imported filename (without extension).
 
 ### I/O
 

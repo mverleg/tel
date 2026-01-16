@@ -1,8 +1,9 @@
+use crate::qcompiler2::CompilationLog;
 use crate::types::{Expr, FuncId, PreExpr, ResolveError, ScopeId, SymbolTable, VarId};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-struct Resolver {
+struct Resolver<'a> {
     symbol_table: SymbolTable,
     scopes: Vec<Scope>,
     current_scope: ScopeId,
@@ -10,6 +11,7 @@ struct Resolver {
     funcs: HashMap<String, FuncId>,
     in_function: bool,
     base_path: PathBuf,
+    log: &'a mut CompilationLog,
 }
 
 struct Scope {
@@ -17,8 +19,8 @@ struct Scope {
     vars: HashMap<String, VarId>,
 }
 
-impl Resolver {
-    fn new(base_path: PathBuf) -> Self {
+impl<'a> Resolver<'a> {
+    fn new(base_path: PathBuf, log: &'a mut CompilationLog) -> Self {
         let global_scope = Scope {
             parent: None,
             vars: HashMap::new(),
@@ -32,6 +34,7 @@ impl Resolver {
             funcs: HashMap::new(),
             in_function: false,
             base_path,
+            log,
         }
     }
 
@@ -144,6 +147,9 @@ impl Resolver {
             PreExpr::Import(_) => {
                 Err(ResolveError::ImportNotAtTop)
             }
+            PreExpr::FunctionDef { .. } => {
+                Err(ResolveError::FunctionDefNotAfterImports)
+            }
             PreExpr::Call { func, arg1, arg2 } => {
                 let func_id = self.funcs.get(&func)
                     .copied()
@@ -184,13 +190,13 @@ impl Resolver {
             }
             let full_path = self.base_path.join(format!("{}.telsb", import_name));
 
-            let source = crate::io::load_file(full_path.to_str().unwrap())
+            let source = crate::io::load_file(full_path.to_str().unwrap(), self.log)
                 .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
 
-            let imported_pre_ast = crate::parse::parse(&source)
+            let imported_pre_ast = crate::parse::parse(&source, full_path.to_str().unwrap(), self.log)
                 .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
 
-            let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf());
+            let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf(), self.log);
             func_resolver.in_function = true;
             func_resolver.process_imports(&imported_pre_ast)?;
 
@@ -249,6 +255,67 @@ impl Resolver {
         Ok(imports)
     }
 
+    fn extract_function_defs(&self, pre_expr: &PreExpr) -> Result<Vec<(String, PreExpr)>, ResolveError> {
+        let mut function_defs = Vec::new();
+
+        match pre_expr {
+            PreExpr::Sequence(exprs) => {
+                let mut seen_import = false;
+                let mut seen_function_def = false;
+                let mut seen_other = false;
+
+                for expr in exprs {
+                    match expr {
+                        PreExpr::Import(_) => {
+                            if seen_function_def || seen_other {
+                                return Err(ResolveError::ImportNotAtTop);
+                            }
+                            seen_import = true;
+                        }
+                        PreExpr::FunctionDef { name, body } => {
+                            if seen_other {
+                                return Err(ResolveError::FunctionDefNotAfterImports);
+                            }
+                            seen_function_def = true;
+                            function_defs.push((name.clone(), (**body).clone()));
+                        }
+                        _ => {
+                            seen_other = true;
+                        }
+                    }
+                }
+            }
+            PreExpr::FunctionDef { name, body } => {
+                function_defs.push((name.clone(), (**body).clone()));
+            }
+            _ => {}
+        }
+
+        Ok(function_defs)
+    }
+
+    fn process_local_functions(&mut self, pre_ast: &PreExpr) -> Result<(), ResolveError> {
+        let function_defs = self.extract_function_defs(pre_ast)?;
+
+        for (func_name, func_body) in function_defs {
+            if self.funcs.contains_key(&func_name) {
+                return Err(ResolveError::FunctionAlreadyDefined(func_name));
+            }
+
+            let saved_in_function = self.in_function;
+            self.in_function = true;
+
+            let resolved_body = self.resolve_expr(func_body)?;
+
+            self.in_function = saved_in_function;
+
+            let func_id = self.symbol_table.add_func(func_name.clone(), resolved_body);
+            self.funcs.insert(func_name, func_id);
+        }
+
+        Ok(())
+    }
+
     fn remap_func_ids(expr: &mut Expr, offset: usize) {
         match expr {
             Expr::Call { func, arg1, arg2 } => {
@@ -285,7 +352,7 @@ impl Resolver {
             PreExpr::Sequence(exprs) => {
                 let mut resolved_exprs = Vec::new();
                 for expr in exprs {
-                    if !matches!(expr, PreExpr::Import(_)) {
+                    if !matches!(expr, PreExpr::Import(_) | PreExpr::FunctionDef { .. }) {
                         resolved_exprs.push(self.resolve_expr(expr.clone())?);
                     }
                 }
@@ -297,7 +364,7 @@ impl Resolver {
                     Ok(Expr::Sequence(resolved_exprs))
                 }
             }
-            PreExpr::Import(_) => {
+            PreExpr::Import(_) | PreExpr::FunctionDef { .. } => {
                 Ok(Expr::Number(0))
             }
             other => self.resolve_expr(other.clone()),
@@ -305,12 +372,19 @@ impl Resolver {
     }
 }
 
-pub fn resolve(pre_ast: PreExpr, base_path: &str) -> Result<(Expr, SymbolTable), ResolveError> {
+pub fn resolve(pre_ast: PreExpr, base_path: &str, a_log: &mut CompilationLog) -> Result<(Expr, SymbolTable), ResolveError> {
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
 
-    let mut resolver = Resolver::new(dir.to_path_buf());
-    resolver.process_imports(&pre_ast)?;
-    let ast = resolver.resolve_body(&pre_ast)?;
-    Ok((ast, resolver.symbol_table))
+    let my_func_name = path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("main");
+
+    a_log.in_resolve(my_func_name, |log| {
+        let mut resolver = Resolver::new(dir.to_path_buf(), log);
+        resolver.process_imports(&pre_ast)?;
+        resolver.process_local_functions(&pre_ast)?;
+        let ast = resolver.resolve_body(&pre_ast)?;
+        Ok((ast, resolver.symbol_table))
+    })
 }

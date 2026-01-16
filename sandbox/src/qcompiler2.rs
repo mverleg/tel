@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ReadId {
@@ -20,57 +21,110 @@ pub struct ExecId {
     pub main_func: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum CompilationStep {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum StepId {
     Read(ReadId),
     Parse(ParseId),
     Resolve(ResolveId),
     Exec(ExecId),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Dependency {
+    pub from: StepId,
+    pub to: StepId,
+}
+
 pub struct CompilationLog {
-    steps: Vec<CompilationStep>,
+    call_stack: Vec<StepId>,
+    dependencies: Vec<Dependency>,
 }
 
 impl CompilationLog {
     pub fn new() -> Self {
-        Self { steps: Vec::new() }
+        Self {
+            call_stack: Vec::new(),
+            dependencies: Vec::new(),
+        }
     }
 
-    pub fn log_read(&mut self, file_path: impl Into<String>) {
-        let my_id = ReadId {
+    fn enter_step(&mut self, a_step: StepId) {
+        println!("[qcompiler2] Enter: {}", serde_json::to_string(&a_step).unwrap());
+
+        if let Some(my_parent) = self.call_stack.last() {
+            let my_dep = Dependency {
+                from: my_parent.clone(),
+                to: a_step.clone(),
+            };
+            println!("[qcompiler2] Dependency: {} -> {}",
+                serde_json::to_string(&my_dep.from).unwrap(),
+                serde_json::to_string(&my_dep.to).unwrap());
+            self.dependencies.push(my_dep);
+        }
+
+        self.call_stack.push(a_step);
+    }
+
+    fn exit_step(&mut self) {
+        if let Some(my_step) = self.call_stack.pop() {
+            println!("[qcompiler2] Exit: {}", serde_json::to_string(&my_step).unwrap());
+        }
+    }
+
+    pub fn in_read<T>(&mut self, file_path: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+        let my_id = StepId::Read(ReadId {
             file_path: file_path.into(),
-        };
-        println!("[qcompiler2] Read: {}", serde_json::to_string(&my_id).unwrap());
-        self.steps.push(CompilationStep::Read(my_id));
+        });
+        self.enter_step(my_id);
+        let my_result = f(self);
+        self.exit_step();
+        my_result
     }
 
-    pub fn log_parse(&mut self, file_path: impl Into<String>) {
-        let my_id = ParseId {
+    pub fn in_parse<T>(&mut self, file_path: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+        let my_id = StepId::Parse(ParseId {
             file_path: file_path.into(),
-        };
-        println!("[qcompiler2] Parse: {}", serde_json::to_string(&my_id).unwrap());
-        self.steps.push(CompilationStep::Parse(my_id));
+        });
+        self.enter_step(my_id);
+        let my_result = f(self);
+        self.exit_step();
+        my_result
     }
 
-    pub fn log_resolve(&mut self, func_name: impl Into<String>) {
-        let my_id = ResolveId {
+    pub fn in_resolve<T>(&mut self, func_name: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+        let my_id = StepId::Resolve(ResolveId {
             func_name: func_name.into(),
-        };
-        println!("[qcompiler2] Resolve: {}", serde_json::to_string(&my_id).unwrap());
-        self.steps.push(CompilationStep::Resolve(my_id));
+        });
+        self.enter_step(my_id);
+        let my_result = f(self);
+        self.exit_step();
+        my_result
     }
 
-    pub fn log_exec(&mut self, main_func: impl Into<String>) {
-        let my_id = ExecId {
+    pub fn in_exec<T>(&mut self, main_func: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+        let my_id = StepId::Exec(ExecId {
             main_func: main_func.into(),
-        };
-        println!("[qcompiler2] Exec: {}", serde_json::to_string(&my_id).unwrap());
-        self.steps.push(CompilationStep::Exec(my_id));
+        });
+        self.enter_step(my_id);
+        let my_result = f(self);
+        self.exit_step();
+        my_result
+    }
+
+    pub fn dependencies(&self) -> &[Dependency] {
+        &self.dependencies
     }
 
     pub fn to_json(&self) -> String {
-        serde_json::to_string_pretty(&self.steps).unwrap()
+        let mut my_graph: HashMap<String, Vec<String>> = HashMap::new();
+
+        for dep in &self.dependencies {
+            let my_from = serde_json::to_string(&dep.from).unwrap();
+            let my_to = serde_json::to_string(&dep.to).unwrap();
+            my_graph.entry(my_from).or_insert_with(Vec::new).push(my_to);
+        }
+
+        serde_json::to_string_pretty(&my_graph).unwrap()
     }
 }
 
@@ -97,10 +151,14 @@ mod tests {
     #[test]
     fn test_compilation_log() {
         let mut my_log = CompilationLog::new();
-        my_log.log_read("main.telsb");
-        my_log.log_parse("main.telsb");
-        my_log.log_resolve("main");
-        my_log.log_exec("main");
+        my_log.in_read("main.telsb", |log| {
+            log.in_parse("main.telsb", |log| {
+                log.in_resolve("main", |log| {
+                    log.in_exec("main", |_log| {
+                    })
+                })
+            })
+        });
 
         let my_json = my_log.to_json();
         assert!(my_json.contains("main.telsb"));

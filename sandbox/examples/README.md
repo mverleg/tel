@@ -10,6 +10,7 @@ From the sandbox directory, you can run the examples:
 cargo run --example run_factorial
 cargo run --example run_fibonacci
 cargo run --example run_math
+cargo run --example run_local_funcs
 ```
 
 Or using the library directly from Rust code:
@@ -74,11 +75,36 @@ Expected output:
 -5
 ```
 
+### 4. Local Functions (`examples/local_funcs/`)
+
+Demonstrates local function definitions using the `function` keyword.
+
+Files:
+- `main.telsb` - Defines and uses local functions (add, mul, max, square, calc_area)
+
+Local functions:
+- Must be declared after imports and before other code
+- Take exactly 2 arguments (accessed via `arg 1` and `arg 2`)
+- Cannot capture variables (not closures)
+- Can only be called within the same file (not exported)
+
+Expected output:
+```
+13
+40
+8
+25
+64
+89
+180
+```
+
 ## Language Features Demonstrated
 
 All examples demonstrate:
 - **Multi-file imports**: Files can import other files using `(import filename)`
-- **Function calls**: `(call funcname arg1 arg2)` calls imported functions
+- **Local functions**: Files can define local functions using `(function name body)`
+- **Function calls**: `(call funcname arg1 arg2)` calls functions (both imported and local)
 - **Argument access**: `(arg 1)` and `(arg 2)` access function arguments
 - **Early return**: `(return value)` exits function early
 - **Nested imports**: Imported files can import other files

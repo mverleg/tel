@@ -53,17 +53,19 @@ impl From<types::ExecuteError> for Error {
 }
 
 pub fn run_file(path: &str) -> Result<(), Error> {
-    let source = io::load_file(path)?;
-    let pre_ast = parse::parse(&source)?;
-    let (ast, symbols) = resolve::resolve(pre_ast, path)?;
-    execute::execute(ast, &symbols)?;
+    let mut my_log = qcompiler2::CompilationLog::new();
+    let source = io::load_file(path, &mut my_log)?;
+    let pre_ast = parse::parse(&source, path, &mut my_log)?;
+    let (ast, symbols) = resolve::resolve(pre_ast, path, &mut my_log)?;
+    execute::execute(ast, &symbols, &mut my_log)?;
     Ok(())
 }
 
 pub fn run_source(source: &str) -> Result<(), Error> {
-    let pre_ast = parse::parse(source)?;
-    let (ast, symbols) = resolve::resolve(pre_ast, ".")?;
-    execute::execute(ast, &symbols)?;
+    let mut my_log = qcompiler2::CompilationLog::new();
+    let pre_ast = parse::parse(source, "<source>", &mut my_log)?;
+    let (ast, symbols) = resolve::resolve(pre_ast, ".", &mut my_log)?;
+    execute::execute(ast, &symbols, &mut my_log)?;
     Ok(())
 }
 
@@ -151,5 +153,61 @@ mod tests {
             "(let x 5) (let y 10) (if (> y x) (print (+ x y)) (print (- x y)))",
         );
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_local_function_basic() {
+        let result = run_source(
+            "(function add_vals (+ (arg 1) (arg 2))) (let result (call add_vals 3 7)) (print result)",
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_local_function_multiple() {
+        let result = run_source(
+            "(function mul (/ (* (arg 1) (arg 2)) 1)) (function add (+ (arg 1) (arg 2))) (print (call mul 3 4)) (print (call add 5 6))",
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_local_function_with_if() {
+        let result = run_source(
+            "(function max (if (> (arg 1) (arg 2)) (arg 1) (arg 2))) (print (call max 10 5))",
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_local_function_arg_access() {
+        let result = run_source(
+            "(function use_both (+ (* (arg 1) 2) (* (arg 2) 3))) (print (call use_both 4 5))",
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_function_def_not_at_top() {
+        let result = run_source(
+            "(let x 5) (function add (+ (arg 1) (arg 2))) (print x)",
+        );
+        assert!(result.is_err());
+        match result {
+            Err(Error::Resolve(_)) => {}
+            _ => panic!("Expected resolve error for function def not after imports"),
+        }
+    }
+
+    #[test]
+    fn test_function_already_defined() {
+        let result = run_source(
+            "(function add (+ (arg 1) (arg 2))) (function add (* (arg 1) (arg 2)))",
+        );
+        assert!(result.is_err());
+        match result {
+            Err(Error::Resolve(_)) => {}
+            _ => panic!("Expected resolve error for duplicate function"),
+        }
     }
 }
