@@ -1,5 +1,5 @@
 fn main() {
-    let result = sandbox::run_file("sandbox/examples/math/main.lisp");
+    let result = sandbox::run_file("sandbox/examples/math/main.telsb");
     match result {
         Ok(_) => {}
         Err(e) => eprintln!("Error: {}", e),

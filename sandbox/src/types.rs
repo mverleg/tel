@@ -26,6 +26,10 @@ pub enum PreExpr {
         name: String,
         value: Box<PreExpr>,
     },
+    Set {
+        name: String,
+        value: Box<PreExpr>,
+    },
     If {
         cond: Box<PreExpr>,
         then_branch: Box<PreExpr>,
@@ -65,6 +69,10 @@ pub enum Expr {
         var: VarId,
         value: Box<Expr>,
     },
+    Set {
+        var: VarId,
+        value: Box<Expr>,
+    },
     If {
         cond: Box<Expr>,
         then_branch: Box<Expr>,
@@ -97,6 +105,12 @@ pub struct FuncInfo {
 pub struct SymbolTable {
     pub vars: Vec<VarInfo>,
     pub funcs: Vec<FuncInfo>,
+}
+
+impl Default for SymbolTable {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SymbolTable {
@@ -145,6 +159,7 @@ impl std::error::Error for ParseError {}
 pub enum ResolveError {
     UndefinedVariable(String),
     UndefinedFunction(String),
+    VariableAlreadyDefined(String),
     ArgOutsideFunction,
     InvalidArgNumber(u8),
     ImportNotAtTop,
@@ -155,6 +170,7 @@ impl fmt::Display for ResolveError {
         match self {
             ResolveError::UndefinedVariable(name) => write!(f, "Undefined variable: {}", name),
             ResolveError::UndefinedFunction(name) => write!(f, "Undefined function: {}", name),
+            ResolveError::VariableAlreadyDefined(name) => write!(f, "Variable already defined: {}", name),
             ResolveError::ArgOutsideFunction => write!(f, "Arg used outside of function"),
             ResolveError::InvalidArgNumber(n) => write!(f, "Invalid arg number: {} (must be 1 or 2)", n),
             ResolveError::ImportNotAtTop => write!(f, "Import statements must be at the top of the file"),

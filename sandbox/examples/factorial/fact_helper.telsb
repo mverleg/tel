@@ -1,5 +1,5 @@
-(import mul.lisp)
-(import dec.lisp)
+(import mul)
+(import dec)
 
 (let n (arg 1))
 (let acc (arg 2))

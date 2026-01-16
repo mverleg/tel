@@ -22,6 +22,14 @@ fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
                 tokens.push(Token::RParen);
                 chars.next();
             }
+            '#' => {
+                while let Some(&next_ch) = chars.peek() {
+                    chars.next();
+                    if next_ch == '\n' {
+                        break;
+                    }
+                }
+            }
             c if c.is_whitespace() => {
                 chars.next();
             }
@@ -170,6 +178,16 @@ impl Parser {
                         self.expect(Token::RParen)?;
 
                         Ok(PreExpr::Let { name, value })
+                    }
+                    "set" => {
+                        let name = match self.advance() {
+                            Some(Token::Ident(s)) => s,
+                            _ => return Err(ParseError::UnexpectedToken("expected identifier".to_string())),
+                        };
+                        let value = Box::new(self.parse_expr()?);
+                        self.expect(Token::RParen)?;
+
+                        Ok(PreExpr::Set { name, value })
                     }
                     "if" => {
                         let cond = Box::new(self.parse_expr()?);

@@ -54,6 +54,11 @@ impl<'a> Interpreter<'a> {
                 self.values.insert(*var, val);
                 Ok(EvalResult::Value(val))
             }
+            Expr::Set { var, value } => {
+                let val = self.eval_value(value)?;
+                self.values.insert(*var, val);
+                Ok(EvalResult::Value(val))
+            }
             Expr::If {
                 cond,
                 then_branch,

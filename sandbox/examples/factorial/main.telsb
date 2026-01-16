@@ -1,4 +1,4 @@
-(import fact_helper.lisp)
+(import fact_helper)
 
 (let n 5)
 (let result (call fact_helper n 1))

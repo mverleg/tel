@@ -16,7 +16,7 @@ Or using the library directly from Rust code:
 
 ```rust
 use sandbox::run_file;
-run_file("examples/factorial/main.lisp").unwrap();
+run_file("examples/factorial/main.telsb").unwrap();
 ```
 
 ## Examples
@@ -26,10 +26,10 @@ run_file("examples/factorial/main.lisp").unwrap();
 Computes factorial of 5 using recursive helper function.
 
 Files:
-- `mul.lisp` - Multiplication function
-- `dec.lisp` - Decrement function
-- `fact_helper.lisp` - Recursive factorial helper (imports mul and dec)
-- `main.lisp` - Entry point (imports fact_helper)
+- `mul.telsb` - Multiplication function
+- `dec.telsb` - Decrement function
+- `fact_helper.telsb` - Recursive factorial helper (imports mul and dec)
+- `main.telsb` - Entry point (imports fact_helper)
 
 Expected output: `120`
 
@@ -38,10 +38,10 @@ Expected output: `120`
 Computes first 8 Fibonacci numbers recursively.
 
 Files:
-- `add.lisp` - Addition function
-- `sub.lisp` - Subtraction function
-- `fib.lisp` - Recursive Fibonacci (imports add and sub)
-- `main.lisp` - Entry point (imports fib, prints sequence)
+- `add.telsb` - Addition function
+- `sub.telsb` - Subtraction function
+- `fib.telsb` - Recursive Fibonacci (imports add and sub)
+- `main.telsb` - Entry point (imports fib, prints sequence)
 
 Expected output:
 ```
@@ -60,10 +60,10 @@ Expected output:
 Demonstrates various math utility functions.
 
 Files:
-- `max.lisp` - Returns maximum of two numbers
-- `min.lisp` - Returns minimum of two numbers
-- `abs.lisp` - Returns absolute value
-- `main.lisp` - Entry point (imports all, tests various cases)
+- `max.telsb` - Returns maximum of two numbers
+- `min.telsb` - Returns minimum of two numbers
+- `abs.telsb` - Returns absolute value
+- `main.telsb` - Entry point (imports all, tests various cases)
 
 Expected output:
 ```
@@ -77,7 +77,7 @@ Expected output:
 ## Language Features Demonstrated
 
 All examples demonstrate:
-- **Multi-file imports**: Files can import other files using `(import filename.lisp)`
+- **Multi-file imports**: Files can import other files using `(import filename)`
 - **Function calls**: `(call funcname arg1 arg2)` calls imported functions
 - **Argument access**: `(arg 1)` and `(arg 2)` access function arguments
 - **Early return**: `(return value)` exits function early

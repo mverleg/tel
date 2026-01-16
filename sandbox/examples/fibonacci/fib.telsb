@@ -1,5 +1,5 @@
-(import add.lisp)
-(import sub.lisp)
+(import add)
+(import sub)
 
 (let n (arg 1))
 

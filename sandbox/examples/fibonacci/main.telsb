@@ -1,4 +1,4 @@
-(import fib.lisp)
+(import fib)
 
 (print (call fib 0 0))
 (print (call fib 1 0))

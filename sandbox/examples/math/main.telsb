@@ -1,6 +1,6 @@
-(import max.lisp)
-(import min.lisp)
-(import abs.lisp)
+(import max)
+(import min)
+(import abs)
 
 (let a 15)
 (let b 20)

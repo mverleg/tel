@@ -13,7 +13,6 @@ struct Resolver {
 }
 
 struct Scope {
-    id: ScopeId,
     parent: Option<ScopeId>,
     vars: HashMap<String, VarId>,
 }
@@ -21,7 +20,6 @@ struct Scope {
 impl Resolver {
     fn new(base_path: PathBuf) -> Self {
         let global_scope = Scope {
-            id: ScopeId(0),
             parent: None,
             vars: HashMap::new(),
         };
@@ -42,7 +40,6 @@ impl Resolver {
         self.next_scope_id += 1;
 
         let new_scope = Scope {
-            id: new_id,
             parent: Some(self.current_scope),
             vars: HashMap::new(),
         };
@@ -59,11 +56,14 @@ impl Resolver {
         }
     }
 
-    fn declare_var(&mut self, name: String) -> VarId {
+    fn declare_var(&mut self, name: String) -> Result<VarId, ResolveError> {
+        if self.resolve_var(&name).is_ok() {
+            return Err(ResolveError::VariableAlreadyDefined(name));
+        }
         let var_id = self.symbol_table.add_var(name.clone(), self.current_scope);
         let scope = &mut self.scopes[self.current_scope.0];
         scope.vars.insert(name, var_id);
-        var_id
+        Ok(var_id)
     }
 
     fn resolve_var(&self, name: &str) -> Result<VarId, ResolveError> {
@@ -100,6 +100,14 @@ impl Resolver {
                 let resolved_value = Box::new(self.resolve_expr(*value)?);
                 let var_id = self.declare_var(name);
                 Ok(Expr::Let {
+                    var: var_id,
+                    value: resolved_value,
+                })
+            }
+            PreExpr::Set { name, value } => {
+                let resolved_value = Box::new(self.resolve_expr(*value)?);
+                let var_id = self.resolve_var(&name)?;
+                Ok(Expr::Set {
                     var: var_id,
                     value: resolved_value,
                 })
@@ -171,7 +179,12 @@ impl Resolver {
         let imports = self.extract_imports(pre_ast)?;
 
         for import_path in imports {
-            let full_path = self.base_path.join(&import_path);
+            let import_with_ext = if import_path.ends_with(".telsb") {
+                import_path.clone()
+            } else {
+                format!("{}.telsb", import_path)
+            };
+            let full_path = self.base_path.join(&import_with_ext);
 
             let source = crate::io::load_file(full_path.to_str().unwrap())
                 .map_err(|_| ResolveError::UndefinedFunction(import_path.clone()))?;
@@ -179,7 +192,7 @@ impl Resolver {
             let imported_pre_ast = crate::parse::parse(&source)
                 .map_err(|_| ResolveError::UndefinedFunction(import_path.clone()))?;
 
-            let func_name = Path::new(&import_path)
+            let func_name = Path::new(&import_with_ext)
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or(&import_path)
@@ -255,7 +268,7 @@ impl Resolver {
                 Self::remap_func_ids(left, offset);
                 Self::remap_func_ids(right, offset);
             }
-            Expr::Let { value, .. } => {
+            Expr::Let { value, .. } | Expr::Set { value, .. } => {
                 Self::remap_func_ids(value, offset);
             }
             Expr::If { cond, then_branch, else_branch } => {
