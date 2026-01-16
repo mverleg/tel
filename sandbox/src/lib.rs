@@ -1,6 +1,7 @@
 pub mod execute;
 pub mod io;
 pub mod parse;
+pub mod qcompiler2;
 pub mod resolve;
 pub mod types;
 

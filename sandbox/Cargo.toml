@@ -4,6 +4,8 @@ edition.workspace = true
 version.workspace = true
 
 [dependencies]
+serde.workspace = true
+serde_json.workspace = true
 
 [[example]]
 name = "run_factorial"
@@ -16,3 +18,7 @@ path = "examples_bin/run_fibonacci.rs"
 [[example]]
 name = "run_math"
 path = "examples_bin/run_math.rs"
+
+[[example]]
+name = "qcompiler2_demo"
+path = "examples_bin/qcompiler2_demo.rs"
