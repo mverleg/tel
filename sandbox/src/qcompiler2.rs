@@ -24,6 +24,7 @@ pub struct ExecId {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StepId {
+    Root,
     Read(ReadId),
     Parse(ParseId),
     Resolve(ResolveId),
@@ -49,16 +50,16 @@ struct ExecutionLog {
 #[derive(Clone)]
 pub struct Context {
     log: Arc<Mutex<ExecutionLog>>,
-    from_step: Option<StepId>,
+    from_step: StepId,
 }
 
 impl Context {
-    pub fn new() -> Self {
+    pub fn root() -> Self {
         Self {
             log: Arc::new(Mutex::new(ExecutionLog {
                 dependencies: Vec::new(),
             })),
-            from_step: None,
+            from_step: StepId::Root,
         }
     }
 
@@ -69,20 +70,18 @@ impl Context {
 
         println!("[qcompiler2] Enter: {}", serde_json::to_string(&my_id).unwrap());
 
-        if let Some(ref my_parent) = self.from_step {
-            let my_dep = Dependency {
-                from: my_parent.clone(),
-                to: my_id.clone(),
-            };
-            println!("[qcompiler2] Dependency: {} -> {}",
-                serde_json::to_string(&my_dep.from).unwrap(),
-                serde_json::to_string(&my_dep.to).unwrap());
-            self.log.lock().unwrap().dependencies.push(my_dep);
-        }
+        let my_dep = Dependency {
+            from: self.from_step.clone(),
+            to: my_id.clone(),
+        };
+        println!("[qcompiler2] Dependency: {} -> {}",
+            serde_json::to_string(&my_dep.from).unwrap(),
+            serde_json::to_string(&my_dep.to).unwrap());
+        self.log.lock().unwrap().dependencies.push(my_dep);
 
         let my_child = Context {
             log: self.log.clone(),
-            from_step: Some(my_id.clone()),
+            from_step: my_id.clone(),
         };
 
         let my_result = f(my_child);
@@ -99,20 +98,18 @@ impl Context {
 
         println!("[qcompiler2] Enter: {}", serde_json::to_string(&my_id).unwrap());
 
-        if let Some(ref my_parent) = self.from_step {
-            let my_dep = Dependency {
-                from: my_parent.clone(),
-                to: my_id.clone(),
-            };
-            println!("[qcompiler2] Dependency: {} -> {}",
-                serde_json::to_string(&my_dep.from).unwrap(),
-                serde_json::to_string(&my_dep.to).unwrap());
-            self.log.lock().unwrap().dependencies.push(my_dep);
-        }
+        let my_dep = Dependency {
+            from: self.from_step.clone(),
+            to: my_id.clone(),
+        };
+        println!("[qcompiler2] Dependency: {} -> {}",
+            serde_json::to_string(&my_dep.from).unwrap(),
+            serde_json::to_string(&my_dep.to).unwrap());
+        self.log.lock().unwrap().dependencies.push(my_dep);
 
         let my_child = Context {
             log: self.log.clone(),
-            from_step: Some(my_id.clone()),
+            from_step: my_id.clone(),
         };
 
         let my_result = f(my_child);
@@ -129,20 +126,18 @@ impl Context {
 
         println!("[qcompiler2] Enter: {}", serde_json::to_string(&my_id).unwrap());
 
-        if let Some(ref my_parent) = self.from_step {
-            let my_dep = Dependency {
-                from: my_parent.clone(),
-                to: my_id.clone(),
-            };
-            println!("[qcompiler2] Dependency: {} -> {}",
-                serde_json::to_string(&my_dep.from).unwrap(),
-                serde_json::to_string(&my_dep.to).unwrap());
-            self.log.lock().unwrap().dependencies.push(my_dep);
-        }
+        let my_dep = Dependency {
+            from: self.from_step.clone(),
+            to: my_id.clone(),
+        };
+        println!("[qcompiler2] Dependency: {} -> {}",
+            serde_json::to_string(&my_dep.from).unwrap(),
+            serde_json::to_string(&my_dep.to).unwrap());
+        self.log.lock().unwrap().dependencies.push(my_dep);
 
         let my_child = Context {
             log: self.log.clone(),
-            from_step: Some(my_id.clone()),
+            from_step: my_id.clone(),
         };
 
         let my_result = f(my_child);
@@ -159,20 +154,18 @@ impl Context {
 
         println!("[qcompiler2] Enter: {}", serde_json::to_string(&my_id).unwrap());
 
-        if let Some(ref my_parent) = self.from_step {
-            let my_dep = Dependency {
-                from: my_parent.clone(),
-                to: my_id.clone(),
-            };
-            println!("[qcompiler2] Dependency: {} -> {}",
-                serde_json::to_string(&my_dep.from).unwrap(),
-                serde_json::to_string(&my_dep.to).unwrap());
-            self.log.lock().unwrap().dependencies.push(my_dep);
-        }
+        let my_dep = Dependency {
+            from: self.from_step.clone(),
+            to: my_id.clone(),
+        };
+        println!("[qcompiler2] Dependency: {} -> {}",
+            serde_json::to_string(&my_dep.from).unwrap(),
+            serde_json::to_string(&my_dep.to).unwrap());
+        self.log.lock().unwrap().dependencies.push(my_dep);
 
         let my_child = Context {
             log: self.log.clone(),
-            from_step: Some(my_id.clone()),
+            from_step: my_id.clone(),
         };
 
         let my_result = f(my_child);
@@ -249,12 +242,6 @@ impl Context {
     }
 }
 
-impl Default for Context {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,7 +258,7 @@ mod tests {
 
     #[test]
     fn test_compilation_log() {
-        let my_ctx = Context::new();
+        let my_ctx = Context::root();
         my_ctx.in_read("main.telsb", |ctx| {
             ctx.in_parse("main.telsb", |ctx| {
                 ctx.in_resolve("main", |ctx| {
