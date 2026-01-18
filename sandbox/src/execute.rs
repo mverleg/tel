@@ -136,7 +136,7 @@ impl<'a> Interpreter<'a> {
     }
 }
 
-pub fn execute(ast: Expr, symbols: &SymbolTable, a_ctx: &mut Context) -> Result<(), ExecuteError> {
+pub fn execute(ast: Expr, symbols: &SymbolTable, a_ctx: &Context) -> Result<(), ExecuteError> {
     a_ctx.in_exec("main", |_ctx| {
         let mut interpreter = Interpreter::new(symbols);
         interpreter.eval(&ast)?;

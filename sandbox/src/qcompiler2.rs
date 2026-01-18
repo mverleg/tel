@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ReadId {
@@ -41,92 +42,157 @@ struct DependencyNode {
     dependencies: Vec<DependencyNode>,
 }
 
-pub struct Context {
-    call_stack: Vec<StepId>,
+struct ExecutionLog {
     dependencies: Vec<Dependency>,
+}
+
+#[derive(Clone)]
+pub struct Context {
+    log: Arc<Mutex<ExecutionLog>>,
+    from_step: Option<StepId>,
 }
 
 impl Context {
     pub fn new() -> Self {
         Self {
-            call_stack: Vec::new(),
-            dependencies: Vec::new(),
+            log: Arc::new(Mutex::new(ExecutionLog {
+                dependencies: Vec::new(),
+            })),
+            from_step: None,
         }
     }
 
-    fn enter_step(&mut self, a_step: StepId) {
-        println!("[qcompiler2] Enter: {}", serde_json::to_string(&a_step).unwrap());
+    pub fn in_read<T>(&self, file_path: impl Into<String>, f: impl FnOnce(Context) -> T) -> T {
+        let my_id = StepId::Read(ReadId {
+            file_path: file_path.into(),
+        });
 
-        if let Some(my_parent) = self.call_stack.last() {
+        println!("[qcompiler2] Enter: {}", serde_json::to_string(&my_id).unwrap());
+
+        if let Some(ref my_parent) = self.from_step {
             let my_dep = Dependency {
                 from: my_parent.clone(),
-                to: a_step.clone(),
+                to: my_id.clone(),
             };
             println!("[qcompiler2] Dependency: {} -> {}",
                 serde_json::to_string(&my_dep.from).unwrap(),
                 serde_json::to_string(&my_dep.to).unwrap());
-            self.dependencies.push(my_dep);
+            self.log.lock().unwrap().dependencies.push(my_dep);
         }
 
-        self.call_stack.push(a_step);
-    }
+        let my_child = Context {
+            log: self.log.clone(),
+            from_step: Some(my_id.clone()),
+        };
 
-    fn exit_step(&mut self) {
-        if let Some(my_step) = self.call_stack.pop() {
-            println!("[qcompiler2] Exit: {}", serde_json::to_string(&my_step).unwrap());
-        }
-    }
+        let my_result = f(my_child);
 
-    pub fn in_read<T>(&mut self, file_path: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
-        let my_id = StepId::Read(ReadId {
-            file_path: file_path.into(),
-        });
-        self.enter_step(my_id);
-        let my_result = f(self);
-        self.exit_step();
+        println!("[qcompiler2] Exit: {}", serde_json::to_string(&my_id).unwrap());
+
         my_result
     }
 
-    pub fn in_parse<T>(&mut self, file_path: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub fn in_parse<T>(&self, file_path: impl Into<String>, f: impl FnOnce(Context) -> T) -> T {
         let my_id = StepId::Parse(ParseId {
             file_path: file_path.into(),
         });
-        self.enter_step(my_id);
-        let my_result = f(self);
-        self.exit_step();
+
+        println!("[qcompiler2] Enter: {}", serde_json::to_string(&my_id).unwrap());
+
+        if let Some(ref my_parent) = self.from_step {
+            let my_dep = Dependency {
+                from: my_parent.clone(),
+                to: my_id.clone(),
+            };
+            println!("[qcompiler2] Dependency: {} -> {}",
+                serde_json::to_string(&my_dep.from).unwrap(),
+                serde_json::to_string(&my_dep.to).unwrap());
+            self.log.lock().unwrap().dependencies.push(my_dep);
+        }
+
+        let my_child = Context {
+            log: self.log.clone(),
+            from_step: Some(my_id.clone()),
+        };
+
+        let my_result = f(my_child);
+
+        println!("[qcompiler2] Exit: {}", serde_json::to_string(&my_id).unwrap());
+
         my_result
     }
 
-    pub fn in_resolve<T>(&mut self, func_name: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub fn in_resolve<T>(&self, func_name: impl Into<String>, f: impl FnOnce(Context) -> T) -> T {
         let my_id = StepId::Resolve(ResolveId {
             func_name: func_name.into(),
         });
-        self.enter_step(my_id);
-        let my_result = f(self);
-        self.exit_step();
+
+        println!("[qcompiler2] Enter: {}", serde_json::to_string(&my_id).unwrap());
+
+        if let Some(ref my_parent) = self.from_step {
+            let my_dep = Dependency {
+                from: my_parent.clone(),
+                to: my_id.clone(),
+            };
+            println!("[qcompiler2] Dependency: {} -> {}",
+                serde_json::to_string(&my_dep.from).unwrap(),
+                serde_json::to_string(&my_dep.to).unwrap());
+            self.log.lock().unwrap().dependencies.push(my_dep);
+        }
+
+        let my_child = Context {
+            log: self.log.clone(),
+            from_step: Some(my_id.clone()),
+        };
+
+        let my_result = f(my_child);
+
+        println!("[qcompiler2] Exit: {}", serde_json::to_string(&my_id).unwrap());
+
         my_result
     }
 
-    pub fn in_exec<T>(&mut self, main_func: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub fn in_exec<T>(&self, main_func: impl Into<String>, f: impl FnOnce(Context) -> T) -> T {
         let my_id = StepId::Exec(ExecId {
             main_func: main_func.into(),
         });
-        self.enter_step(my_id);
-        let my_result = f(self);
-        self.exit_step();
+
+        println!("[qcompiler2] Enter: {}", serde_json::to_string(&my_id).unwrap());
+
+        if let Some(ref my_parent) = self.from_step {
+            let my_dep = Dependency {
+                from: my_parent.clone(),
+                to: my_id.clone(),
+            };
+            println!("[qcompiler2] Dependency: {} -> {}",
+                serde_json::to_string(&my_dep.from).unwrap(),
+                serde_json::to_string(&my_dep.to).unwrap());
+            self.log.lock().unwrap().dependencies.push(my_dep);
+        }
+
+        let my_child = Context {
+            log: self.log.clone(),
+            from_step: Some(my_id.clone()),
+        };
+
+        let my_result = f(my_child);
+
+        println!("[qcompiler2] Exit: {}", serde_json::to_string(&my_id).unwrap());
+
         my_result
     }
 
-    pub fn dependencies(&self) -> &[Dependency] {
-        &self.dependencies
+    pub fn dependencies(&self) -> Vec<Dependency> {
+        self.log.lock().unwrap().dependencies.clone()
     }
 
     pub fn to_json(&self) -> String {
+        let my_dependencies = self.dependencies();
         let mut my_children: HashMap<StepId, Vec<StepId>> = HashMap::new();
         let mut my_all_nodes: HashSet<StepId> = HashSet::new();
         let mut my_has_parent: HashSet<StepId> = HashSet::new();
 
-        for dep in &self.dependencies {
+        for dep in &my_dependencies {
             my_children.entry(dep.from.clone()).or_insert_with(Vec::new).push(dep.to.clone());
             my_all_nodes.insert(dep.from.clone());
             my_all_nodes.insert(dep.to.clone());
@@ -205,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_compilation_log() {
-        let mut my_ctx = Context::new();
+        let my_ctx = Context::new();
         my_ctx.in_read("main.telsb", |ctx| {
             ctx.in_parse("main.telsb", |ctx| {
                 ctx.in_resolve("main", |ctx| {

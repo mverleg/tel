@@ -53,19 +53,19 @@ impl From<types::ExecuteError> for Error {
 }
 
 pub fn run_file(path: &str) -> Result<(), Error> {
-    let mut my_ctx = qcompiler2::Context::new();
-    let source = io::load_file(path, &mut my_ctx)?;
-    let pre_ast = parse::parse(&source, path, &mut my_ctx)?;
-    let (ast, symbols) = resolve::resolve(pre_ast, path, &mut my_ctx)?;
-    execute::execute(ast, &symbols, &mut my_ctx)?;
+    let my_ctx = qcompiler2::Context::new();
+    let source = io::load_file(path, &my_ctx)?;
+    let pre_ast = parse::parse(&source, path, &my_ctx)?;
+    let (ast, symbols) = resolve::resolve(pre_ast, path, &my_ctx)?;
+    execute::execute(ast, &symbols, &my_ctx)?;
     Ok(())
 }
 
 pub fn run_source(source: &str) -> Result<(), Error> {
-    let mut my_ctx = qcompiler2::Context::new();
-    let pre_ast = parse::parse(source, "<source>", &mut my_ctx)?;
-    let (ast, symbols) = resolve::resolve(pre_ast, ".", &mut my_ctx)?;
-    execute::execute(ast, &symbols, &mut my_ctx)?;
+    let my_ctx = qcompiler2::Context::new();
+    let pre_ast = parse::parse(source, "<source>", &my_ctx)?;
+    let (ast, symbols) = resolve::resolve(pre_ast, ".", &my_ctx)?;
+    execute::execute(ast, &symbols, &my_ctx)?;
     Ok(())
 }
 

@@ -3,7 +3,7 @@ use crate::types::{Expr, FuncId, PreExpr, ResolveError, ScopeId, SymbolTable, Va
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-struct Resolver<'a> {
+struct Resolver {
     symbol_table: SymbolTable,
     scopes: Vec<Scope>,
     current_scope: ScopeId,
@@ -12,7 +12,7 @@ struct Resolver<'a> {
     func_arities: HashMap<FuncId, usize>,
     in_function: bool,
     base_path: PathBuf,
-    ctx: &'a mut Context,
+    ctx: Context,
 }
 
 struct Scope {
@@ -20,8 +20,8 @@ struct Scope {
     vars: HashMap<String, VarId>,
 }
 
-impl<'a> Resolver<'a> {
-    fn new(base_path: PathBuf, a_ctx: &'a mut Context) -> Self {
+impl Resolver {
+    fn new(base_path: PathBuf, a_ctx: Context) -> Self {
         let global_scope = Scope {
             parent: None,
             vars: HashMap::new(),
@@ -263,15 +263,15 @@ impl<'a> Resolver<'a> {
             }
             let full_path = self.base_path.join(format!("{}.telsb", import_name));
 
-            let source = crate::io::load_file(full_path.to_str().unwrap(), self.ctx)
+            let source = crate::io::load_file(full_path.to_str().unwrap(), &self.ctx)
                 .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
 
-            let imported_pre_ast = crate::parse::parse(&source, full_path.to_str().unwrap(), self.ctx)
+            let imported_pre_ast = crate::parse::parse(&source, full_path.to_str().unwrap(), &self.ctx)
                 .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
 
             let arity = Self::calculate_arity(&imported_pre_ast, &import_name)?;
 
-            let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf(), self.ctx);
+            let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf(), self.ctx.clone());
             func_resolver.in_function = true;
             func_resolver.process_imports(&imported_pre_ast)?;
 
@@ -342,7 +342,6 @@ impl<'a> Resolver<'a> {
 
         match pre_expr {
             PreExpr::Sequence(exprs) => {
-                let mut seen_import = false;
                 let mut seen_function_def = false;
                 let mut seen_other = false;
 
@@ -352,7 +351,6 @@ impl<'a> Resolver<'a> {
                             if seen_function_def || seen_other {
                                 return Err(ResolveError::ImportNotAtTop);
                             }
-                            seen_import = true;
                         }
                         PreExpr::FunctionDef { name, body } => {
                             if seen_other {
@@ -458,7 +456,7 @@ impl<'a> Resolver<'a> {
     }
 }
 
-pub fn resolve(pre_ast: PreExpr, base_path: &str, a_ctx: &mut Context) -> Result<(Expr, SymbolTable), ResolveError> {
+pub fn resolve(pre_ast: PreExpr, base_path: &str, a_ctx: &Context) -> Result<(Expr, SymbolTable), ResolveError> {
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
 

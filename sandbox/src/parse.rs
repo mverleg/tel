@@ -274,7 +274,7 @@ impl Parser {
     }
 }
 
-pub fn parse(source: &str, file_path: &str, a_ctx: &mut Context) -> Result<PreExpr, ParseError> {
+pub fn parse(source: &str, file_path: &str, a_ctx: &Context) -> Result<PreExpr, ParseError> {
     a_ctx.in_parse(file_path, |_ctx| {
         let tokens = tokenize(source)?;
         let mut parser = Parser::new(tokens);
