@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ReadId {
@@ -33,6 +33,12 @@ pub enum StepId {
 pub struct Dependency {
     pub from: StepId,
     pub to: StepId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DependencyNode {
+    step: StepId,
+    dependencies: Vec<DependencyNode>,
 }
 
 pub struct CompilationLog {
@@ -116,15 +122,64 @@ impl CompilationLog {
     }
 
     pub fn to_json(&self) -> String {
-        let mut my_graph: HashMap<String, Vec<String>> = HashMap::new();
+        let mut my_children: HashMap<StepId, Vec<StepId>> = HashMap::new();
+        let mut my_all_nodes: HashSet<StepId> = HashSet::new();
+        let mut my_has_parent: HashSet<StepId> = HashSet::new();
 
         for dep in &self.dependencies {
-            let my_from = serde_json::to_string(&dep.from).unwrap();
-            let my_to = serde_json::to_string(&dep.to).unwrap();
-            my_graph.entry(my_from).or_insert_with(Vec::new).push(my_to);
+            my_children.entry(dep.from.clone()).or_insert_with(Vec::new).push(dep.to.clone());
+            my_all_nodes.insert(dep.from.clone());
+            my_all_nodes.insert(dep.to.clone());
+            my_has_parent.insert(dep.to.clone());
         }
 
-        serde_json::to_string_pretty(&my_graph).unwrap()
+        let my_roots: Vec<StepId> = my_all_nodes
+            .iter()
+            .filter(|node| !my_has_parent.contains(node))
+            .cloned()
+            .collect();
+
+        let my_tree = self.build_tree_nodes(&my_roots, &my_children, &mut HashSet::new());
+
+        serde_json::to_string_pretty(&my_tree).unwrap()
+    }
+
+    fn build_tree_nodes(
+        &self,
+        a_nodes: &[StepId],
+        a_children: &HashMap<StepId, Vec<StepId>>,
+        a_visited: &mut HashSet<StepId>,
+    ) -> Vec<DependencyNode> {
+        a_nodes
+            .iter()
+            .map(|node| self.build_tree_node(node, a_children, a_visited))
+            .collect()
+    }
+
+    fn build_tree_node(
+        &self,
+        a_node: &StepId,
+        a_children: &HashMap<StepId, Vec<StepId>>,
+        a_visited: &mut HashSet<StepId>,
+    ) -> DependencyNode {
+        if a_visited.contains(a_node) {
+            panic!("Cyclic dependency detected at: {:?}", a_node);
+        }
+
+        a_visited.insert(a_node.clone());
+
+        let my_deps = if let Some(children) = a_children.get(a_node) {
+            self.build_tree_nodes(children, a_children, a_visited)
+        } else {
+            Vec::new()
+        };
+
+        a_visited.remove(a_node);
+
+        DependencyNode {
+            step: a_node.clone(),
+            dependencies: my_deps,
+        }
     }
 }
 
