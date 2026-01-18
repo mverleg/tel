@@ -6,6 +6,7 @@
 (function mul (* (arg 1) (arg 2)))
 (function max (if (> (arg 1) (arg 2)) (arg 1) (arg 2)))
 (function square (* (arg 1) (arg 1)))
+(function calc_area (call mul (arg 1) (arg 2)))
 
 # Use local functions in expressions
 (let a 5)
@@ -15,8 +16,8 @@
 (print (call mul a b))
 (print (call max a b))
 
-(let sq_a (call square a 0))
-(let sq_b (call square b 0))
+(let sq_a (call square a))
+(let sq_b (call square b))
 (print sq_a)
 (print sq_b)
 
@@ -25,6 +26,5 @@
 (print sum_of_squares)
 
 # Local functions can call each other
-(function calc_area (call mul (arg 1) (arg 2)))
 (let area (call calc_area 12 15))
 (print area)

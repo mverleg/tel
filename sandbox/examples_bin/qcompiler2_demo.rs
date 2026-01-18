@@ -1,25 +1,25 @@
-use sandbox::qcompiler2::CompilationLog;
+use sandbox::qcompiler2::Context;
 
 fn main() {
-    let mut my_log = CompilationLog::new();
+    let mut my_ctx = Context::new();
 
-    my_log.in_resolve("main", |log| {
-        log.in_read("examples/factorial/main.telsb", |log| {
-            log.in_parse("examples/factorial/main.telsb", |_log| {
+    my_ctx.in_resolve("main", |ctx| {
+        ctx.in_read("examples/factorial/main.telsb", |ctx| {
+            ctx.in_parse("examples/factorial/main.telsb", |_ctx| {
             })
         });
 
-        log.in_resolve("fact_helper", |log| {
-            log.in_read("examples/factorial/fact_helper.telsb", |log| {
-                log.in_parse("examples/factorial/fact_helper.telsb", |_log| {
+        ctx.in_resolve("fact_helper", |ctx| {
+            ctx.in_read("examples/factorial/fact_helper.telsb", |ctx| {
+                ctx.in_parse("examples/factorial/fact_helper.telsb", |_ctx| {
                 })
             })
         });
 
-        log.in_exec("main", |_log| {
+        ctx.in_exec("main", |_ctx| {
         })
     });
 
     println!("\n=== Dependency Graph (JSON) ===");
-    println!("{}", my_log.to_json());
+    println!("{}", my_ctx.to_json());
 }

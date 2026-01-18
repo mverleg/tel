@@ -1,4 +1,4 @@
-use crate::qcompiler2::CompilationLog;
+use crate::qcompiler2::Context;
 use crate::types::{BinOp, ExecuteError, Expr, SymbolTable, VarId};
 use std::collections::HashMap;
 
@@ -10,7 +10,7 @@ enum EvalResult {
 struct Interpreter<'a> {
     values: HashMap<VarId, i64>,
     symbols: &'a SymbolTable,
-    args: Option<(i64, i64)>,
+    args: Option<Vec<i64>>,
 }
 
 impl<'a> Interpreter<'a> {
@@ -81,17 +81,20 @@ impl<'a> Interpreter<'a> {
                 let val = self.eval_value(expr)?;
                 Ok(EvalResult::Return(val))
             }
-            Expr::Call { func, arg1, arg2 } => {
-                let arg1_val = self.eval_value(arg1)?;
-                let arg2_val = self.eval_value(arg2)?;
+            Expr::Call { func, args } => {
+                let mut arg_vals = Vec::new();
+                for arg in args {
+                    arg_vals.push(self.eval_value(arg)?);
+                }
 
                 let func_info = &self.symbols.funcs[func.0];
-                let result = self.call_function(&func_info.ast, arg1_val, arg2_val)?;
+                let result = self.call_function(&func_info.ast, arg_vals)?;
                 Ok(EvalResult::Value(result))
             }
             Expr::Arg(n) => {
-                let (arg1, arg2) = self.args.ok_or(ExecuteError::ArgNotProvided(*n))?;
-                let val = if *n == 1 { arg1 } else { arg2 };
+                let args = self.args.as_ref().ok_or(ExecuteError::ArgNotProvided(*n))?;
+                let index = (*n as usize) - 1;
+                let val = *args.get(index).ok_or(ExecuteError::ArgNotProvided(*n))?;
                 Ok(EvalResult::Value(val))
             }
             Expr::Sequence(exprs) => {
@@ -114,11 +117,11 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn call_function(&mut self, func_ast: &Expr, arg1: i64, arg2: i64) -> Result<i64, ExecuteError> {
-        let saved_args = self.args;
+    fn call_function(&mut self, func_ast: &Expr, args: Vec<i64>) -> Result<i64, ExecuteError> {
+        let saved_args = self.args.take();
         let saved_values = self.values.clone();
 
-        self.args = Some((arg1, arg2));
+        self.args = Some(args);
         self.values.clear();
 
         let result = match self.eval(func_ast)? {
@@ -133,8 +136,8 @@ impl<'a> Interpreter<'a> {
     }
 }
 
-pub fn execute(ast: Expr, symbols: &SymbolTable, a_log: &mut CompilationLog) -> Result<(), ExecuteError> {
-    a_log.in_exec("main", |_log| {
+pub fn execute(ast: Expr, symbols: &SymbolTable, a_ctx: &mut Context) -> Result<(), ExecuteError> {
+    a_ctx.in_exec("main", |_ctx| {
         let mut interpreter = Interpreter::new(symbols);
         interpreter.eval(&ast)?;
         Ok(())

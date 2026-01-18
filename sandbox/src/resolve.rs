@@ -1,4 +1,4 @@
-use crate::qcompiler2::CompilationLog;
+use crate::qcompiler2::Context;
 use crate::types::{Expr, FuncId, PreExpr, ResolveError, ScopeId, SymbolTable, VarId};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -9,9 +9,10 @@ struct Resolver<'a> {
     current_scope: ScopeId,
     next_scope_id: usize,
     funcs: HashMap<String, FuncId>,
+    func_arities: HashMap<FuncId, usize>,
     in_function: bool,
     base_path: PathBuf,
-    log: &'a mut CompilationLog,
+    ctx: &'a mut Context,
 }
 
 struct Scope {
@@ -20,7 +21,7 @@ struct Scope {
 }
 
 impl<'a> Resolver<'a> {
-    fn new(base_path: PathBuf, log: &'a mut CompilationLog) -> Self {
+    fn new(base_path: PathBuf, a_ctx: &'a mut Context) -> Self {
         let global_scope = Scope {
             parent: None,
             vars: HashMap::new(),
@@ -32,9 +33,69 @@ impl<'a> Resolver<'a> {
             current_scope: ScopeId(0),
             next_scope_id: 1,
             funcs: HashMap::new(),
+            func_arities: HashMap::new(),
             in_function: false,
             base_path,
-            log,
+            ctx: a_ctx,
+        }
+    }
+
+    fn calculate_arity(expr: &PreExpr, func_name: &str) -> Result<usize, ResolveError> {
+        let mut max_arg = 0u8;
+        let mut arg_numbers = std::collections::HashSet::new();
+
+        Self::collect_arg_numbers(expr, &mut arg_numbers, &mut max_arg);
+
+        if max_arg == 0 {
+            return Ok(0);
+        }
+
+        for i in 1..=max_arg {
+            if !arg_numbers.contains(&i) {
+                return Err(ResolveError::ArityGap {
+                    func_name: func_name.to_string(),
+                    max_arg: max_arg as usize,
+                });
+            }
+        }
+
+        Ok(max_arg as usize)
+    }
+
+    fn collect_arg_numbers(expr: &PreExpr, arg_numbers: &mut std::collections::HashSet<u8>, max_arg: &mut u8) {
+        match expr {
+            PreExpr::Arg(n) => {
+                arg_numbers.insert(*n);
+                if *n > *max_arg {
+                    *max_arg = *n;
+                }
+            }
+            PreExpr::BinaryOp { left, right, .. } => {
+                Self::collect_arg_numbers(left, arg_numbers, max_arg);
+                Self::collect_arg_numbers(right, arg_numbers, max_arg);
+            }
+            PreExpr::Let { value, .. } | PreExpr::Set { value, .. } => {
+                Self::collect_arg_numbers(value, arg_numbers, max_arg);
+            }
+            PreExpr::If { cond, then_branch, else_branch } => {
+                Self::collect_arg_numbers(cond, arg_numbers, max_arg);
+                Self::collect_arg_numbers(then_branch, arg_numbers, max_arg);
+                Self::collect_arg_numbers(else_branch, arg_numbers, max_arg);
+            }
+            PreExpr::Print(e) | PreExpr::Return(e) => {
+                Self::collect_arg_numbers(e, arg_numbers, max_arg);
+            }
+            PreExpr::Call { args, .. } => {
+                for arg in args {
+                    Self::collect_arg_numbers(arg, arg_numbers, max_arg);
+                }
+            }
+            PreExpr::Sequence(exprs) => {
+                for expr in exprs {
+                    Self::collect_arg_numbers(expr, arg_numbers, max_arg);
+                }
+            }
+            PreExpr::Number(_) | PreExpr::Ident(_) | PreExpr::Import(_) | PreExpr::FunctionDef { .. } => {}
         }
     }
 
@@ -150,24 +211,36 @@ impl<'a> Resolver<'a> {
             PreExpr::FunctionDef { .. } => {
                 Err(ResolveError::FunctionDefNotAfterImports)
             }
-            PreExpr::Call { func, arg1, arg2 } => {
+            PreExpr::Call { func, args } => {
                 let func_id = self.funcs.get(&func)
                     .copied()
                     .ok_or_else(|| ResolveError::UndefinedFunction(func.clone()))?;
-                let resolved_arg1 = Box::new(self.resolve_expr(*arg1)?);
-                let resolved_arg2 = Box::new(self.resolve_expr(*arg2)?);
+
+                let expected_arity = self.func_arities.get(&func_id)
+                    .copied()
+                    .unwrap_or_else(|| self.symbol_table.funcs[func_id.0].arity);
+                let got_arity = args.len();
+
+                if expected_arity != got_arity {
+                    return Err(ResolveError::ArityMismatch {
+                        func_name: func.clone(),
+                        expected: expected_arity,
+                        got: got_arity,
+                    });
+                }
+
+                let mut resolved_args = Vec::new();
+                for arg in args {
+                    resolved_args.push(Box::new(self.resolve_expr(*arg)?));
+                }
                 Ok(Expr::Call {
                     func: func_id,
-                    arg1: resolved_arg1,
-                    arg2: resolved_arg2,
+                    args: resolved_args,
                 })
             }
             PreExpr::Arg(n) => {
                 if !self.in_function {
                     return Err(ResolveError::ArgOutsideFunction);
-                }
-                if n != 1 && n != 2 {
-                    return Err(ResolveError::InvalidArgNumber(n));
                 }
                 Ok(Expr::Arg(n))
             }
@@ -190,18 +263,21 @@ impl<'a> Resolver<'a> {
             }
             let full_path = self.base_path.join(format!("{}.telsb", import_name));
 
-            let source = crate::io::load_file(full_path.to_str().unwrap(), self.log)
+            let source = crate::io::load_file(full_path.to_str().unwrap(), self.ctx)
                 .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
 
-            let imported_pre_ast = crate::parse::parse(&source, full_path.to_str().unwrap(), self.log)
+            let imported_pre_ast = crate::parse::parse(&source, full_path.to_str().unwrap(), self.ctx)
                 .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
 
-            let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf(), self.log);
+            let arity = Self::calculate_arity(&imported_pre_ast, &import_name)?;
+
+            let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf(), self.ctx);
             func_resolver.in_function = true;
             func_resolver.process_imports(&imported_pre_ast)?;
 
             let placeholder_id = FuncId(self.symbol_table.funcs.len() + func_resolver.symbol_table.funcs.len());
             func_resolver.funcs.insert(import_name.clone(), placeholder_id);
+            func_resolver.func_arities.insert(placeholder_id, arity);
 
             let mut func_ast = func_resolver.resolve_body(&imported_pre_ast)?;
 
@@ -219,8 +295,14 @@ impl<'a> Resolver<'a> {
                 self.funcs.insert(name, new_id);
             }
 
-            let func_id = self.symbol_table.add_func(import_name.clone(), func_ast);
+            for (old_id, arity_value) in func_resolver.func_arities {
+                let new_id = FuncId(old_id.0 + offset);
+                self.func_arities.insert(new_id, arity_value);
+            }
+
+            let func_id = self.symbol_table.add_func(import_name.clone(), func_ast, arity);
             self.funcs.insert(import_name, func_id);
+            self.func_arities.insert(func_id, arity);
         }
 
         Ok(())
@@ -302,6 +384,8 @@ impl<'a> Resolver<'a> {
                 return Err(ResolveError::FunctionAlreadyDefined(func_name));
             }
 
+            let arity = Self::calculate_arity(&func_body, &func_name)?;
+
             let saved_in_function = self.in_function;
             self.in_function = true;
 
@@ -309,8 +393,9 @@ impl<'a> Resolver<'a> {
 
             self.in_function = saved_in_function;
 
-            let func_id = self.symbol_table.add_func(func_name.clone(), resolved_body);
+            let func_id = self.symbol_table.add_func(func_name.clone(), resolved_body, arity);
             self.funcs.insert(func_name, func_id);
+            self.func_arities.insert(func_id, arity);
         }
 
         Ok(())
@@ -318,10 +403,11 @@ impl<'a> Resolver<'a> {
 
     fn remap_func_ids(expr: &mut Expr, offset: usize) {
         match expr {
-            Expr::Call { func, arg1, arg2 } => {
+            Expr::Call { func, args } => {
                 func.0 += offset;
-                Self::remap_func_ids(arg1, offset);
-                Self::remap_func_ids(arg2, offset);
+                for arg in args {
+                    Self::remap_func_ids(arg, offset);
+                }
             }
             Expr::BinaryOp { left, right, .. } => {
                 Self::remap_func_ids(left, offset);
@@ -372,7 +458,7 @@ impl<'a> Resolver<'a> {
     }
 }
 
-pub fn resolve(pre_ast: PreExpr, base_path: &str, a_log: &mut CompilationLog) -> Result<(Expr, SymbolTable), ResolveError> {
+pub fn resolve(pre_ast: PreExpr, base_path: &str, a_ctx: &mut Context) -> Result<(Expr, SymbolTable), ResolveError> {
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
 
@@ -380,8 +466,8 @@ pub fn resolve(pre_ast: PreExpr, base_path: &str, a_log: &mut CompilationLog) ->
         .and_then(|s| s.to_str())
         .unwrap_or("main");
 
-    a_log.in_resolve(my_func_name, |log| {
-        let mut resolver = Resolver::new(dir.to_path_buf(), log);
+    a_ctx.in_resolve(my_func_name, |ctx| {
+        let mut resolver = Resolver::new(dir.to_path_buf(), ctx);
         resolver.process_imports(&pre_ast)?;
         resolver.process_local_functions(&pre_ast)?;
         let ast = resolver.resolve_body(&pre_ast)?;

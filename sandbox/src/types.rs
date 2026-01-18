@@ -44,8 +44,7 @@ pub enum PreExpr {
     },
     Call {
         func: String,
-        arg1: Box<PreExpr>,
-        arg2: Box<PreExpr>,
+        args: Vec<Box<PreExpr>>,
     },
     Arg(u8),
     Sequence(Vec<PreExpr>),
@@ -86,8 +85,7 @@ pub enum Expr {
     Return(Box<Expr>),
     Call {
         func: FuncId,
-        arg1: Box<Expr>,
-        arg2: Box<Expr>,
+        args: Vec<Box<Expr>>,
     },
     Arg(u8),
     Sequence(Vec<Expr>),
@@ -103,6 +101,7 @@ pub struct VarInfo {
 pub struct FuncInfo {
     pub name: String,
     pub ast: Expr,
+    pub arity: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -131,9 +130,9 @@ impl SymbolTable {
         id
     }
 
-    pub fn add_func(&mut self, name: String, ast: Expr) -> FuncId {
+    pub fn add_func(&mut self, name: String, ast: Expr, arity: usize) -> FuncId {
         let id = FuncId(self.funcs.len());
-        self.funcs.push(FuncInfo { name, ast });
+        self.funcs.push(FuncInfo { name, ast, arity });
         id
     }
 }
@@ -170,6 +169,8 @@ pub enum ResolveError {
     ImportNotAtTop,
     FunctionDefNotAfterImports,
     FunctionAlreadyDefined(String),
+    ArityMismatch { func_name: String, expected: usize, got: usize },
+    ArityGap { func_name: String, max_arg: usize },
 }
 
 impl fmt::Display for ResolveError {
@@ -180,10 +181,12 @@ impl fmt::Display for ResolveError {
             ResolveError::InvalidImportPath(name) => write!(f, "Invalid import: {}", name),
             ResolveError::VariableAlreadyDefined(name) => write!(f, "Variable already defined: {}", name),
             ResolveError::ArgOutsideFunction => write!(f, "Arg used outside of function"),
-            ResolveError::InvalidArgNumber(n) => write!(f, "Invalid arg number: {} (must be 1 or 2)", n),
+            ResolveError::InvalidArgNumber(n) => write!(f, "Invalid arg number: {}", n),
             ResolveError::ImportNotAtTop => write!(f, "Import statements must be at the top of the file"),
             ResolveError::FunctionDefNotAfterImports => write!(f, "Function definitions must be after imports and before other code"),
             ResolveError::FunctionAlreadyDefined(name) => write!(f, "Function already defined: {}", name),
+            ResolveError::ArityMismatch { func_name, expected, got } => write!(f, "Function '{}' expects {} arguments, but {} were provided", func_name, expected, got),
+            ResolveError::ArityGap { func_name, max_arg } => write!(f, "Function '{}' has gaps in argument numbers (highest arg is {} but not all args 1..{} are used)", func_name, max_arg, max_arg),
         }
     }
 }

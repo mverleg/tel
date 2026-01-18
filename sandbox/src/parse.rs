@@ -1,4 +1,4 @@
-use crate::qcompiler2::CompilationLog;
+use crate::qcompiler2::Context;
 use crate::types::{BinOp, ParseError, PreExpr};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -234,16 +234,18 @@ impl Parser {
                             Some(Token::Ident(s)) => s,
                             _ => return Err(ParseError::UnexpectedToken("expected function name".to_string())),
                         };
-                        let arg1 = Box::new(self.parse_expr()?);
-                        let arg2 = Box::new(self.parse_expr()?);
+                        let mut args = Vec::new();
+                        while !matches!(self.peek(), Some(Token::RParen)) {
+                            args.push(Box::new(self.parse_expr()?));
+                        }
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::Call { func, arg1, arg2 })
+                        Ok(PreExpr::Call { func, args })
                     }
                     "arg" => {
                         let num = match self.advance() {
-                            Some(Token::Number(n)) if n == 1 || n == 2 => n as u8,
-                            Some(Token::Number(n)) => return Err(ParseError::UnexpectedToken(format!("arg number must be 1 or 2, got {}", n))),
-                            _ => return Err(ParseError::UnexpectedToken("expected arg number (1 or 2)".to_string())),
+                            Some(Token::Number(n)) if n > 0 => n as u8,
+                            Some(Token::Number(n)) => return Err(ParseError::UnexpectedToken(format!("arg number must be positive, got {}", n))),
+                            _ => return Err(ParseError::UnexpectedToken("expected positive arg number".to_string())),
                         };
                         self.expect(Token::RParen)?;
                         Ok(PreExpr::Arg(num))
@@ -272,8 +274,8 @@ impl Parser {
     }
 }
 
-pub fn parse(source: &str, file_path: &str, a_log: &mut CompilationLog) -> Result<PreExpr, ParseError> {
-    a_log.in_parse(file_path, |_log| {
+pub fn parse(source: &str, file_path: &str, a_ctx: &mut Context) -> Result<PreExpr, ParseError> {
+    a_ctx.in_parse(file_path, |_ctx| {
         let tokens = tokenize(source)?;
         let mut parser = Parser::new(tokens);
         parser.parse_all()

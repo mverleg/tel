@@ -7,8 +7,8 @@
 
 (print (call max a b))
 (print (call min a b))
-(print (call abs -42 0))
-(print (call abs 42 0))
+(print (call abs -42))
+(print (call abs 42))
 
 (let x -10)
 (let y -5)

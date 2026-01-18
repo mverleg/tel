@@ -41,12 +41,12 @@ struct DependencyNode {
     dependencies: Vec<DependencyNode>,
 }
 
-pub struct CompilationLog {
+pub struct Context {
     call_stack: Vec<StepId>,
     dependencies: Vec<Dependency>,
 }
 
-impl CompilationLog {
+impl Context {
     pub fn new() -> Self {
         Self {
             call_stack: Vec::new(),
@@ -183,7 +183,7 @@ impl CompilationLog {
     }
 }
 
-impl Default for CompilationLog {
+impl Default for Context {
     fn default() -> Self {
         Self::new()
     }
@@ -205,17 +205,17 @@ mod tests {
 
     #[test]
     fn test_compilation_log() {
-        let mut my_log = CompilationLog::new();
-        my_log.in_read("main.telsb", |log| {
-            log.in_parse("main.telsb", |log| {
-                log.in_resolve("main", |log| {
-                    log.in_exec("main", |_log| {
+        let mut my_ctx = Context::new();
+        my_ctx.in_read("main.telsb", |ctx| {
+            ctx.in_parse("main.telsb", |ctx| {
+                ctx.in_resolve("main", |ctx| {
+                    ctx.in_exec("main", |_ctx| {
                     })
                 })
             })
         });
 
-        let my_json = my_log.to_json();
+        let my_json = my_ctx.to_json();
         assert!(my_json.contains("main.telsb"));
         assert!(my_json.contains("Read"));
         assert!(my_json.contains("Parse"));
