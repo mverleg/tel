@@ -6,35 +6,3 @@ version.workspace = true
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
-
-[[example]]
-name = "run_factorial"
-path = "examples_bin/run_factorial.rs"
-
-[[example]]
-name = "run_fibonacci"
-path = "examples_bin/run_fibonacci.rs"
-
-[[example]]
-name = "run_math"
-path = "examples_bin/run_math.rs"
-
-[[example]]
-name = "qcompiler2_demo"
-path = "examples_bin/qcompiler2_demo.rs"
-
-[[example]]
-name = "run_local_funcs"
-path = "examples_bin/run_local_funcs.rs"
-
-[[example]]
-name = "run_panic_test"
-path = "examples_bin/run_panic_test.rs"
-
-[[example]]
-name = "run_unreachable_test"
-path = "examples_bin/run_unreachable_test.rs"
-
-[[example]]
-name = "run_test_divide"
-path = "examples_bin/run_test_divide.rs"
