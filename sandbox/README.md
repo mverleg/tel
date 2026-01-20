@@ -20,11 +20,13 @@ The compiler processes programs in four phases:
 - [x] Build depenency graph
 - [ ] Inverse dependency graph
 - [ ] Concurrency-safe
+- [ ] Prevent ctx leak outside scope (just pure fn pointers?)
 - [ ] Lock-free (during compile)
 - [ ] Write using async
 - [ ] Cache computation steps
 - [ ] Cache IO steps
-- [ ] Selective caching
+- [ ] Selective caching (e.g not file read)
+- [ ] Cycle detection
 
 ## Running Programs
 

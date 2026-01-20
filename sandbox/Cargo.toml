@@ -6,3 +6,7 @@ version.workspace = true
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+
+[[example]]
+name = "dependency_graph_demo"
+path = "examples/dependency_graph_demo.rs"

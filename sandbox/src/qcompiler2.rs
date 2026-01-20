@@ -43,6 +43,13 @@ struct DependencyNode {
     dependencies: Vec<DependencyNode>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DependencyGraphOutput {
+    tree: Vec<DependencyNode>,
+    leaf_nodes: Vec<StepId>,
+    sample_path_leaf_to_root: Vec<StepId>,
+}
+
 struct ExecutionLog {
     dependencies: Vec<Dependency>,
 }
@@ -200,7 +207,27 @@ impl Context {
 
         let my_tree = self.build_tree_nodes(&my_roots, &my_children, &mut HashSet::new());
 
-        serde_json::to_string_pretty(&my_tree).unwrap()
+        // Find all leaf nodes (nodes with no children)
+        let my_leaf_nodes: Vec<StepId> = my_all_nodes
+            .iter()
+            .filter(|node| !my_children.contains_key(node))
+            .cloned()
+            .collect();
+
+        // Find one path from a leaf to root
+        let my_sample_path = if let Some(leaf) = my_leaf_nodes.first() {
+            self.find_path_to_root(leaf, &my_dependencies)
+        } else {
+            Vec::new()
+        };
+
+        let my_output = DependencyGraphOutput {
+            tree: my_tree,
+            leaf_nodes: my_leaf_nodes,
+            sample_path_leaf_to_root: my_sample_path,
+        };
+
+        serde_json::to_string_pretty(&my_output).unwrap()
     }
 
     fn build_tree_nodes(
@@ -240,6 +267,25 @@ impl Context {
             dependencies: my_deps,
         }
     }
+
+    fn find_path_to_root(&self, a_leaf: &StepId, a_dependencies: &[Dependency]) -> Vec<StepId> {
+        let mut my_path = vec![a_leaf.clone()];
+        let mut my_current = a_leaf.clone();
+
+        // Build a map from child to parent
+        let mut my_parents: HashMap<StepId, StepId> = HashMap::new();
+        for dep in a_dependencies {
+            my_parents.insert(dep.to.clone(), dep.from.clone());
+        }
+
+        // Trace back from leaf to root
+        while let Some(parent) = my_parents.get(&my_current) {
+            my_path.push(parent.clone());
+            my_current = parent.clone();
+        }
+
+        my_path
+    }
 }
 
 #[cfg(test)]
@@ -274,6 +320,8 @@ mod tests {
         assert!(my_json.contains("Parse"));
         assert!(my_json.contains("Resolve"));
         assert!(my_json.contains("Exec"));
+        assert!(my_json.contains("leaf_nodes"));
+        assert!(my_json.contains("sample_path_leaf_to_root"));
     }
 
     #[test]
@@ -291,5 +339,31 @@ mod tests {
         assert!(serde_json::to_string(&my_parse_id).is_ok());
         assert!(serde_json::to_string(&my_resolve_id).is_ok());
         assert!(serde_json::to_string(&my_exec_id).is_ok());
+    }
+
+    #[test]
+    fn test_leaf_nodes_and_path() {
+        let my_ctx = Context::root();
+        my_ctx.in_read("main.telsb", |ctx| {
+            ctx.in_parse("main.telsb", |ctx| {
+                ctx.in_resolve("main", |ctx| {
+                    ctx.in_exec("main", |_ctx| {
+                    })
+                })
+            })
+        });
+
+        let my_json = my_ctx.to_json();
+        let my_output: DependencyGraphOutput = serde_json::from_str(&my_json).unwrap();
+
+        // Should have at least one leaf node (Exec node has no children)
+        assert!(!my_output.leaf_nodes.is_empty());
+
+        // The sample path should not be empty
+        assert!(!my_output.sample_path_leaf_to_root.is_empty());
+
+        // The path should start with a leaf and end with root
+        assert!(my_output.leaf_nodes.contains(&my_output.sample_path_leaf_to_root[0]));
+        assert_eq!(my_output.sample_path_leaf_to_root.last().unwrap(), &StepId::Root);
     }
 }
