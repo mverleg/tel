@@ -1,0 +1,4 @@
+# Test unreachable keyword - this should fail at compile time
+(print 42)
+(unreachable)
+(print 99)

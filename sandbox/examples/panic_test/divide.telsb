@@ -1,0 +1,4 @@
+# Demonstrating panic for division by zero check
+(if (== (arg 2) 0)
+    (panic)
+    (/ (arg 1) (arg 2)))

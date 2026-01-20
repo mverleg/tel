@@ -1,5 +1,9 @@
 (import fact_helper)
 
+# UNUSED FUNCTIONS - these helper functions are never called
+(function inc (+ (arg 1) 1))
+(function is_zero (== (arg 1) 0))
+
 (let n 5)
 (let result (call fact_helper n 1))
 (print result)

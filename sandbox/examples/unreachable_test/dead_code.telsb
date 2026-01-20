@@ -1,0 +1,6 @@
+# Test unreachable in dead code branch - should fail at compile time
+# because unreachable is always evaluated during resolution, even in branches
+(let x 10)
+(if (> x 0)
+    (print x)
+    (unreachable))

@@ -85,6 +85,7 @@ impl Resolver {
             PreExpr::Print(e) | PreExpr::Return(e) => {
                 Self::collect_arg_numbers(e, arg_numbers, max_arg);
             }
+            PreExpr::Panic { .. } | PreExpr::Unreachable { .. } => {}
             PreExpr::Call { args, .. } => {
                 for arg in args {
                     Self::collect_arg_numbers(arg, arg_numbers, max_arg);
@@ -204,6 +205,12 @@ impl Resolver {
             PreExpr::Return(expr) => {
                 let resolved_expr = Box::new(self.resolve_expr(*expr)?);
                 Ok(Expr::Return(resolved_expr))
+            }
+            PreExpr::Panic { source_location } => {
+                Ok(Expr::Panic { source_location })
+            }
+            PreExpr::Unreachable { source_location } => {
+                Err(ResolveError::UnreachableCode { source_location })
             }
             PreExpr::Import(_) => {
                 Err(ResolveError::ImportNotAtTop)
@@ -427,7 +434,7 @@ impl Resolver {
                     Self::remap_func_ids(expr, offset);
                 }
             }
-            Expr::Number(_) | Expr::VarRef(_) | Expr::Arg(_) => {}
+            Expr::Number(_) | Expr::VarRef(_) | Expr::Arg(_) | Expr::Panic { .. } | Expr::Unreachable { .. } => {}
         }
     }
 

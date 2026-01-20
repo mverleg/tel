@@ -8,6 +8,11 @@
 (function square (* (arg 1) (arg 1)))
 (function calc_area (call mul (arg 1) (arg 2)))
 
+# UNUSED FUNCTIONS - these are defined but never called
+(function min (if (< (arg 1) (arg 2)) (arg 1) (arg 2)))
+(function cube (* (arg 1) (call square (arg 1))))
+(function div (/ (arg 1) (arg 2)))
+
 # Use local functions in expressions
 (let a 5)
 (let b 8)

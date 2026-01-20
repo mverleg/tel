@@ -89,11 +89,12 @@ fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    file_path: String,
 }
 
 impl Parser {
-    fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, pos: 0 }
+    fn new(tokens: Vec<Token>, file_path: String) -> Self {
+        Parser { tokens, pos: 0, file_path }
     }
 
     fn peek(&self) -> Option<&Token> {
@@ -212,6 +213,14 @@ impl Parser {
                         self.expect(Token::RParen)?;
                         Ok(PreExpr::Return(expr))
                     }
+                    "panic" => {
+                        self.expect(Token::RParen)?;
+                        Ok(PreExpr::Panic { source_location: self.file_path.clone() })
+                    }
+                    "unreachable" => {
+                        self.expect(Token::RParen)?;
+                        Ok(PreExpr::Unreachable { source_location: self.file_path.clone() })
+                    }
                     "import" => {
                         let path = match self.advance() {
                             Some(Token::Ident(s)) => s,
@@ -277,7 +286,7 @@ impl Parser {
 pub fn parse(source: &str, file_path: &str, a_ctx: &Context) -> Result<PreExpr, ParseError> {
     a_ctx.in_parse(file_path, |_ctx| {
         let tokens = tokenize(source)?;
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens, file_path.to_string());
         parser.parse_all()
     })
 }

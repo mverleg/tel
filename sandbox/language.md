@@ -101,6 +101,18 @@ Local functions:
 (return value)
 ```
 
+**Panic** to abort the program with an error message:
+```lisp
+(panic)
+```
+This will immediately abort execution and print an error message showing the source location.
+
+**Mark unreachable code** (compile-time check):
+```lisp
+(unreachable)
+```
+This will cause a compilation error if reached during resolution. Use this to mark code paths that should never be executed.
+
 **Function Arity:**
 - Functions can take any number of arguments (0, 1, 2, 3, etc.)
 - Arity is determined by the highest `(arg N)` used in the function body

@@ -2,6 +2,11 @@
 (import min)
 (import abs)
 
+# UNUSED FUNCTIONS - defined but never called
+(function double (* (arg 1) 2))
+(function halve (/ (arg 1) 2))
+(function negate (- 0 (arg 1)))
+
 (let a 15)
 (let b 20)
 

@@ -81,6 +81,12 @@ impl<'a> Interpreter<'a> {
                 let val = self.eval_value(expr)?;
                 Ok(EvalResult::Return(val))
             }
+            Expr::Panic { source_location } => {
+                Err(ExecuteError::Panic { source_location: source_location.clone() })
+            }
+            Expr::Unreachable { .. } => {
+                panic!("Unreachable code was reached during execution - this should have been caught during resolution")
+            }
             Expr::Call { func, args } => {
                 let mut arg_vals = Vec::new();
                 for arg in args {

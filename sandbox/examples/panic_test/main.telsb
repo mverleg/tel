@@ -1,0 +1,4 @@
+# Test panic keyword - this should abort at runtime
+(print 42)
+(panic)
+(print 99)  # This should never be reached

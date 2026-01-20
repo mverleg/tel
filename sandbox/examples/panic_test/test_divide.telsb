@@ -1,0 +1,7 @@
+# Test the divide function with panic on zero
+(import divide)
+
+(print (call divide 10 2))  # Should print 5
+(print (call divide 100 5)) # Should print 20
+(print (call divide 7 0))   # Should panic here
+(print 999)                 # Never reached

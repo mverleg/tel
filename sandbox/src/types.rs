@@ -37,6 +37,8 @@ pub enum PreExpr {
     },
     Print(Box<PreExpr>),
     Return(Box<PreExpr>),
+    Panic { source_location: String },
+    Unreachable { source_location: String },
     Import(String),
     FunctionDef {
         name: String,
@@ -83,6 +85,8 @@ pub enum Expr {
     },
     Print(Box<Expr>),
     Return(Box<Expr>),
+    Panic { source_location: String },
+    Unreachable { source_location: String },
     Call {
         func: FuncId,
         args: Vec<Box<Expr>>,
@@ -171,6 +175,7 @@ pub enum ResolveError {
     FunctionAlreadyDefined(String),
     ArityMismatch { func_name: String, expected: usize, got: usize },
     ArityGap { func_name: String, max_arg: usize },
+    UnreachableCode { source_location: String },
 }
 
 impl fmt::Display for ResolveError {
@@ -187,6 +192,7 @@ impl fmt::Display for ResolveError {
             ResolveError::FunctionAlreadyDefined(name) => write!(f, "Function already defined: {}", name),
             ResolveError::ArityMismatch { func_name, expected, got } => write!(f, "Function '{}' expects {} arguments, but {} were provided", func_name, expected, got),
             ResolveError::ArityGap { func_name, max_arg } => write!(f, "Function '{}' has gaps in argument numbers (highest arg is {} but not all args 1..{} are used)", func_name, max_arg, max_arg),
+            ResolveError::UnreachableCode { source_location } => write!(f, "Unreachable code at {}", source_location),
         }
     }
 }
@@ -197,6 +203,7 @@ impl std::error::Error for ResolveError {}
 pub enum ExecuteError {
     DivisionByZero,
     ArgNotProvided(u8),
+    Panic { source_location: String },
 }
 
 impl fmt::Display for ExecuteError {
@@ -204,6 +211,7 @@ impl fmt::Display for ExecuteError {
         match self {
             ExecuteError::DivisionByZero => write!(f, "Division by zero"),
             ExecuteError::ArgNotProvided(n) => write!(f, "Argument {} not provided", n),
+            ExecuteError::Panic { source_location } => write!(f, "panic at {}", source_location),
         }
     }
 }

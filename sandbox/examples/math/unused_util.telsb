@@ -1,0 +1,5 @@
+# UNUSED FILE - Not imported by any other module
+# This absolute difference function is never used
+(if (> (arg 1) (arg 2))
+    (- (arg 1) (arg 2))
+    (- (arg 2) (arg 1)))
