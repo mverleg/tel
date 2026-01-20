@@ -15,6 +15,17 @@ The compiler processes programs in four phases:
 3. **Type Check** - (Future phase for static type checking)
 4. **Execute** - Interpret the resolved AST
 
+## Query engine features
+
+- [x] Build depenency graph
+- [ ] Inverse dependency graph
+- [ ] Concurrency-safe
+- [ ] Lock-free (during compile)
+- [ ] Write using async
+- [ ] Cache computation steps
+- [ ] Cache IO steps
+- [ ] Selective caching
+
 ## Running Programs
 
 ```rust
