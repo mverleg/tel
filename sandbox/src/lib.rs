@@ -53,7 +53,7 @@ impl From<types::ExecuteError> for Error {
 }
 
 pub fn run_file(path: &str) -> Result<(), Error> {
-    let my_ctx = qcompiler2::Context::new();
+    let my_ctx = qcompiler2::Context::root();
     let source = io::load_file(path, &my_ctx)?;
     let pre_ast = parse::parse(&source, path, &my_ctx)?;
     let (ast, symbols) = resolve::resolve(pre_ast, path, &my_ctx)?;
@@ -62,7 +62,7 @@ pub fn run_file(path: &str) -> Result<(), Error> {
 }
 
 pub fn run_source(source: &str) -> Result<(), Error> {
-    let my_ctx = qcompiler2::Context::new();
+    let my_ctx = qcompiler2::Context::root();
     let pre_ast = parse::parse(source, "<source>", &my_ctx)?;
     let (ast, symbols) = resolve::resolve(pre_ast, ".", &my_ctx)?;
     execute::execute(ast, &symbols, &my_ctx)?;

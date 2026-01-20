@@ -186,7 +186,7 @@ impl Context {
         let mut my_has_parent: HashSet<StepId> = HashSet::new();
 
         for dep in &my_dependencies {
-            my_children.entry(dep.from.clone()).or_insert_with(Vec::new).push(dep.to.clone());
+            my_children.entry(dep.from.clone()).or_default().push(dep.to.clone());
             my_all_nodes.insert(dep.from.clone());
             my_all_nodes.insert(dep.to.clone());
             my_has_parent.insert(dep.to.clone());

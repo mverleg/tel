@@ -1,7 +1,7 @@
 use sandbox::qcompiler2::Context;
 
 fn main() {
-    let my_ctx = Context::new();
+    let my_ctx = Context::root();
 
     my_ctx.in_resolve("main", |ctx| {
         ctx.in_read("examples/factorial/main.telsb", |ctx| {
