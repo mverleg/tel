@@ -13,6 +13,12 @@ pub struct Variables {
     data: Vec<VariableData>,
 }
 
+impl Default for Variables {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Variables {
     pub fn new() -> Self {
         Variables {
@@ -84,16 +90,16 @@ impl Variable {
     // because `variables` never shrinks and Variable is only created on insertion.
 
     pub fn iden(self, variables: &Variables) -> &Identifier {
-        return &variables[self].iden
+        &variables[self].iden
     }
 
     pub fn type_annotation(self, variables: &Variables) -> Option<&Type> {
-        return variables[self].type_annotation.as_ref()
+        variables[self].type_annotation.as_ref()
         //TODO @mark: does as_ref have overhead here?
     }
 
     pub fn mutable(self, variables: &Variables) -> &bool {
-        return &variables[self].mutable
+        &variables[self].mutable
     }
 
 }

@@ -15,7 +15,7 @@ members = [
 
 [workspace.package]
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 authors = ["Mark <mverleg.noreply@gmail.com>"]
 homepage = "https://github.com/mverleg/tel"
 license = "CC-BY-NC-ND-4.0"

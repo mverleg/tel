@@ -17,19 +17,19 @@ pub struct Store<E: serde::Serialize + serde::de::DeserializeOwned> {
 impl <'s, E: serde::Serialize + serde::de::DeserializeOwned> Index<Rev> for &'s Store<E> {
     type Output = Option<&'s E>;
 
-    fn index(&self, rev: Rev) -> &Self::Output {
+    fn index(&self, _rev: Rev) -> &Self::Output {
         todo!()
     }
 }
 
 impl <E: serde::Serialize + serde::de::DeserializeOwned> Store<E> {
 
-    pub fn get(&self, rev: Rev) -> Option<&E> {
+    pub fn get(&self, _rev: Rev) -> Option<&E> {
         todo!()
     }
 
     //TODO @mark: async?
-    pub fn set(&mut self, value: E) -> Insert<E> {
+    pub fn set(&mut self, value: E) -> Insert<'_, E> {
         let rev = match self.top.next() {
             Next::Ok(n) => {
                 self.top = n;

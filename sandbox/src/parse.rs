@@ -36,19 +36,23 @@ fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
             }
             '-' => {
                 chars.next();
-                if let Some(&next_ch) = chars.peek() && next_ch.is_numeric() {
-                    let mut num_str = String::from("-");
-                    while let Some(&next_ch) = chars.peek() {
-                        if next_ch.is_numeric() {
-                            num_str.push(chars.next().unwrap());
-                        } else {
+                if let Some(&next_ch) = chars.peek() {
+                    if next_ch.is_numeric() {
+                        let mut num_str = String::from("-");
+                        while let Some(&next_ch) = chars.peek() {
+                            if next_ch.is_numeric() {
+                                num_str.push(chars.next().unwrap());
+                            } else {
                             break;
                         }
                     }
-                    let num = num_str
-                        .parse::<i64>()
-                        .map_err(|_| ParseError::InvalidNumber(num_str.clone()))?;
-                    tokens.push(Token::Number(num));
+                        let num = num_str
+                            .parse::<i64>()
+                            .map_err(|_| ParseError::InvalidNumber(num_str.clone()))?;
+                        tokens.push(Token::Number(num));
+                    } else {
+                        tokens.push(Token::Ident("-".to_string()));
+                    }
                 } else {
                     tokens.push(Token::Ident("-".to_string()));
                 }

@@ -47,7 +47,45 @@ struct DependencyNode {
 struct DependencyGraphOutput {
     tree: Vec<DependencyNode>,
     leaf_nodes: Vec<StepId>,
-    sample_path_leaf_to_root: Vec<StepId>,
+    leaf_paths: Vec<(StepId, Vec<StepId>)>,
+}
+
+struct DagIndex {
+    children: HashMap<StepId, Vec<StepId>>,
+    parents: HashMap<StepId, Vec<StepId>>,
+}
+
+impl DagIndex {
+    fn from_dependencies(a_dependencies: &[Dependency]) -> Self {
+        let mut my_children: HashMap<StepId, Vec<StepId>> = HashMap::new();
+        let mut my_parents: HashMap<StepId, Vec<StepId>> = HashMap::new();
+
+        for dep in a_dependencies {
+            my_children.entry(dep.from.clone()).or_default().push(dep.to.clone());
+            my_parents.entry(dep.to.clone()).or_default().push(dep.from.clone());
+        }
+
+        Self {
+            children: my_children,
+            parents: my_parents,
+        }
+    }
+
+    fn find_path_to_root(&self, a_leaf: &StepId) -> Vec<StepId> {
+        let mut my_path = vec![a_leaf.clone()];
+        let mut my_current = a_leaf.clone();
+
+        while let Some(parents) = self.parents.get(&my_current) {
+            if let Some(parent) = parents.first() {
+                my_path.push(parent.clone());
+                my_current = parent.clone();
+            } else {
+                break;
+            }
+        }
+
+        my_path
+    }
 }
 
 struct ExecutionLog {
@@ -188,43 +226,39 @@ impl Context {
 
     pub fn to_json(&self) -> String {
         let my_dependencies = self.dependencies();
-        let mut my_children: HashMap<StepId, Vec<StepId>> = HashMap::new();
+        let my_dag = DagIndex::from_dependencies(&my_dependencies);
         let mut my_all_nodes: HashSet<StepId> = HashSet::new();
-        let mut my_has_parent: HashSet<StepId> = HashSet::new();
 
         for dep in &my_dependencies {
-            my_children.entry(dep.from.clone()).or_default().push(dep.to.clone());
             my_all_nodes.insert(dep.from.clone());
             my_all_nodes.insert(dep.to.clone());
-            my_has_parent.insert(dep.to.clone());
         }
 
         let my_roots: Vec<StepId> = my_all_nodes
             .iter()
-            .filter(|node| !my_has_parent.contains(node))
+            .filter(|node| !my_dag.parents.contains_key(node))
             .cloned()
             .collect();
 
-        let my_tree = self.build_tree_nodes(&my_roots, &my_children, &mut HashSet::new());
+        let my_tree = self.build_tree_nodes(&my_roots, &my_dag.children, &mut HashSet::new());
 
         // Find all leaf nodes (nodes with no children)
         let my_leaf_nodes: Vec<StepId> = my_all_nodes
             .iter()
-            .filter(|node| !my_children.contains_key(node))
+            .filter(|node| !my_dag.children.contains_key(node))
             .cloned()
             .collect();
 
-        // Find one path from a leaf to root
-        let my_sample_path = if let Some(leaf) = my_leaf_nodes.first() {
-            self.find_path_to_root(leaf, &my_dependencies)
-        } else {
-            Vec::new()
-        };
+        // Find paths from all leaf nodes to root
+        let my_leaf_paths: Vec<(StepId, Vec<StepId>)> = my_leaf_nodes
+            .iter()
+            .map(|leaf| (leaf.clone(), my_dag.find_path_to_root(leaf)))
+            .collect();
 
         let my_output = DependencyGraphOutput {
             tree: my_tree,
             leaf_nodes: my_leaf_nodes,
-            sample_path_leaf_to_root: my_sample_path,
+            leaf_paths: my_leaf_paths,
         };
 
         serde_json::to_string_pretty(&my_output).unwrap()
@@ -268,24 +302,6 @@ impl Context {
         }
     }
 
-    fn find_path_to_root(&self, a_leaf: &StepId, a_dependencies: &[Dependency]) -> Vec<StepId> {
-        let mut my_path = vec![a_leaf.clone()];
-        let mut my_current = a_leaf.clone();
-
-        // Build a map from child to parent
-        let mut my_parents: HashMap<StepId, StepId> = HashMap::new();
-        for dep in a_dependencies {
-            my_parents.insert(dep.to.clone(), dep.from.clone());
-        }
-
-        // Trace back from leaf to root
-        while let Some(parent) = my_parents.get(&my_current) {
-            my_path.push(parent.clone());
-            my_current = parent.clone();
-        }
-
-        my_path
-    }
 }
 
 #[cfg(test)]
@@ -321,7 +337,7 @@ mod tests {
         assert!(my_json.contains("Resolve"));
         assert!(my_json.contains("Exec"));
         assert!(my_json.contains("leaf_nodes"));
-        assert!(my_json.contains("sample_path_leaf_to_root"));
+        assert!(my_json.contains("leaf_paths"));
     }
 
     #[test]
@@ -359,11 +375,14 @@ mod tests {
         // Should have at least one leaf node (Exec node has no children)
         assert!(!my_output.leaf_nodes.is_empty());
 
-        // The sample path should not be empty
-        assert!(!my_output.sample_path_leaf_to_root.is_empty());
+        // Should have paths for all leaf nodes
+        assert_eq!(my_output.leaf_paths.len(), my_output.leaf_nodes.len());
 
-        // The path should start with a leaf and end with root
-        assert!(my_output.leaf_nodes.contains(&my_output.sample_path_leaf_to_root[0]));
-        assert_eq!(my_output.sample_path_leaf_to_root.last().unwrap(), &StepId::Root);
+        // Each path should start with its corresponding leaf and end with root
+        for (leaf, path) in &my_output.leaf_paths {
+            assert!(!path.is_empty());
+            assert_eq!(&path[0], leaf);
+            assert_eq!(path.last().unwrap(), &StepId::Root);
+        }
     }
 }

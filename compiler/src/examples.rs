@@ -1,9 +1,3 @@
-use crate::scoping::ast_to_api;
-use std::fs::read_to_string;
-use std::path::PathBuf;
-use tel_ast::ParseErr;
-use tel_common::TelErr;
-use tel_parser::str_to_ast;
 
 include!(concat!(env!("OUT_DIR"), "/parse_tests.rs"));
 

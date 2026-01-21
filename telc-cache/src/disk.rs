@@ -18,8 +18,8 @@ pub struct DiskStore<E: serde::Serialize + serde::de::DeserializeOwned> {
 impl<E: serde::Serialize + serde::de::DeserializeOwned> DiskStore<E> {
 
     /// The `rev` should be new; call this only one per rev until clear is called
-    pub fn insert(&mut self, rev: Rev, value: &E) {
-        let bytes = postcard::to_allocvec(&value).unwrap();
+    pub fn insert(&mut self, _rev: Rev, value: &E) {
+        let _bytes = postcard::to_allocvec(&value).unwrap();
         todo!()
     }
 

@@ -9,7 +9,7 @@ use serde::Serializer;
 
 //TODO @mark: should actively-used keywords be in here?
 //TODO @mark: should 'assert' be reserved?
-const RESERVED: [&'static str; 138] = [
+const RESERVED: [&str; 138] = [
     "abstract",
     "alias",
     "all",
@@ -201,7 +201,7 @@ impl Identifier {
         }
         if let Some(res) = RESERVED_SET.get(name.as_str()) {
             debug!("reject identifier because '{name}' is reserved",);
-            return Err(IdentifierErr::Reserved(*res));
+            return Err(IdentifierErr::Reserved(res));
         }
         Ok(Identifier { name })
     }

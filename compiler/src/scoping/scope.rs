@@ -29,15 +29,15 @@ impl Scope {
 
     fn new_builtin(_variables: &mut Variables) -> Self {
         //TODO @mark: perhaps not the best representation, could be enum or map
-        let scope = Scope {
-            parent: None,
-            items: vec![]
-        };
+        
         // scope.declare_in_scope(variables, &Identifier::new("Negate.neg").unwrap(), Some(&Type { iden: Identifier::new("bool -> bool").unwrap(), generics: Box::new([]) }), false);
         // for builtin_iden in BUILTINS {
         //     scope.declare_in_scope(variables, &Identifier::new(builtin_iden).unwrap(), None, false);
         // }
-        scope
+        Scope {
+            parent: None,
+            items: vec![]
+        }
     }
 
     pub fn declare_in_scope(

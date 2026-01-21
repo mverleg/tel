@@ -7,7 +7,6 @@
 /// * Not optimized for `Copy` types; assumes relatively big data.
 ///
 /// This is just the storage backend; hashing and lookups should happen in `db`.
-
 mod common;
 mod store;
 mod memory;

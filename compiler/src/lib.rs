@@ -61,7 +61,7 @@ fn print_debug(debug: bool, file: &TelFile) {
     }
     let mut out = BufWriter::new(stdout().lock());
     serde_json::to_writer_pretty(&mut out, &DebugInfo { ast: file }).unwrap();
-    out.write_all(&[b'\n']).unwrap();
+    out.write_all(b"\n").unwrap();
     out.flush().unwrap()
 }
 

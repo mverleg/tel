@@ -28,8 +28,8 @@ pub fn ast_to_api(ast: ast::Ast) -> Result<TelFile, TelErr> {
 
 fn expression_to_api(
     expr: &ast::Expr,
-    variables: &mut Variables,
-    scope: &mut Scope,
+    _variables: &mut Variables,
+    _scope: &mut Scope,
 ) -> Result<ast::Expr, TelErr> {
     //TODO @mark: to owned expression?
     Ok(match expr {
@@ -38,9 +38,9 @@ fn expression_to_api(
         //ast::Expr::BinOp(op, left, right) => invoke_binary_to_api(*op, left, right, variables, scope)?,
         //ast::Expr::UnaryOp(op, expr) => invoke_unary_to_api(*op, expr, variables, scope)?,
         //ast::Expr::Invoke(invoke) => invoke_to_api(invoke, variables, scope)?,
-        ast::Expr::BinOp(op, left, right) => unimplemented!(),
-        ast::Expr::UnaryOp(op, expr) => unimplemented!(),
-        ast::Expr::Invoke(invoke) => unimplemented!(),
+        ast::Expr::BinOp(_op, _left, _right) => unimplemented!(),
+        ast::Expr::UnaryOp(_op, _expr) => unimplemented!(),
+        ast::Expr::Invoke(_invoke) => unimplemented!(),
         ast::Expr::Dot(_dot, _) => todo!("Dot"),
         ast::Expr::Closure(_closure) => todo!("Closure"),
         ast::Expr::If(_if, _) => todo!("If"),
@@ -56,7 +56,7 @@ fn assignments_to_api(
 ) -> Result<Vec<ast::Assignment>, TelErr> {
     //TODO @mark: use more efficient vec
     let ast::Assignments { dest: dests, op, value: ast_value } = assign;
-    debug_assert!(dests.len() >= 1);
+    debug_assert!(!dests.is_empty());
     if let Some(_op) = op {
         todo!()
     }
@@ -76,7 +76,7 @@ fn assignments_to_api(
         let binding = if allow_outer {
             scope.declare_in_scope(
                 variables,
-                &target,
+                target,
                 typ.as_ref(),
                 is_mutable,
             )?
@@ -93,7 +93,7 @@ fn assignments_to_api(
             value,
         });
         value = ast::Expr::Invoke(ast::Invoke {
-            iden: binding.iden(&variables).clone(),
+            iden: binding.iden(variables).clone(),
             args: Box::new([]),
         });
     }
@@ -114,16 +114,16 @@ fn invoke_to_api(
         .map(|e| expression_to_api(e, variables, scope))
         .collect::<Result<Vec<_>, _>>()?
         .into_boxed_slice();
-    Ok(ast::Expr::Invoke(ast::Invoke { iden: api_iden.iden(&variables).clone(), args: api_args }))
+    Ok(ast::Expr::Invoke(ast::Invoke { iden: api_iden.iden(variables).clone(), args: api_args }))
 }
 
 fn invoke_unary_to_api(
     op: ast::UnaryOpCode,
-    ast_expr: &Box<ast::Expr>,
+    ast_expr: &ast::Expr,
     variables: &mut Variables,
     scope: &mut Scope,
 ) -> Result<ast::Expr, TelErr> {
-    let _builtin_iden = match op {
+    match op {
         //UnaryOpCode::Not => Identifier::new(builtins.NEG).expect("built-in must be valid"),
         //TODO @mark:
         ast::UnaryOpCode::Not => {},
@@ -136,12 +136,12 @@ fn invoke_unary_to_api(
 
 fn invoke_binary_to_api(
     op: ast::BinOpCode,
-    ast_left: &Box<ast::Expr>,
-    ast_right: &Box<ast::Expr>,
+    ast_left: &ast::Expr,
+    ast_right: &ast::Expr,
     variables: &mut Variables,
     scope: &mut Scope,
 ) -> Result<ast::Expr, TelErr> {
-    let _builtin_iden = match op {
+    match op {
         ast::BinOpCode::Add => {}
         ast::BinOpCode::Sub => {}
         ast::BinOpCode::Mul => {}

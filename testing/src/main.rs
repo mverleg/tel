@@ -1,10 +1,8 @@
-use std::path::PathBuf;
 
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
 
-use telc::tel_build_str;
 use tel_ast::TelFile;
 // use tel_ast_to_code::ast_to_code;  //TODO @mark: ast_to_code crate doesn't exist yet
 
