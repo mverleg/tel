@@ -109,7 +109,7 @@ mod bugs {
     #[test]
     fn test_double_close_parentheses() {
         let code = "(1)+\n 2)";
-        assert!(parse_str(PathBuf::new(), code.to_owned()).is_err());
+        assert!(str_to_ast(PathBuf::new(), code.to_owned()).is_err());
     }
 
     #[test]
@@ -161,8 +161,8 @@ mod bugs {
 
     #[test]
     fn reject_arithmetic_without_spacing() {
-        assert!(parse_str(PathBuf::new(), "1+\n1".to_owned()).is_err());
-        assert!(parse_str(PathBuf::new(), "1 /1".to_owned()).is_err());
+        assert!(str_to_ast(PathBuf::new(), "1+\n1".to_owned()).is_err());
+        assert!(str_to_ast(PathBuf::new(), "1 /1".to_owned()).is_err());
     }
 
     #[test]

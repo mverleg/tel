@@ -1,21 +1,45 @@
-use sandbox::run_file;
+use sandbox::{execute, io, parse, qcompiler2, resolve};
 use std::env;
-use std::fs;
 use std::path::Path;
 use std::process;
+
+fn print_help(program: &str) {
+    println!("Usage: {} <file.telsb | directory> [OPTIONS]", program);
+    println!("\nOptions:");
+    println!("  --show-deps    Show dependency graph after execution");
+    println!("  -h, --help     Show this help message");
+    println!("\nExamples:");
+    println!("  {} examples/factorial/main.telsb", program);
+    println!("  {} examples/factorial", program);
+    println!("  {} examples/factorial --show-deps", program);
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() != 2 {
-        eprintln!("Usage: {} <file.telsb | directory>", args[0]);
-        eprintln!("\nExamples:");
-        eprintln!("  {} examples/factorial/main.telsb", args[0]);
-        eprintln!("  {} examples/factorial", args[0]);
+    if args.len() < 2 {
+        print_help(&args[0]);
         process::exit(1);
     }
 
+    if args[1] == "-h" || args[1] == "--help" {
+        print_help(&args[0]);
+        process::exit(0);
+    }
+
     let my_path = Path::new(&args[1]);
+    let mut my_show_deps = false;
+
+    for arg in &args[2..] {
+        match arg.as_str() {
+            "--show-deps" => my_show_deps = true,
+            _ => {
+                eprintln!("Error: Unknown option '{}'", arg);
+                eprintln!("\nUse -h or --help for usage information");
+                process::exit(1);
+            }
+        }
+    }
 
     let my_file_path = if my_path.is_dir() {
         my_path.join("main.telsb")
@@ -31,8 +55,23 @@ fn main() {
         }
     };
 
-    match run_file(my_file_str) {
-        Ok(()) => {}
+    let my_ctx = qcompiler2::Context::root();
+
+    let result = (|| {
+        let source = io::load_file(my_file_str, &my_ctx)?;
+        let pre_ast = parse::parse(&source, my_file_str, &my_ctx)?;
+        let (ast, symbols) = resolve::resolve(pre_ast, my_file_str, &my_ctx)?;
+        execute::execute(ast, &symbols, &my_ctx)?;
+        Ok::<(), sandbox::Error>(())
+    })();
+
+    match result {
+        Ok(()) => {
+            if my_show_deps {
+                println!("\n=== Dependency Graph ===\n");
+                println!("{}", my_ctx.to_json());
+            }
+        }
         Err(e) => {
             eprintln!("Error: {}", e);
             process::exit(1);
