@@ -47,7 +47,7 @@ struct DependencyNode {
 struct DependencyGraphOutput {
     tree: Vec<DependencyNode>,
     leaf_nodes: Vec<StepId>,
-    leaf_paths: Vec<(StepId, Vec<StepId>)>,
+    leaf_paths: Vec<Vec<StepId>>,
 }
 
 struct DagIndex {
@@ -56,35 +56,35 @@ struct DagIndex {
 }
 
 impl DagIndex {
-    fn from_dependencies(a_dependencies: &[Dependency]) -> Self {
-        let mut my_children: HashMap<StepId, Vec<StepId>> = HashMap::new();
-        let mut my_parents: HashMap<StepId, Vec<StepId>> = HashMap::new();
+    fn from_dependencies(dependencies: &[Dependency]) -> Self {
+        let mut children: HashMap<StepId, Vec<StepId>> = HashMap::new();
+        let mut parents: HashMap<StepId, Vec<StepId>> = HashMap::new();
 
-        for dep in a_dependencies {
-            my_children.entry(dep.from.clone()).or_default().push(dep.to.clone());
-            my_parents.entry(dep.to.clone()).or_default().push(dep.from.clone());
+        for dep in dependencies {
+            children.entry(dep.from.clone()).or_default().push(dep.to.clone());
+            parents.entry(dep.to.clone()).or_default().push(dep.from.clone());
         }
 
         Self {
-            children: my_children,
-            parents: my_parents,
+            children,
+            parents,
         }
     }
 
-    fn find_path_to_root(&self, a_leaf: &StepId) -> Vec<StepId> {
-        let mut my_path = vec![a_leaf.clone()];
-        let mut my_current = a_leaf.clone();
+    fn find_path_to_root(&self, leaf: &StepId) -> Vec<StepId> {
+        let mut path = vec![leaf.clone()];
+        let mut current = leaf.clone();
 
-        while let Some(parents) = self.parents.get(&my_current) {
+        while let Some(parents) = self.parents.get(&current) {
             if let Some(parent) = parents.first() {
-                my_path.push(parent.clone());
-                my_current = parent.clone();
+                path.push(parent.clone());
+                current = parent.clone();
             } else {
                 break;
             }
         }
 
-        my_path
+        path
     }
 }
 
@@ -99,7 +99,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn root() -> Self {
+    fn root() -> Self {
         Self {
             log: Arc::new(Mutex::new(ExecutionLog {
                 dependencies: Vec::new(),
@@ -108,116 +108,100 @@ impl Context {
         }
     }
 
-    pub fn in_read<T>(&self, file_path: impl Into<String>, f: impl FnOnce(Context) -> T) -> T {
-        let my_id = StepId::Read(ReadId {
+    pub fn in_read<T>(&mut self, file_path: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+        let id = StepId::Read(ReadId {
             file_path: file_path.into(),
         });
 
-        println!("[qcompiler2] Enter: {}", serde_json::to_string(&my_id).unwrap());
-
-        let my_dep = Dependency {
+        let dep = Dependency {
             from: self.from_step.clone(),
-            to: my_id.clone(),
+            to: id.clone(),
         };
         println!("[qcompiler2] Dependency: {} -> {}",
-            serde_json::to_string(&my_dep.from).unwrap(),
-            serde_json::to_string(&my_dep.to).unwrap());
-        self.log.lock().unwrap().dependencies.push(my_dep);
+            serde_json::to_string(&dep.from).unwrap(),
+            serde_json::to_string(&dep.to).unwrap());
+        self.log.lock().unwrap().dependencies.push(dep);
 
-        let my_child = Context {
-            log: self.log.clone(),
-            from_step: my_id.clone(),
-        };
+        let old_from_step = self.from_step.clone();
+        self.from_step = id.clone();
 
-        let my_result = f(my_child);
+        let result = f(self);
 
-        println!("[qcompiler2] Exit: {}", serde_json::to_string(&my_id).unwrap());
+        self.from_step = old_from_step;
 
-        my_result
+        result
     }
 
-    pub fn in_parse<T>(&self, file_path: impl Into<String>, f: impl FnOnce(Context) -> T) -> T {
-        let my_id = StepId::Parse(ParseId {
+    pub fn in_parse<T>(&mut self, file_path: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+        let id = StepId::Parse(ParseId {
             file_path: file_path.into(),
         });
 
-        println!("[qcompiler2] Enter: {}", serde_json::to_string(&my_id).unwrap());
-
-        let my_dep = Dependency {
+        let dep = Dependency {
             from: self.from_step.clone(),
-            to: my_id.clone(),
+            to: id.clone(),
         };
         println!("[qcompiler2] Dependency: {} -> {}",
-            serde_json::to_string(&my_dep.from).unwrap(),
-            serde_json::to_string(&my_dep.to).unwrap());
-        self.log.lock().unwrap().dependencies.push(my_dep);
+            serde_json::to_string(&dep.from).unwrap(),
+            serde_json::to_string(&dep.to).unwrap());
+        self.log.lock().unwrap().dependencies.push(dep);
 
-        let my_child = Context {
-            log: self.log.clone(),
-            from_step: my_id.clone(),
-        };
+        let old_from_step = self.from_step.clone();
+        self.from_step = id.clone();
 
-        let my_result = f(my_child);
+        let result = f(self);
 
-        println!("[qcompiler2] Exit: {}", serde_json::to_string(&my_id).unwrap());
+        self.from_step = old_from_step;
 
-        my_result
+        result
     }
 
-    pub fn in_resolve<T>(&self, func_name: impl Into<String>, f: impl FnOnce(Context) -> T) -> T {
-        let my_id = StepId::Resolve(ResolveId {
+    pub fn in_resolve<T>(&mut self, func_name: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+        let id = StepId::Resolve(ResolveId {
             func_name: func_name.into(),
         });
 
-        println!("[qcompiler2] Enter: {}", serde_json::to_string(&my_id).unwrap());
-
-        let my_dep = Dependency {
+        let dep = Dependency {
             from: self.from_step.clone(),
-            to: my_id.clone(),
+            to: id.clone(),
         };
         println!("[qcompiler2] Dependency: {} -> {}",
-            serde_json::to_string(&my_dep.from).unwrap(),
-            serde_json::to_string(&my_dep.to).unwrap());
-        self.log.lock().unwrap().dependencies.push(my_dep);
+            serde_json::to_string(&dep.from).unwrap(),
+            serde_json::to_string(&dep.to).unwrap());
+        self.log.lock().unwrap().dependencies.push(dep);
 
-        let my_child = Context {
-            log: self.log.clone(),
-            from_step: my_id.clone(),
-        };
+        let old_from_step = self.from_step.clone();
+        self.from_step = id.clone();
 
-        let my_result = f(my_child);
+        let result = f(self);
 
-        println!("[qcompiler2] Exit: {}", serde_json::to_string(&my_id).unwrap());
+        self.from_step = old_from_step;
 
-        my_result
+        result
     }
 
-    pub fn in_exec<T>(&self, main_func: impl Into<String>, f: impl FnOnce(Context) -> T) -> T {
-        let my_id = StepId::Exec(ExecId {
+    pub fn in_exec<T>(&mut self, main_func: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+        let id = StepId::Exec(ExecId {
             main_func: main_func.into(),
         });
 
-        println!("[qcompiler2] Enter: {}", serde_json::to_string(&my_id).unwrap());
-
-        let my_dep = Dependency {
+        let dep = Dependency {
             from: self.from_step.clone(),
-            to: my_id.clone(),
+            to: id.clone(),
         };
         println!("[qcompiler2] Dependency: {} -> {}",
-            serde_json::to_string(&my_dep.from).unwrap(),
-            serde_json::to_string(&my_dep.to).unwrap());
-        self.log.lock().unwrap().dependencies.push(my_dep);
+            serde_json::to_string(&dep.from).unwrap(),
+            serde_json::to_string(&dep.to).unwrap());
+        self.log.lock().unwrap().dependencies.push(dep);
 
-        let my_child = Context {
-            log: self.log.clone(),
-            from_step: my_id.clone(),
-        };
+        let old_from_step = self.from_step.clone();
+        self.from_step = id.clone();
 
-        let my_result = f(my_child);
+        let result = f(self);
 
-        println!("[qcompiler2] Exit: {}", serde_json::to_string(&my_id).unwrap());
+        self.from_step = old_from_step;
 
-        my_result
+        result
     }
 
     pub fn dependencies(&self) -> Vec<Dependency> {
@@ -225,83 +209,129 @@ impl Context {
     }
 
     pub fn to_json(&self) -> String {
-        let my_dependencies = self.dependencies();
-        let my_dag = DagIndex::from_dependencies(&my_dependencies);
-        let mut my_all_nodes: HashSet<StepId> = HashSet::new();
+        let dependencies = self.dependencies();
+        let dag = DagIndex::from_dependencies(&dependencies);
+        let mut all_nodes: HashSet<StepId> = HashSet::new();
 
-        for dep in &my_dependencies {
-            my_all_nodes.insert(dep.from.clone());
-            my_all_nodes.insert(dep.to.clone());
+        for dep in &dependencies {
+            all_nodes.insert(dep.from.clone());
+            all_nodes.insert(dep.to.clone());
         }
 
-        let my_roots: Vec<StepId> = my_all_nodes
+        let roots: Vec<StepId> = all_nodes
             .iter()
-            .filter(|node| !my_dag.parents.contains_key(node))
+            .filter(|node| !dag.parents.contains_key(node))
             .cloned()
             .collect();
 
-        let my_tree = self.build_tree_nodes(&my_roots, &my_dag.children, &mut HashSet::new());
+        let tree = self.build_tree_nodes(&roots, &dag.children, &mut HashSet::new());
 
         // Find all leaf nodes (nodes with no children)
-        let my_leaf_nodes: Vec<StepId> = my_all_nodes
+        let leaf_nodes: Vec<StepId> = all_nodes
             .iter()
-            .filter(|node| !my_dag.children.contains_key(node))
+            .filter(|node| !dag.children.contains_key(node))
             .cloned()
             .collect();
 
         // Find paths from all leaf nodes to root
-        let my_leaf_paths: Vec<(StepId, Vec<StepId>)> = my_leaf_nodes
+        let leaf_paths: Vec<Vec<StepId>> = leaf_nodes
             .iter()
-            .map(|leaf| (leaf.clone(), my_dag.find_path_to_root(leaf)))
+            .map(|leaf| dag.find_path_to_root(leaf))
             .collect();
 
-        let my_output = DependencyGraphOutput {
-            tree: my_tree,
-            leaf_nodes: my_leaf_nodes,
-            leaf_paths: my_leaf_paths,
+        let output = DependencyGraphOutput {
+            tree,
+            leaf_nodes,
+            leaf_paths,
         };
 
-        serde_json::to_string_pretty(&my_output).unwrap()
+        serde_json::to_string_pretty(&output).unwrap()
     }
 
     fn build_tree_nodes(
         &self,
-        a_nodes: &[StepId],
-        a_children: &HashMap<StepId, Vec<StepId>>,
-        a_visited: &mut HashSet<StepId>,
+        nodes: &[StepId],
+        children: &HashMap<StepId, Vec<StepId>>,
+        visited: &mut HashSet<StepId>,
     ) -> Vec<DependencyNode> {
-        a_nodes
+        nodes
             .iter()
-            .map(|node| self.build_tree_node(node, a_children, a_visited))
+            .map(|node| self.build_tree_node(node, children, visited))
             .collect()
     }
 
     fn build_tree_node(
         &self,
-        a_node: &StepId,
-        a_children: &HashMap<StepId, Vec<StepId>>,
-        a_visited: &mut HashSet<StepId>,
+        node: &StepId,
+        children: &HashMap<StepId, Vec<StepId>>,
+        visited: &mut HashSet<StepId>,
     ) -> DependencyNode {
-        if a_visited.contains(a_node) {
-            panic!("Cyclic dependency detected at: {:?}", a_node);
+        if visited.contains(node) {
+            panic!("Cyclic dependency detected at: {:?}", node);
         }
 
-        a_visited.insert(a_node.clone());
+        visited.insert(node.clone());
 
-        let my_deps = if let Some(children) = a_children.get(a_node) {
-            self.build_tree_nodes(children, a_children, a_visited)
+        let deps = if let Some(child_nodes) = children.get(node) {
+            self.build_tree_nodes(child_nodes, children, visited)
         } else {
             Vec::new()
         };
 
-        a_visited.remove(a_node);
+        visited.remove(node);
 
         DependencyNode {
-            step: a_node.clone(),
-            dependencies: my_deps,
+            step: node.clone(),
+            dependencies: deps,
         }
     }
 
+    // Public API - forces closure-based nesting
+    pub fn read<T, E>(&mut self, path: &str, f: impl FnOnce(&mut Self, String) -> Result<T, E>) -> Result<T, E>
+    where
+        E: From<std::io::Error>,
+    {
+        self.in_read(path, |ctx| {
+            let source = std::fs::read_to_string(path)?;
+            f(ctx, source)
+        })
+    }
+
+    pub fn parse<T, E>(&mut self, path: &str, source: &str, f: impl FnOnce(&mut Self, crate::types::PreExpr) -> Result<T, E>) -> Result<T, E>
+    where
+        E: From<crate::types::ParseError>,
+    {
+        self.in_parse(path, |ctx| {
+            let pre_ast = crate::parse::tokenize_and_parse(source, path)?;
+            f(ctx, pre_ast)
+        })
+    }
+
+    pub fn resolve<T, E>(&mut self, func_name: &str, base_path: &str, pre_ast: crate::types::PreExpr, f: impl FnOnce(&mut Self, crate::types::Expr, crate::types::SymbolTable) -> Result<T, E>) -> Result<T, E>
+    where
+        E: From<crate::types::ResolveError>,
+    {
+        self.in_resolve(func_name, |ctx| {
+            let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path, ctx)?;
+            f(ctx, ast, symbols)
+        })
+    }
+
+    pub fn exec<T, E>(&mut self, main_func: &str, ast: crate::types::Expr, symbols: &crate::types::SymbolTable, f: impl FnOnce(&mut Self) -> Result<T, E>) -> Result<T, E>
+    where
+        E: From<crate::types::ExecuteError>,
+    {
+        self.in_exec(main_func, |ctx| {
+            crate::execute::execute_internal(&ast, symbols)?;
+            f(ctx)
+        })
+    }
+
+}
+
+pub fn with_root_context<T>(f: impl FnOnce(&mut Context) -> T) -> T {
+    let mut ctx = Context::root();
+    f(&mut ctx)
 }
 
 #[cfg(test)]
@@ -310,18 +340,18 @@ mod tests {
 
     #[test]
     fn test_read_id_serialization() {
-        let my_id = ReadId {
+        let id = ReadId {
             file_path: "test.telsb".to_string(),
         };
-        let my_json = serde_json::to_string(&my_id).unwrap();
-        let my_deserialized: ReadId = serde_json::from_str(&my_json).unwrap();
-        assert_eq!(my_id, my_deserialized);
+        let json = serde_json::to_string(&id).unwrap();
+        let deserialized: ReadId = serde_json::from_str(&json).unwrap();
+        assert_eq!(id, deserialized);
     }
 
     #[test]
     fn test_compilation_log() {
-        let my_ctx = Context::root();
-        my_ctx.in_read("main.telsb", |ctx| {
+        let mut ctx = Context::root();
+        ctx.in_read("main.telsb", |ctx| {
             ctx.in_parse("main.telsb", |ctx| {
                 ctx.in_resolve("main", |ctx| {
                     ctx.in_exec("main", |_ctx| {
@@ -330,37 +360,37 @@ mod tests {
             })
         });
 
-        let my_json = my_ctx.to_json();
-        assert!(my_json.contains("main.telsb"));
-        assert!(my_json.contains("Read"));
-        assert!(my_json.contains("Parse"));
-        assert!(my_json.contains("Resolve"));
-        assert!(my_json.contains("Exec"));
-        assert!(my_json.contains("leaf_nodes"));
-        assert!(my_json.contains("leaf_paths"));
+        let json = ctx.to_json();
+        assert!(json.contains("main.telsb"));
+        assert!(json.contains("Read"));
+        assert!(json.contains("Parse"));
+        assert!(json.contains("Resolve"));
+        assert!(json.contains("Exec"));
+        assert!(json.contains("leaf_nodes"));
+        assert!(json.contains("leaf_paths"));
     }
 
     #[test]
     fn test_all_id_types_serializable() {
-        let my_parse_id = ParseId {
+        let parse_id = ParseId {
             file_path: "test.telsb".to_string(),
         };
-        let my_resolve_id = ResolveId {
+        let resolve_id = ResolveId {
             func_name: "my_func".to_string(),
         };
-        let my_exec_id = ExecId {
+        let exec_id = ExecId {
             main_func: "main".to_string(),
         };
 
-        assert!(serde_json::to_string(&my_parse_id).is_ok());
-        assert!(serde_json::to_string(&my_resolve_id).is_ok());
-        assert!(serde_json::to_string(&my_exec_id).is_ok());
+        assert!(serde_json::to_string(&parse_id).is_ok());
+        assert!(serde_json::to_string(&resolve_id).is_ok());
+        assert!(serde_json::to_string(&exec_id).is_ok());
     }
 
     #[test]
     fn test_leaf_nodes_and_path() {
-        let my_ctx = Context::root();
-        my_ctx.in_read("main.telsb", |ctx| {
+        let mut ctx = Context::root();
+        ctx.in_read("main.telsb", |ctx| {
             ctx.in_parse("main.telsb", |ctx| {
                 ctx.in_resolve("main", |ctx| {
                     ctx.in_exec("main", |_ctx| {
@@ -369,19 +399,19 @@ mod tests {
             })
         });
 
-        let my_json = my_ctx.to_json();
-        let my_output: DependencyGraphOutput = serde_json::from_str(&my_json).unwrap();
+        let json = ctx.to_json();
+        let output: DependencyGraphOutput = serde_json::from_str(&json).unwrap();
 
         // Should have at least one leaf node (Exec node has no children)
-        assert!(!my_output.leaf_nodes.is_empty());
+        assert!(!output.leaf_nodes.is_empty());
 
         // Should have paths for all leaf nodes
-        assert_eq!(my_output.leaf_paths.len(), my_output.leaf_nodes.len());
+        assert_eq!(output.leaf_paths.len(), output.leaf_nodes.len());
 
-        // Each path should start with its corresponding leaf and end with root
-        for (leaf, path) in &my_output.leaf_paths {
+        // Each path should start with a leaf and end with root
+        for (i, path) in output.leaf_paths.iter().enumerate() {
             assert!(!path.is_empty());
-            assert_eq!(&path[0], leaf);
+            assert_eq!(&path[0], &output.leaf_nodes[i]);
             assert_eq!(path.last().unwrap(), &StepId::Root);
         }
     }

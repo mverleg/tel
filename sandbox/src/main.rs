@@ -1,7 +1,8 @@
-use sandbox::{execute, io, parse, qcompiler2, resolve};
+use sandbox::qcompiler2;
 use std::env;
+use std::io::Write;
 use std::path::Path;
-use std::process;
+use std::process::{self, Command, Stdio};
 
 fn print_help(program: &str) {
     println!("Usage: {} <file.telsb | directory> [OPTIONS]", program);
@@ -33,6 +34,10 @@ fn main() {
     for arg in &args[2..] {
         match arg.as_str() {
             "--show-deps" => my_show_deps = true,
+            "-h" | "--help" => {
+                print_help(&args[0]);
+                process::exit(0);
+            }
             _ => {
                 eprintln!("Error: Unknown option '{}'", arg);
                 eprintln!("\nUse -h or --help for usage information");
@@ -55,23 +60,48 @@ fn main() {
         }
     };
 
-    let my_ctx = qcompiler2::Context::root();
+    let result = qcompiler2::with_root_context(|ctx| {
+        ctx.read(my_file_str, |ctx, source| {
+            ctx.parse(my_file_str, &source, |ctx, pre_ast| {
+                ctx.resolve("main", my_file_str, pre_ast, |ctx, ast, symbols| {
+                    ctx.exec("main", ast, &symbols, |ctx| {
+                        if my_show_deps {
+                            println!("\n=== Dependency Graph ===\n");
+                            let my_json = ctx.to_json();
 
-    let result = (|| {
-        let source = io::load_file(my_file_str, &my_ctx)?;
-        let pre_ast = parse::parse(&source, my_file_str, &my_ctx)?;
-        let (ast, symbols) = resolve::resolve(pre_ast, my_file_str, &my_ctx)?;
-        execute::execute(ast, &symbols, &my_ctx)?;
-        Ok::<(), sandbox::Error>(())
-    })();
+                            match Command::new("python3")
+                                .args(["-m", "json.tool", "--compact"])
+                                .stdin(Stdio::piped())
+                                .stdout(Stdio::piped())
+                                .spawn()
+                            {
+                                Ok(mut child) => {
+                                    if let Some(mut stdin) = child.stdin.take() {
+                                        let _ = stdin.write_all(my_json.as_bytes());
+                                    }
+                                    match child.wait_with_output() {
+                                        Ok(output) => {
+                                            if output.status.success() {
+                                                print!("{}", String::from_utf8_lossy(&output.stdout));
+                                            } else {
+                                                println!("{}", my_json);
+                                            }
+                                        }
+                                        Err(_) => println!("{}", my_json),
+                                    }
+                                }
+                                Err(_) => println!("{}", my_json),
+                            }
+                        }
+                        Ok::<(), sandbox::Error>(())
+                    })
+                })
+            })
+        })
+    });
 
     match result {
-        Ok(()) => {
-            if my_show_deps {
-                println!("\n=== Dependency Graph ===\n");
-                println!("{}", my_ctx.to_json());
-            }
-        }
+        Ok(()) => {}
         Err(e) => {
             eprintln!("Error: {}", e);
             process::exit(1);

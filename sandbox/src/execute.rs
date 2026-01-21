@@ -142,10 +142,14 @@ impl<'a> Interpreter<'a> {
     }
 }
 
-pub fn execute(ast: Expr, symbols: &SymbolTable, a_ctx: &Context) -> Result<(), ExecuteError> {
-    a_ctx.in_exec("main", |_ctx| {
-        let mut interpreter = Interpreter::new(symbols);
-        interpreter.eval(&ast)?;
-        Ok(())
+pub(crate) fn execute_internal(ast: &Expr, symbols: &SymbolTable) -> Result<(), ExecuteError> {
+    let mut interpreter = Interpreter::new(symbols);
+    interpreter.eval(ast)?;
+    Ok(())
+}
+
+pub fn execute(ast: Expr, symbols: &SymbolTable, ctx: &mut Context) -> Result<(), ExecuteError> {
+    ctx.in_exec("main", |_ctx| {
+        execute_internal(&ast, symbols)
     })
 }

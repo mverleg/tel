@@ -12,7 +12,6 @@ struct Resolver {
     func_arities: HashMap<FuncId, usize>,
     in_function: bool,
     base_path: PathBuf,
-    ctx: Context,
 }
 
 struct Scope {
@@ -21,7 +20,7 @@ struct Scope {
 }
 
 impl Resolver {
-    fn new(base_path: PathBuf, a_ctx: Context) -> Self {
+    fn new(base_path: PathBuf) -> Self {
         let global_scope = Scope {
             parent: None,
             vars: HashMap::new(),
@@ -36,7 +35,6 @@ impl Resolver {
             func_arities: HashMap::new(),
             in_function: false,
             base_path,
-            ctx: a_ctx,
         }
     }
 
@@ -261,7 +259,7 @@ impl Resolver {
         }
     }
 
-    fn process_imports(&mut self, pre_ast: &PreExpr) -> Result<(), ResolveError> {
+    fn process_imports(&mut self, pre_ast: &PreExpr, ctx: &mut Context) -> Result<(), ResolveError> {
         let imports = self.extract_imports(pre_ast)?;
 
         for import_name in imports {
@@ -270,17 +268,17 @@ impl Resolver {
             }
             let full_path = self.base_path.join(format!("{}.telsb", import_name));
 
-            let source = crate::io::load_file(full_path.to_str().unwrap(), &self.ctx)
+            let source = crate::io::load_file(full_path.to_str().unwrap(), ctx)
                 .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
 
-            let imported_pre_ast = crate::parse::parse(&source, full_path.to_str().unwrap(), &self.ctx)
+            let imported_pre_ast = crate::parse::parse(&source, full_path.to_str().unwrap(), ctx)
                 .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
 
             let arity = Self::calculate_arity(&imported_pre_ast, &import_name)?;
 
-            let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf(), self.ctx.clone());
+            let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf());
             func_resolver.in_function = true;
-            func_resolver.process_imports(&imported_pre_ast)?;
+            func_resolver.process_imports(&imported_pre_ast, ctx)?;
 
             let placeholder_id = FuncId(self.symbol_table.funcs.len() + func_resolver.symbol_table.funcs.len());
             func_resolver.funcs.insert(import_name.clone(), placeholder_id);
@@ -463,19 +461,24 @@ impl Resolver {
     }
 }
 
-pub fn resolve(pre_ast: PreExpr, base_path: &str, a_ctx: &Context) -> Result<(Expr, SymbolTable), ResolveError> {
+pub(crate) fn resolve_internal(pre_ast: PreExpr, base_path: &str, ctx: &mut Context) -> Result<(Expr, SymbolTable), ResolveError> {
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
 
-    let my_func_name = path.file_stem()
+    let mut resolver = Resolver::new(dir.to_path_buf());
+    resolver.process_imports(&pre_ast, ctx)?;
+    resolver.process_local_functions(&pre_ast)?;
+    let ast = resolver.resolve_body(&pre_ast)?;
+    Ok((ast, resolver.symbol_table))
+}
+
+pub fn resolve(pre_ast: PreExpr, base_path: &str, ctx: &mut Context) -> Result<(Expr, SymbolTable), ResolveError> {
+    let path = Path::new(base_path);
+    let func_name = path.file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("main");
 
-    a_ctx.in_resolve(my_func_name, |ctx| {
-        let mut resolver = Resolver::new(dir.to_path_buf(), ctx);
-        resolver.process_imports(&pre_ast)?;
-        resolver.process_local_functions(&pre_ast)?;
-        let ast = resolver.resolve_body(&pre_ast)?;
-        Ok((ast, resolver.symbol_table))
+    ctx.in_resolve(func_name, |ctx| {
+        resolve_internal(pre_ast, base_path, ctx)
     })
 }
