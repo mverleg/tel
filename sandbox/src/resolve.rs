@@ -268,40 +268,46 @@ impl Resolver {
             }
             let full_path = self.base_path.join(format!("{}.telsb", import_name));
 
-            let imported_pre_ast = ctx.read(full_path.to_str().unwrap(), |ctx, source| {
-                ctx.parse(full_path.to_str().unwrap(), &source, |_ctx, imported_pre_ast| {
-                    Ok::<PreExpr, ResolveError>(imported_pre_ast)
-                })
-            })
-            .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
+            let (func_ast, func_resolver_symbols, func_resolver_funcs, func_resolver_func_arities, arity) =
+                ctx.in_resolve(&import_name, |ctx| {
+                    let imported_pre_ast = ctx.read(full_path.to_str().unwrap(), |ctx, source| {
+                        ctx.parse(full_path.to_str().unwrap(), &source, |_ctx, imported_pre_ast| {
+                            Ok::<PreExpr, ResolveError>(imported_pre_ast)
+                        })
+                    })
+                    .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
 
-            let arity = Self::calculate_arity(&imported_pre_ast, &import_name)?;
+                    let arity = Self::calculate_arity(&imported_pre_ast, &import_name)?;
 
-            let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf());
-            func_resolver.in_function = true;
-            func_resolver.process_imports(&imported_pre_ast, ctx)?;
+                    let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf());
+                    func_resolver.in_function = true;
+                    func_resolver.process_imports(&imported_pre_ast, ctx)?;
 
-            let placeholder_id = FuncId(self.symbol_table.funcs.len() + func_resolver.symbol_table.funcs.len());
-            func_resolver.funcs.insert(import_name.clone(), placeholder_id);
-            func_resolver.func_arities.insert(placeholder_id, arity);
+                    let placeholder_id = FuncId(self.symbol_table.funcs.len() + func_resolver.symbol_table.funcs.len());
+                    func_resolver.funcs.insert(import_name.clone(), placeholder_id);
+                    func_resolver.func_arities.insert(placeholder_id, arity);
 
-            let mut func_ast = func_resolver.resolve_body(&imported_pre_ast)?;
+                    let func_ast = func_resolver.resolve_body(&imported_pre_ast)?;
+
+                    Ok::<_, ResolveError>((func_ast, func_resolver.symbol_table, func_resolver.funcs, func_resolver.func_arities, arity))
+                })?;
 
             let offset = self.symbol_table.funcs.len();
 
-            for mut func_info in func_resolver.symbol_table.funcs {
+            for mut func_info in func_resolver_symbols.funcs {
                 Self::remap_func_ids(&mut func_info.ast, offset);
                 self.symbol_table.funcs.push(func_info);
             }
 
+            let mut func_ast = func_ast;
             Self::remap_func_ids(&mut func_ast, offset);
 
-            for (name, old_id) in func_resolver.funcs {
+            for (name, old_id) in func_resolver_funcs {
                 let new_id = FuncId(old_id.0 + offset);
                 self.funcs.insert(name, new_id);
             }
 
-            for (old_id, arity_value) in func_resolver.func_arities {
+            for (old_id, arity_value) in func_resolver_func_arities {
                 let new_id = FuncId(old_id.0 + offset);
                 self.func_arities.insert(new_id, arity_value);
             }

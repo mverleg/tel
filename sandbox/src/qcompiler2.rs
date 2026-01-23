@@ -109,38 +109,48 @@ impl Context {
     }
 
     pub fn in_read<T>(&mut self, file_path: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
-        let id = StepId::Read(ReadId {
+        let _id = StepId::Read(ReadId {
             file_path: file_path.into(),
         });
 
         // Read operations never have dependencies - they're always leaf nodes
-        // But we still need to update from_step so Parse (called inside) knows it depends on Read
+        // Don't change from_step - let Parse depend on the context that needs it (e.g., Resolve)
 
-        let old_from_step = self.from_step.clone();
-        self.from_step = id.clone();
-
-        let result = f(self);
-
-        self.from_step = old_from_step;
-
-        result
+        f(self)
     }
 
     pub fn in_parse<T>(&mut self, file_path: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+        let file_path_str = file_path.into();
         let id = StepId::Parse(ParseId {
-            file_path: file_path.into(),
+            file_path: file_path_str.clone(),
         });
 
+        // Parse depends on two things:
+        // 1. The Read operation for the same file (must read before parsing)
+        let read_id = StepId::Read(ReadId {
+            file_path: file_path_str,
+        });
+        let dep_read = Dependency {
+            from: id.clone(),
+            to: read_id.clone(),
+        };
+        println!("[qcompiler2] Dependency: {} -> {}",
+            serde_json::to_string(&dep_read.from).unwrap(),
+            serde_json::to_string(&dep_read.to).unwrap());
+        self.log.lock().unwrap().dependencies.push(dep_read);
+
+        // 2. The context that needs the parse result (e.g., Resolve for imports)
+        // The context depends on parse (Resolve needs Parse result)
         // Don't record dependencies to Root - Root is the starting context, not a real step
-        if self.from_step != StepId::Root {
-            let dep = Dependency {
-                from: id.clone(),
-                to: self.from_step.clone(),
+        if self.from_step != StepId::Root && self.from_step != read_id {
+            let dep_context = Dependency {
+                from: self.from_step.clone(),
+                to: id.clone(),
             };
             println!("[qcompiler2] Dependency: {} -> {}",
-                serde_json::to_string(&dep.from).unwrap(),
-                serde_json::to_string(&dep.to).unwrap());
-            self.log.lock().unwrap().dependencies.push(dep);
+                serde_json::to_string(&dep_context.from).unwrap(),
+                serde_json::to_string(&dep_context.to).unwrap());
+            self.log.lock().unwrap().dependencies.push(dep_context);
         }
 
         let old_from_step = self.from_step.clone();
@@ -161,8 +171,8 @@ impl Context {
         // Don't record dependencies to Root - Root is the starting context, not a real step
         if self.from_step != StepId::Root {
             let dep = Dependency {
-                from: id.clone(),
-                to: self.from_step.clone(),
+                from: self.from_step.clone(),
+                to: id.clone(),
             };
             println!("[qcompiler2] Dependency: {} -> {}",
                 serde_json::to_string(&dep.from).unwrap(),
