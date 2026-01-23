@@ -1,4 +1,3 @@
-use crate::qcompiler2::Context;
 use crate::types::{BinOp, ParseError, PreExpr};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -287,11 +286,6 @@ impl Parser {
     }
 }
 
-pub fn parse(source: &str, file_path: &str, ctx: &mut Context) -> Result<PreExpr, ParseError> {
-    ctx.in_parse(file_path, |_ctx| {
-        tokenize_and_parse(source, file_path)
-    })
-}
 
 pub(crate) fn tokenize_and_parse(source: &str, file_path: &str) -> Result<PreExpr, ParseError> {
     let tokens = tokenize(source)?;

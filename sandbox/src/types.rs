@@ -176,6 +176,8 @@ pub enum ResolveError {
     ArityMismatch { func_name: String, expected: usize, got: usize },
     ArityGap { func_name: String, max_arg: usize },
     UnreachableCode { source_location: String },
+    IoError(std::io::Error),
+    ParseError(ParseError),
 }
 
 impl fmt::Display for ResolveError {
@@ -193,11 +195,25 @@ impl fmt::Display for ResolveError {
             ResolveError::ArityMismatch { func_name, expected, got } => write!(f, "Function '{}' expects {} arguments, but {} were provided", func_name, expected, got),
             ResolveError::ArityGap { func_name, max_arg } => write!(f, "Function '{}' has gaps in argument numbers (highest arg is {} but not all args 1..{} are used)", func_name, max_arg, max_arg),
             ResolveError::UnreachableCode { source_location } => write!(f, "Unreachable code at {}", source_location),
+            ResolveError::IoError(e) => write!(f, "IO error: {}", e),
+            ResolveError::ParseError(e) => write!(f, "Parse error: {}", e),
         }
     }
 }
 
 impl std::error::Error for ResolveError {}
+
+impl From<std::io::Error> for ResolveError {
+    fn from(err: std::io::Error) -> Self {
+        ResolveError::IoError(err)
+    }
+}
+
+impl From<ParseError> for ResolveError {
+    fn from(err: ParseError) -> Self {
+        ResolveError::ParseError(err)
+    }
+}
 
 #[derive(Debug)]
 pub enum ExecuteError {

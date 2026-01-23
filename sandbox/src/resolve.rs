@@ -268,11 +268,12 @@ impl Resolver {
             }
             let full_path = self.base_path.join(format!("{}.telsb", import_name));
 
-            let source = crate::io::load_file(full_path.to_str().unwrap(), ctx)
-                .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
-
-            let imported_pre_ast = crate::parse::parse(&source, full_path.to_str().unwrap(), ctx)
-                .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
+            let imported_pre_ast = ctx.read(full_path.to_str().unwrap(), |ctx, source| {
+                ctx.parse(full_path.to_str().unwrap(), &source, |_ctx, imported_pre_ast| {
+                    Ok::<PreExpr, ResolveError>(imported_pre_ast)
+                })
+            })
+            .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
 
             let arity = Self::calculate_arity(&imported_pre_ast, &import_name)?;
 
@@ -472,13 +473,3 @@ pub(crate) fn resolve_internal(pre_ast: PreExpr, base_path: &str, ctx: &mut Cont
     Ok((ast, resolver.symbol_table))
 }
 
-pub fn resolve(pre_ast: PreExpr, base_path: &str, ctx: &mut Context) -> Result<(Expr, SymbolTable), ResolveError> {
-    let path = Path::new(base_path);
-    let func_name = path.file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("main");
-
-    ctx.in_resolve(func_name, |ctx| {
-        resolve_internal(pre_ast, base_path, ctx)
-    })
-}

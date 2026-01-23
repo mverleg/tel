@@ -1,4 +1,3 @@
-use crate::qcompiler2::Context;
 use crate::types::{BinOp, ExecuteError, Expr, SymbolTable, VarId};
 use std::collections::HashMap;
 
@@ -148,8 +147,3 @@ pub(crate) fn execute_internal(ast: &Expr, symbols: &SymbolTable) -> Result<(), 
     Ok(())
 }
 
-pub fn execute(ast: Expr, symbols: &SymbolTable, ctx: &mut Context) -> Result<(), ExecuteError> {
-    ctx.in_exec("main", |_ctx| {
-        execute_internal(&ast, symbols)
-    })
-}
