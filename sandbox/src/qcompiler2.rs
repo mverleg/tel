@@ -113,14 +113,8 @@ impl Context {
             file_path: file_path.into(),
         });
 
-        let dep = Dependency {
-            from: self.from_step.clone(),
-            to: id.clone(),
-        };
-        println!("[qcompiler2] Dependency: {} -> {}",
-            serde_json::to_string(&dep.from).unwrap(),
-            serde_json::to_string(&dep.to).unwrap());
-        self.log.lock().unwrap().dependencies.push(dep);
+        // Read operations never have dependencies - they're always leaf nodes
+        // But we still need to update from_step so Parse (called inside) knows it depends on Read
 
         let old_from_step = self.from_step.clone();
         self.from_step = id.clone();
@@ -137,14 +131,17 @@ impl Context {
             file_path: file_path.into(),
         });
 
-        let dep = Dependency {
-            from: self.from_step.clone(),
-            to: id.clone(),
-        };
-        println!("[qcompiler2] Dependency: {} -> {}",
-            serde_json::to_string(&dep.from).unwrap(),
-            serde_json::to_string(&dep.to).unwrap());
-        self.log.lock().unwrap().dependencies.push(dep);
+        // Don't record dependencies to Root - Root is the starting context, not a real step
+        if self.from_step != StepId::Root {
+            let dep = Dependency {
+                from: id.clone(),
+                to: self.from_step.clone(),
+            };
+            println!("[qcompiler2] Dependency: {} -> {}",
+                serde_json::to_string(&dep.from).unwrap(),
+                serde_json::to_string(&dep.to).unwrap());
+            self.log.lock().unwrap().dependencies.push(dep);
+        }
 
         let old_from_step = self.from_step.clone();
         self.from_step = id.clone();
@@ -161,14 +158,17 @@ impl Context {
             func_name: func_name.into(),
         });
 
-        let dep = Dependency {
-            from: self.from_step.clone(),
-            to: id.clone(),
-        };
-        println!("[qcompiler2] Dependency: {} -> {}",
-            serde_json::to_string(&dep.from).unwrap(),
-            serde_json::to_string(&dep.to).unwrap());
-        self.log.lock().unwrap().dependencies.push(dep);
+        // Don't record dependencies to Root - Root is the starting context, not a real step
+        if self.from_step != StepId::Root {
+            let dep = Dependency {
+                from: id.clone(),
+                to: self.from_step.clone(),
+            };
+            println!("[qcompiler2] Dependency: {} -> {}",
+                serde_json::to_string(&dep.from).unwrap(),
+                serde_json::to_string(&dep.to).unwrap());
+            self.log.lock().unwrap().dependencies.push(dep);
+        }
 
         let old_from_step = self.from_step.clone();
         self.from_step = id.clone();
@@ -185,14 +185,17 @@ impl Context {
             main_func: main_func.into(),
         });
 
-        let dep = Dependency {
-            from: self.from_step.clone(),
-            to: id.clone(),
-        };
-        println!("[qcompiler2] Dependency: {} -> {}",
-            serde_json::to_string(&dep.from).unwrap(),
-            serde_json::to_string(&dep.to).unwrap());
-        self.log.lock().unwrap().dependencies.push(dep);
+        // Don't record dependencies to Root - Root is the starting context, not a real step
+        if self.from_step != StepId::Root {
+            let dep = Dependency {
+                from: id.clone(),
+                to: self.from_step.clone(),
+            };
+            println!("[qcompiler2] Dependency: {} -> {}",
+                serde_json::to_string(&dep.from).unwrap(),
+                serde_json::to_string(&dep.to).unwrap());
+            self.log.lock().unwrap().dependencies.push(dep);
+        }
 
         let old_from_step = self.from_step.clone();
         self.from_step = id.clone();
@@ -246,6 +249,84 @@ impl Context {
         };
 
         serde_json::to_string_pretty(&output).unwrap()
+    }
+
+    pub fn to_tree_string(&self) -> String {
+        let dependencies = self.dependencies();
+        let dag = DagIndex::from_dependencies(&dependencies);
+        let mut all_nodes: HashSet<StepId> = HashSet::new();
+
+        for dep in &dependencies {
+            all_nodes.insert(dep.from.clone());
+            all_nodes.insert(dep.to.clone());
+        }
+
+        let roots: Vec<StepId> = all_nodes
+            .iter()
+            .filter(|node| !dag.parents.contains_key(node))
+            .cloned()
+            .collect();
+
+        let leaf_nodes: HashSet<StepId> = all_nodes
+            .iter()
+            .filter(|node| !dag.children.contains_key(node))
+            .cloned()
+            .collect();
+
+        let mut result = String::new();
+        for (i, root) in roots.iter().enumerate() {
+            if i > 0 {
+                result.push_str("\n\n");
+            }
+            self.format_tree_node(root, "", true, &dag.children, &leaf_nodes, &mut result);
+        }
+        result
+    }
+
+    fn format_tree_node(
+        &self,
+        node: &StepId,
+        prefix: &str,
+        is_last: bool,
+        children: &HashMap<StepId, Vec<StepId>>,
+        leaf_nodes: &HashSet<StepId>,
+        output: &mut String,
+    ) {
+        let node_str = self.format_step_id(node);
+        let is_leaf = leaf_nodes.contains(node);
+
+        output.push_str(prefix);
+        if !prefix.is_empty() {
+            output.push_str(if is_last { "└─ " } else { "├─ " });
+        }
+        output.push_str(&node_str);
+        if is_leaf {
+            output.push_str(" [LEAF]");
+        }
+        output.push('\n');
+
+        if let Some(child_nodes) = children.get(node) {
+            let child_count = child_nodes.len();
+            for (i, child) in child_nodes.iter().enumerate() {
+                let is_last_child = i == child_count - 1;
+                let new_prefix = if prefix.is_empty() {
+                    String::from("  ")
+                } else {
+                    format!("{}{}  ", prefix, if is_last { " " } else { "│" })
+                };
+                self.format_tree_node(child, &new_prefix, is_last_child, children, leaf_nodes, output);
+            }
+        }
+    }
+
+    fn format_step_id(&self, step: &StepId) -> String {
+        match step {
+            StepId::Root => "Root".to_string(),
+            StepId::Read(id) => format!("Read({})", id.file_path),
+            StepId::Parse(id) => format!("Parse({})", id.file_path),
+            StepId::Resolve(id) => format!("Resolve({})", id.func_name),
+            StepId::Exec(id) => format!("Exec({})", id.main_func),
+        }
     }
 
     fn build_tree_nodes(
@@ -402,17 +483,23 @@ mod tests {
         let json = ctx.to_json();
         let output: DependencyGraphOutput = serde_json::from_str(&json).unwrap();
 
-        // Should have at least one leaf node (Exec node has no children)
+        // Should have at least one leaf node (Read nodes have no dependencies)
         assert!(!output.leaf_nodes.is_empty());
 
         // Should have paths for all leaf nodes
         assert_eq!(output.leaf_paths.len(), output.leaf_nodes.len());
 
-        // Each path should start with a leaf and end with root
+        // Each path should start with a leaf (Read nodes)
         for (i, path) in output.leaf_paths.iter().enumerate() {
             assert!(!path.is_empty());
             assert_eq!(&path[0], &output.leaf_nodes[i]);
-            assert_eq!(path.last().unwrap(), &StepId::Root);
+            // Paths end at the last dependency (e.g., Exec for main execution chain)
+            // Leaf nodes are Read operations with no dependencies
+        }
+
+        // All leaf nodes should be Read operations
+        for leaf in &output.leaf_nodes {
+            assert!(matches!(leaf, StepId::Read(_)));
         }
     }
 }

@@ -1,8 +1,7 @@
 use sandbox::qcompiler2;
 use std::env;
-use std::io::Write;
 use std::path::Path;
-use std::process::{self, Command, Stdio};
+use std::process;
 
 fn print_help(program: &str) {
     println!("Usage: {} <file.telsb | directory> [OPTIONS]", program);
@@ -67,31 +66,7 @@ fn main() {
                     ctx.exec("main", ast, &symbols, |ctx| {
                         if my_show_deps {
                             println!("\n=== Dependency Graph ===\n");
-                            let my_json = ctx.to_json();
-
-                            match Command::new("jq")
-                                .args(["-C", "."])
-                                .stdin(Stdio::piped())
-                                .stdout(Stdio::piped())
-                                .spawn()
-                            {
-                                Ok(mut child) => {
-                                    if let Some(mut stdin) = child.stdin.take() {
-                                        let _ = stdin.write_all(my_json.as_bytes());
-                                    }
-                                    match child.wait_with_output() {
-                                        Ok(output) => {
-                                            if output.status.success() {
-                                                print!("{}", String::from_utf8_lossy(&output.stdout));
-                                            } else {
-                                                println!("{}", my_json);
-                                            }
-                                        }
-                                        Err(_) => println!("{}", my_json),
-                                    }
-                                }
-                                Err(_) => println!("{}", my_json),
-                            }
+                            println!("{}", ctx.to_tree_string());
                         }
                         Ok::<(), sandbox::Error>(())
                     })
