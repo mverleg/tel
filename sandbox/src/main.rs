@@ -69,8 +69,8 @@ fn main() {
                             println!("\n=== Dependency Graph ===\n");
                             let my_json = ctx.to_json();
 
-                            match Command::new("python3")
-                                .args(["-m", "json.tool", "--compact"])
+                            match Command::new("jq")
+                                .args(["-C", "."])
                                 .stdin(Stdio::piped())
                                 .stdout(Stdio::piped())
                                 .spawn()
