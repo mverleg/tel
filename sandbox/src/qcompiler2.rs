@@ -1,35 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ReadId {
-    pub file_path: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ParseId {
-    pub file_path: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ResolveId {
-    pub func_name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ExecId {
-    pub main_func: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum StepId {
-    Root,
-    Read(ReadId),
-    Parse(ParseId),
-    Resolve(ResolveId),
-    Exec(ExecId),
-}
+use crate::graph::{ExecId, ParseId, ReadId, ResolveId, StepId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Dependency {

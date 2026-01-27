@@ -3,6 +3,8 @@ pub mod parse;
 pub mod qcompiler2;
 pub mod resolve;
 pub mod types;
+pub mod graph;
+pub mod context;
 
 use std::fmt;
 

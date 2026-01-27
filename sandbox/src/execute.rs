@@ -1,5 +1,6 @@
 use crate::types::{BinOp, ExecuteError, Expr, SymbolTable, VarId};
 use std::collections::HashMap;
+use crate::context::Context;
 
 enum EvalResult {
     Value(i64),
@@ -141,13 +142,14 @@ impl<'a> Interpreter<'a> {
     }
 }
 
-pub(crate) fn execute_internal(ast: &Expr, symbols: &SymbolTable) -> Result<(), ExecuteError> {
+pub fn execute_internal(ast: &Expr, symbols: &SymbolTable) -> Result<(), ExecuteError> {
     let mut interpreter = Interpreter::new(symbols);
     interpreter.eval(ast)?;
     Ok(())
 }
 
 pub fn execute(path: &str) -> Result<(), ExecuteError> {
+    let mut context = Context::new();
     let (my_ast, my_symbols) = crate::resolve::resolve(path)?;
     execute_internal(&my_ast, &my_symbols)
 }
