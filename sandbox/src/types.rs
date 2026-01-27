@@ -147,6 +147,7 @@ pub enum ParseError {
     UnexpectedToken(String),
     InvalidNumber(String),
     EmptyExpression,
+    IoError(std::io::Error),
 }
 
 impl fmt::Display for ParseError {
@@ -156,11 +157,18 @@ impl fmt::Display for ParseError {
             ParseError::UnexpectedToken(tok) => write!(f, "Unexpected token: {}", tok),
             ParseError::InvalidNumber(s) => write!(f, "Invalid number: {}", s),
             ParseError::EmptyExpression => write!(f, "Empty expression"),
+            ParseError::IoError(e) => write!(f, "IO error: {}", e),
         }
     }
 }
 
 impl std::error::Error for ParseError {}
+
+impl From<std::io::Error> for ParseError {
+    fn from(err: std::io::Error) -> Self {
+        ParseError::IoError(err)
+    }
+}
 
 #[derive(Debug)]
 pub enum ResolveError {
@@ -220,6 +228,7 @@ pub enum ExecuteError {
     DivisionByZero,
     ArgNotProvided(u8),
     Panic { source_location: String },
+    ResolveError(Box<ResolveError>),
 }
 
 impl fmt::Display for ExecuteError {
@@ -228,8 +237,15 @@ impl fmt::Display for ExecuteError {
             ExecuteError::DivisionByZero => write!(f, "Division by zero"),
             ExecuteError::ArgNotProvided(n) => write!(f, "Argument {} not provided", n),
             ExecuteError::Panic { source_location } => write!(f, "panic at {}", source_location),
+            ExecuteError::ResolveError(e) => write!(f, "{}", e),
         }
     }
 }
 
 impl std::error::Error for ExecuteError {}
+
+impl From<ResolveError> for ExecuteError {
+    fn from(err: ResolveError) -> Self {
+        ExecuteError::ResolveError(Box::new(err))
+    }
+}

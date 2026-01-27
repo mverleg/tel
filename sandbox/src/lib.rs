@@ -52,10 +52,7 @@ impl From<types::ExecuteError> for Error {
 }
 
 pub fn run_file(path: &str) -> Result<(), Error> {
-    let my_source = std::fs::read_to_string(path)?;
-    let my_pre_ast = parse::tokenize_and_parse(&my_source, path)?;
-    let (my_ast, my_symbols) = resolve::resolve_internal(my_pre_ast, path)?;
-    execute::execute_internal(&my_ast, &my_symbols)?;
+    execute::execute(path)?;
     Ok(())
 }
 

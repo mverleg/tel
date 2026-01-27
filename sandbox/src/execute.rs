@@ -147,3 +147,8 @@ pub(crate) fn execute_internal(ast: &Expr, symbols: &SymbolTable) -> Result<(), 
     Ok(())
 }
 
+pub fn execute(path: &str) -> Result<(), ExecuteError> {
+    let (my_ast, my_symbols) = crate::resolve::resolve(path)?;
+    execute_internal(&my_ast, &my_symbols)
+}
+

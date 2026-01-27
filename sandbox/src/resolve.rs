@@ -471,3 +471,8 @@ pub(crate) fn resolve_internal(pre_ast: PreExpr, base_path: &str) -> Result<(Exp
     Ok((ast, resolver.symbol_table))
 }
 
+pub fn resolve(path: &str) -> Result<(Expr, SymbolTable), ResolveError> {
+    let my_pre_ast = crate::parse::parse(path)?;
+    resolve_internal(my_pre_ast, path)
+}
+

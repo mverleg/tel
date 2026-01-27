@@ -292,3 +292,8 @@ pub(crate) fn tokenize_and_parse(source: &str, file_path: &str) -> Result<PreExp
     let mut parser = Parser::new(tokens, file_path.to_string());
     parser.parse_all()
 }
+
+pub fn parse(path: &str) -> Result<PreExpr, ParseError> {
+    let my_source = std::fs::read_to_string(path)?;
+    tokenize_and_parse(&my_source, path)
+}
