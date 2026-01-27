@@ -148,16 +148,12 @@ impl RootContext {
         }
     }
 
-    pub fn exec<T, E>(
-        &mut self,
+    pub fn exec(
+        &self,
         main_func: &str,
-        ast: crate::types::Expr,
+        ast: &crate::types::Expr,
         symbols: &crate::types::SymbolTable,
-        f: impl FnOnce(&mut ExecContext) -> Result<T, E>,
-    ) -> Result<T, E>
-    where
-        E: From<crate::types::ExecuteError>,
-    {
+    ) -> Result<ExecContext, crate::types::ExecuteError> {
         let id = StepId::Exec(ExecId {
             main_func: main_func.to_string(),
         });
@@ -175,20 +171,14 @@ impl RootContext {
             self.inner.log.lock().unwrap().dependencies.push(dep);
         }
 
-        let old_from_step = self.inner.from_step.clone();
-        self.inner.from_step = id.clone();
+        crate::execute::execute_internal(ast, symbols)?;
 
-        let mut exec_ctx = ExecContext {
-            inner: self.inner.clone(),
-        };
-
-        crate::execute::execute_internal(&ast, symbols)?;
-        let result = f(&mut exec_ctx);
-
-        self.inner = exec_ctx.inner;
-        self.inner.from_step = old_from_step;
-
-        result
+        Ok(ExecContext {
+            inner: ContextInner {
+                log: self.inner.log.clone(),
+                from_step: id,
+            },
+        })
     }
 
     pub fn dependencies(&self) -> Vec<Dependency> {
@@ -205,16 +195,12 @@ impl RootContext {
 }
 
 impl ExecContext {
-    pub fn resolve<T, E>(
-        &mut self,
+    pub fn resolve(
+        &self,
         func_name: &str,
         base_path: &str,
         pre_ast: crate::types::PreExpr,
-        f: impl FnOnce(&mut ResolveContext, crate::types::Expr, crate::types::SymbolTable) -> Result<T, E>,
-    ) -> Result<T, E>
-    where
-        E: From<crate::types::ResolveError>,
-    {
+    ) -> Result<(ResolveContext, crate::types::Expr, crate::types::SymbolTable), crate::types::ResolveError> {
         let id = StepId::Resolve(ResolveId {
             func_name: func_name.to_string(),
         });
@@ -238,34 +224,38 @@ impl ExecContext {
             self.inner.log.lock().unwrap().dependencies.push(dep);
         }
 
-        let old_from_step = self.inner.from_step.clone();
-        self.inner.from_step = id.clone();
-
         let mut resolve_ctx = ResolveContext {
-            inner: self.inner.clone(),
+            inner: ContextInner {
+                log: self.inner.log.clone(),
+                from_step: id,
+            },
         };
 
         let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path, &mut resolve_ctx)?;
-        let result = f(&mut resolve_ctx, ast, symbols);
 
-        self.inner = resolve_ctx.inner;
-        self.inner.from_step = old_from_step;
+        Ok((resolve_ctx, ast, symbols))
+    }
 
-        result
+    pub fn dependencies(&self) -> Vec<Dependency> {
+        self.inner.log.lock().unwrap().dependencies.clone()
+    }
+
+    pub fn to_json(&self) -> String {
+        to_json_impl(&self.inner)
+    }
+
+    pub fn to_tree_string(&self) -> String {
+        to_tree_string_impl(&self.inner)
     }
 }
 
 impl ResolveContext {
-    pub fn resolve<T, E>(
-        &mut self,
+    pub fn resolve(
+        &self,
         func_name: &str,
         base_path: &str,
         pre_ast: crate::types::PreExpr,
-        f: impl FnOnce(&mut ResolveContext, crate::types::Expr, crate::types::SymbolTable) -> Result<T, E>,
-    ) -> Result<T, E>
-    where
-        E: From<crate::types::ResolveError>,
-    {
+    ) -> Result<(ResolveContext, crate::types::Expr, crate::types::SymbolTable), crate::types::ResolveError> {
         let id = StepId::Resolve(ResolveId {
             func_name: func_name.to_string(),
         });
@@ -289,30 +279,22 @@ impl ResolveContext {
             self.inner.log.lock().unwrap().dependencies.push(dep);
         }
 
-        let old_from_step = self.inner.from_step.clone();
-        self.inner.from_step = id.clone();
-
         let mut nested_ctx = ResolveContext {
-            inner: self.inner.clone(),
+            inner: ContextInner {
+                log: self.inner.log.clone(),
+                from_step: id,
+            },
         };
 
         let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path, &mut nested_ctx)?;
-        let result = f(&mut nested_ctx, ast, symbols);
 
-        self.inner = nested_ctx.inner;
-        self.inner.from_step = old_from_step;
-
-        result
+        Ok((nested_ctx, ast, symbols))
     }
 
-    pub fn parse<T, E>(
-        &mut self,
+    pub fn parse(
+        &self,
         path: &str,
-        f: impl FnOnce(&mut ParseContext, crate::types::PreExpr) -> Result<T, E>,
-    ) -> Result<T, E>
-    where
-        E: From<crate::types::ParseError> + From<std::io::Error>,
-    {
+    ) -> Result<(ParseContext, crate::types::PreExpr), crate::types::ParseError> {
         let id = StepId::Parse(ParseId {
             file_path: path.to_string(),
         });
@@ -344,55 +326,30 @@ impl ResolveContext {
             self.inner.log.lock().unwrap().dependencies.push(dep_context);
         }
 
-        let old_from_step = self.inner.from_step.clone();
-        self.inner.from_step = id.clone();
-
-        let mut parse_ctx = ParseContext {
-            inner: self.inner.clone(),
+        let parse_ctx = ParseContext {
+            inner: ContextInner {
+                log: self.inner.log.clone(),
+                from_step: id,
+            },
         };
 
         // Parse calls read internally to get the source
-        let pre_ast = parse_ctx.read(path, |_read_ctx, source| {
-            crate::parse::tokenize_and_parse(&source, path)
-        })?;
+        let source = std::fs::read_to_string(path)
+            .map_err(|_| crate::types::ParseError::InvalidSyntax)?;
+        let pre_ast = crate::parse::tokenize_and_parse(&source, path)?;
 
-        let result = f(&mut parse_ctx, pre_ast);
-
-        self.inner = parse_ctx.inner;
-        self.inner.from_step = old_from_step;
-
-        result
+        Ok((parse_ctx, pre_ast))
     }
 }
 
 impl ParseContext {
-    pub fn read<T, E>(
-        &mut self,
-        path: &str,
-        f: impl FnOnce(&mut ReadContext, String) -> Result<T, E>,
-    ) -> Result<T, E>
-    where
-        E: From<std::io::Error>,
-    {
-        let _id = StepId::Read(ReadId {
-            file_path: path.to_string(),
-        });
-
-        let mut read_ctx = ReadContext {
-            inner: self.inner.clone(),
-        };
-
-        let source = std::fs::read_to_string(path)?;
-        let result = f(&mut read_ctx, source);
-
-        self.inner = read_ctx.inner;
-
-        result
-    }
+    // ParseContext doesn't need a read() method in the public API
+    // since parse() already handles reading internally
 }
 
 impl ReadContext {
     // Terminal context - no methods for calling other operations
+    // ReadContext is not directly accessible in the public API
 }
 
 // Helper functions for JSON/tree generation
@@ -929,9 +886,9 @@ impl Context {
 
 }
 
-pub fn with_root_context<T>(f: impl FnOnce(&mut RootContext) -> T) -> T {
-    let mut ctx = RootContext::new();
-    f(&mut ctx)
+pub fn with_root_context<T>(f: impl FnOnce(&RootContext) -> T) -> T {
+    let ctx = RootContext::new();
+    f(&ctx)
 }
 
 #[cfg(test)]
