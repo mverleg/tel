@@ -168,11 +168,25 @@ impl Context {
             func_name: func_name.into(),
         });
 
-        // Don't record dependencies to Root - Root is the starting context, not a real step
+        // Dependency direction depends on the context:
+        // - From Parse: Resolve depends on Parse (must parse before resolving)
+        // - From Resolve: outer Resolve depends on inner Resolve (must resolve imports first)
         if self.from_step != StepId::Root {
-            let dep = Dependency {
-                from: self.from_step.clone(),
-                to: id.clone(),
+            let dep = match &self.from_step {
+                StepId::Resolve(_) => {
+                    // Outer resolve depends on inner resolve (for imports)
+                    Dependency {
+                        from: self.from_step.clone(),
+                        to: id.clone(),
+                    }
+                }
+                _ => {
+                    // New step depends on current context (e.g., Resolve depends on Parse)
+                    Dependency {
+                        from: id.clone(),
+                        to: self.from_step.clone(),
+                    }
+                }
             };
             println!("[qcompiler2] Dependency: {} -> {}",
                 serde_json::to_string(&dep.from).unwrap(),
@@ -290,7 +304,31 @@ impl Context {
             }
             self.format_tree_node(root, "", true, &dag.children, &leaf_nodes, &mut result);
         }
+
+        self.validate_tree(&roots, &all_nodes, &leaf_nodes);
+
         result
+    }
+
+    fn validate_tree(&self, roots: &[StepId], all_nodes: &HashSet<StepId>, leaf_nodes: &HashSet<StepId>) {
+        // Check 1: Trees must not be disjoint (should have exactly one root)
+        if roots.len() > 1 {
+            panic!("Dependency tree is disjoint! Found {} roots: {:?}", roots.len(), roots);
+        }
+
+        // Check 2: All leaf nodes must be Read operations
+        for leaf in leaf_nodes {
+            if !matches!(leaf, StepId::Read(_)) {
+                panic!("Leaf node is not a Read operation: {:?}", leaf);
+            }
+        }
+
+        // Check 3: All Read operations must be leaf nodes
+        for node in all_nodes {
+            if matches!(node, StepId::Read(_)) && !leaf_nodes.contains(node) {
+                panic!("Read operation is not a leaf node: {:?}", node);
+            }
+        }
     }
 
     fn format_tree_node(
