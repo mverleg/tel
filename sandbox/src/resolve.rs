@@ -1,4 +1,3 @@
-use crate::qcompiler2::Context;
 use crate::types::{Expr, FuncId, PreExpr, ResolveError, ScopeId, SymbolTable, VarId};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -259,7 +258,7 @@ impl Resolver {
         }
     }
 
-    fn process_imports(&mut self, pre_ast: &PreExpr, ctx: &mut crate::qcompiler2::ResolveContext) -> Result<(), ResolveError> {
+    fn process_imports(&mut self, pre_ast: &PreExpr) -> Result<(), ResolveError> {
         let imports = self.extract_imports(pre_ast)?;
 
         for import_name in imports {
@@ -268,51 +267,44 @@ impl Resolver {
             }
             let full_path = self.base_path.join(format!("{}.telsb", import_name));
 
-            let (func_ast, func_resolver_symbols, func_resolver_funcs, func_resolver_func_arities, arity) =
-                ctx.in_resolve(&import_name, |ctx| {
-                    let imported_pre_ast = ctx.read(full_path.to_str().unwrap(), |ctx, source| {
-                        ctx.parse(full_path.to_str().unwrap(), &source, |_ctx, imported_pre_ast| {
-                            Ok::<PreExpr, ResolveError>(imported_pre_ast)
-                        })
-                    })
-                    .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
+            let my_source = std::fs::read_to_string(full_path.to_str().unwrap())
+                .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
 
-                    let arity = Self::calculate_arity(&imported_pre_ast, &import_name)?;
+            let imported_pre_ast = crate::parse::tokenize_and_parse(&my_source, full_path.to_str().unwrap())?;
 
-                    let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf());
-                    func_resolver.in_function = true;
-                    func_resolver.process_imports(&imported_pre_ast, ctx)?;
+            let arity = Self::calculate_arity(&imported_pre_ast, &import_name)?;
 
-                    let placeholder_id = FuncId(self.symbol_table.funcs.len() + func_resolver.symbol_table.funcs.len());
-                    func_resolver.funcs.insert(import_name.clone(), placeholder_id);
-                    func_resolver.func_arities.insert(placeholder_id, arity);
+            let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf());
+            func_resolver.in_function = true;
+            func_resolver.process_imports(&imported_pre_ast)?;
 
-                    let func_ast = func_resolver.resolve_body(&imported_pre_ast)?;
+            let placeholder_id = FuncId(self.symbol_table.funcs.len() + func_resolver.symbol_table.funcs.len());
+            func_resolver.funcs.insert(import_name.clone(), placeholder_id);
+            func_resolver.func_arities.insert(placeholder_id, arity);
 
-                    Ok::<_, ResolveError>((func_ast, func_resolver.symbol_table, func_resolver.funcs, func_resolver.func_arities, arity))
-                })?;
+            let func_ast = func_resolver.resolve_body(&imported_pre_ast)?;
 
             let offset = self.symbol_table.funcs.len();
 
-            for mut func_info in func_resolver_symbols.funcs {
+            for mut func_info in func_resolver.symbol_table.funcs {
                 Self::remap_func_ids(&mut func_info.ast, offset);
                 self.symbol_table.funcs.push(func_info);
             }
 
-            let mut func_ast = func_ast;
-            Self::remap_func_ids(&mut func_ast, offset);
+            let mut my_func_ast = func_ast;
+            Self::remap_func_ids(&mut my_func_ast, offset);
 
-            for (name, old_id) in func_resolver_funcs {
+            for (name, old_id) in func_resolver.funcs {
                 let new_id = FuncId(old_id.0 + offset);
                 self.funcs.insert(name, new_id);
             }
 
-            for (old_id, arity_value) in func_resolver_func_arities {
+            for (old_id, arity_value) in func_resolver.func_arities {
                 let new_id = FuncId(old_id.0 + offset);
                 self.func_arities.insert(new_id, arity_value);
             }
 
-            let func_id = self.symbol_table.add_func(import_name.clone(), func_ast, arity);
+            let func_id = self.symbol_table.add_func(import_name.clone(), my_func_ast, arity);
             self.funcs.insert(import_name, func_id);
             self.func_arities.insert(func_id, arity);
         }
@@ -468,12 +460,12 @@ impl Resolver {
     }
 }
 
-pub(crate) fn resolve_internal(pre_ast: PreExpr, base_path: &str, ctx: &mut crate::qcompiler2::ResolveContext) -> Result<(Expr, SymbolTable), ResolveError> {
+pub(crate) fn resolve_internal(pre_ast: PreExpr, base_path: &str) -> Result<(Expr, SymbolTable), ResolveError> {
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
 
     let mut resolver = Resolver::new(dir.to_path_buf());
-    resolver.process_imports(&pre_ast, ctx)?;
+    resolver.process_imports(&pre_ast)?;
     resolver.process_local_functions(&pre_ast)?;
     let ast = resolver.resolve_body(&pre_ast)?;
     Ok((ast, resolver.symbol_table))

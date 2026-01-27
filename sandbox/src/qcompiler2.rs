@@ -231,7 +231,7 @@ impl ExecContext {
             },
         };
 
-        let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path, &mut resolve_ctx)?;
+        let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path)?;
 
         Ok((resolve_ctx, ast, symbols))
     }
@@ -286,7 +286,7 @@ impl ResolveContext {
             },
         };
 
-        let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path, &mut nested_ctx)?;
+        let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path)?;
 
         Ok((nested_ctx, ast, symbols))
     }
@@ -335,7 +335,7 @@ impl ResolveContext {
 
         // Parse calls read internally to get the source
         let source = std::fs::read_to_string(path)
-            .map_err(|_| crate::types::ParseError::InvalidSyntax)?;
+            .map_err(|_| crate::types::ParseError::EmptyExpression)?;
         let pre_ast = crate::parse::tokenize_and_parse(&source, path)?;
 
         Ok((parse_ctx, pre_ast))
@@ -869,7 +869,7 @@ impl Context {
         E: From<crate::types::ResolveError>,
     {
         self.in_resolve(func_name, |ctx| {
-            let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path, ctx)?;
+            let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path)?;
             f(ctx, ast, symbols)
         })
     }

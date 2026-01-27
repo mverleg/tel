@@ -1,4 +1,3 @@
-use sandbox::qcompiler2;
 use std::env;
 use std::path::Path;
 use std::process;
@@ -59,21 +58,11 @@ fn main() {
         }
     };
 
-    let result = qcompiler2::with_root_context(|ctx| {
-        ctx.read(my_file_str, |ctx, source| {
-            ctx.parse(my_file_str, &source, |ctx, pre_ast| {
-                ctx.resolve("main", my_file_str, pre_ast, |ctx, ast, symbols| {
-                    ctx.exec("main", ast, &symbols, |ctx| {
-                        if my_show_deps {
-                            println!("\n=== Dependency Graph ===\n");
-                            println!("{}", ctx.to_tree_string());
-                        }
-                        Ok::<(), sandbox::Error>(())
-                    })
-                })
-            })
-        })
-    });
+    let result = sandbox::run_file(my_file_str);
+
+    if my_show_deps {
+        eprintln!("Warning: --show-deps is no longer supported");
+    }
 
     match result {
         Ok(()) => {}
