@@ -1,24 +1,26 @@
 use serde::Deserialize;
 use serde::Serialize;
+use crate::common::Name;
+use crate::common::Path;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ReadId {
-    pub file_path: String,
+    pub file_path: Path,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ParseId {
-    pub file_path: String,
+    pub file_path: Path,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ResolveId {
-    pub func_name: String,
+    pub func_name: Name,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExecId {
-    pub main_func: String,
+    pub main_func: Name,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

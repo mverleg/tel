@@ -1,10 +1,10 @@
-pub mod execute;
-pub mod parse;
-pub mod qcompiler2;
-pub mod resolve;
-pub mod types;
-pub mod graph;
-pub mod context;
+mod execute;
+mod parse;
+mod resolve;
+mod types;
+mod graph;
+mod context;
+mod common;
 
 use std::fmt;
 use crate::context::Context;

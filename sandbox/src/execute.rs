@@ -1,5 +1,6 @@
 use crate::types::{BinOp, ExecuteError, Expr, SymbolTable, VarId};
 use std::collections::HashMap;
+use crate::common::{Name, Path};
 use crate::context::Context;
 use crate::graph::{ExecId, ResolveId};
 
@@ -150,10 +151,11 @@ pub fn execute_internal(ast: &Expr, symbols: &SymbolTable) -> Result<(), Execute
 }
 
 pub fn execute(ctx: &Context, path: &str) -> Result<(), ExecuteError> {
-    let reesolve_id = ResolveId { func_name: "main".to_owned() };
+    let main = Name::of("main");
+    let reesolve_id = ResolveId { func_name: main.clone() };
     // let (my_ast, my_symbols) = crate::resolve::resolve(path)?;
     let (my_ast, my_symbols) = ctx.resolve(reesolve_id)?;
-    let exec_id = ExecId { main_func: path.to_owned() };
+    let exec_id = ExecId { main_func: main };
     execute_internal(&my_ast, &my_symbols)
 }
 

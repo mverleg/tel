@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
+use crate::common::Name;
 use crate::graph::{ExecId, ParseId, ReadId, ResolveId, StepId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,7 +128,7 @@ impl RootContext {
         symbols: &crate::types::SymbolTable,
     ) -> Result<ExecContext, crate::types::ExecuteError> {
         let id = StepId::Exec(ExecId {
-            main_func: main_func.to_string(),
+            main_func: Name::of(main_func),
         });
 
         if self.inner.from_step != StepId::Root {
@@ -174,7 +175,7 @@ impl ExecContext {
         pre_ast: crate::types::PreExpr,
     ) -> Result<(ResolveContext, crate::types::Expr, crate::types::SymbolTable), crate::types::ResolveError> {
         let id = StepId::Resolve(ResolveId {
-            func_name: func_name.to_string(),
+            func_name: Name::of(func_name),
         });
 
         if self.inner.from_step != StepId::Root {

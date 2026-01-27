@@ -11,6 +11,6 @@ impl Context {
     }
 
     pub fn resolve(&self, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
-        crate::resolve::resolve(&id.func_name)
+        crate::resolve::resolve(&id.func_name.as_str())
     }
 }
