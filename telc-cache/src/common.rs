@@ -17,7 +17,7 @@ pub enum Next {
 }
 
 impl Rev {
-    pub(crate) fn next(self) -> Next {
+    pub fn next(self) -> Next {
         match self.ix.checked_add(1) {
             Some(n) => Next::Ok(Self { ix: n }),
             None => Next::Overflow(Self { ix: 0 }),

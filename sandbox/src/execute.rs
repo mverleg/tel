@@ -1,6 +1,7 @@
 use crate::types::{BinOp, ExecuteError, Expr, SymbolTable, VarId};
 use std::collections::HashMap;
 use crate::context::Context;
+use crate::graph::{ExecId, ResolveId};
 
 enum EvalResult {
     Value(i64),
@@ -148,9 +149,11 @@ pub fn execute_internal(ast: &Expr, symbols: &SymbolTable) -> Result<(), Execute
     Ok(())
 }
 
-pub fn execute(path: &str) -> Result<(), ExecuteError> {
-    let mut context = Context::new();
-    let (my_ast, my_symbols) = crate::resolve::resolve(path)?;
+pub fn execute(ctx: &Context, path: &str) -> Result<(), ExecuteError> {
+    let reesolve_id = ResolveId { func_name: "main".to_owned() };
+    // let (my_ast, my_symbols) = crate::resolve::resolve(path)?;
+    let (my_ast, my_symbols) = ctx.resolve(reesolve_id)?;
+    let exec_id = ExecId { main_func: path.to_owned() };
     execute_internal(&my_ast, &my_symbols)
 }
 

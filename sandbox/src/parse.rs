@@ -287,7 +287,7 @@ impl Parser {
 }
 
 
-pub(crate) fn tokenize_and_parse(source: &str, file_path: &str) -> Result<PreExpr, ParseError> {
+pub fn tokenize_and_parse(source: &str, file_path: &str) -> Result<PreExpr, ParseError> {
     let tokens = tokenize(source)?;
     let mut parser = Parser::new(tokens, file_path.to_string());
     parser.parse_all()

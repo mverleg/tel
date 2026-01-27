@@ -7,6 +7,7 @@ pub mod graph;
 pub mod context;
 
 use std::fmt;
+use crate::context::Context;
 
 #[derive(Debug)]
 pub enum Error {
@@ -54,7 +55,8 @@ impl From<types::ExecuteError> for Error {
 }
 
 pub fn run_file(path: &str) -> Result<(), Error> {
-    execute::execute(path)?;
+    let ctx = Context::new();
+    execute::execute(&ctx, path)?;
     Ok(())
 }
 

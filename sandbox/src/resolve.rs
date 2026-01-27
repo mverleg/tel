@@ -460,7 +460,7 @@ impl Resolver {
     }
 }
 
-pub(crate) fn resolve_internal(pre_ast: PreExpr, base_path: &str) -> Result<(Expr, SymbolTable), ResolveError> {
+pub fn resolve_internal(pre_ast: PreExpr, base_path: &str) -> Result<(Expr, SymbolTable), ResolveError> {
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
 
