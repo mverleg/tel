@@ -17,7 +17,7 @@ The compiler processes programs in four phases:
 
 ## Query engine features
 
-- [x] Build depenency graph
+- [x] Build dependency graph
 - [ ] Inverse dependency graph
 - [ ] Concurrency-safe
 - [ ] Prevent ctx leak outside scope (just pure fn pointers?)

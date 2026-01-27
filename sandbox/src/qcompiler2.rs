@@ -92,12 +92,483 @@ struct ExecutionLog {
     dependencies: Vec<Dependency>,
 }
 
+// Shared internal state for all context types
+#[derive(Clone)]
+struct ContextInner {
+    log: Arc<Mutex<ExecutionLog>>,
+    from_step: StepId,
+}
+
+// Root context - starting point, can only exec
+#[derive(Clone)]
+pub struct RootContext {
+    inner: ContextInner,
+}
+
+// Exec context - can only resolve
+#[derive(Clone)]
+pub struct ExecContext {
+    inner: ContextInner,
+}
+
+// Resolve context - can resolve or parse
+#[derive(Clone)]
+pub struct ResolveContext {
+    inner: ContextInner,
+}
+
+// Parse context - can only read
+#[derive(Clone)]
+pub struct ParseContext {
+    inner: ContextInner,
+}
+
+// Read context - terminal operation (leaf node)
+#[derive(Clone)]
+pub struct ReadContext {
+    inner: ContextInner,
+}
+
+// Legacy context type for backward compatibility during migration
 #[derive(Clone)]
 pub struct Context {
     log: Arc<Mutex<ExecutionLog>>,
     from_step: StepId,
 }
 
+impl RootContext {
+    pub fn new() -> Self {
+        Self {
+            inner: ContextInner {
+                log: Arc::new(Mutex::new(ExecutionLog {
+                    dependencies: Vec::new(),
+                })),
+                from_step: StepId::Root,
+            },
+        }
+    }
+
+    pub fn exec<T, E>(
+        &mut self,
+        main_func: &str,
+        ast: crate::types::Expr,
+        symbols: &crate::types::SymbolTable,
+        f: impl FnOnce(&mut ExecContext) -> Result<T, E>,
+    ) -> Result<T, E>
+    where
+        E: From<crate::types::ExecuteError>,
+    {
+        let id = StepId::Exec(ExecId {
+            main_func: main_func.to_string(),
+        });
+
+        if self.inner.from_step != StepId::Root {
+            let dep = Dependency {
+                from: id.clone(),
+                to: self.inner.from_step.clone(),
+            };
+            println!(
+                "[qcompiler2] Dependency: {} -> {}",
+                serde_json::to_string(&dep.from).unwrap(),
+                serde_json::to_string(&dep.to).unwrap()
+            );
+            self.inner.log.lock().unwrap().dependencies.push(dep);
+        }
+
+        let old_from_step = self.inner.from_step.clone();
+        self.inner.from_step = id.clone();
+
+        let mut exec_ctx = ExecContext {
+            inner: self.inner.clone(),
+        };
+
+        crate::execute::execute_internal(&ast, symbols)?;
+        let result = f(&mut exec_ctx);
+
+        self.inner = exec_ctx.inner;
+        self.inner.from_step = old_from_step;
+
+        result
+    }
+
+    pub fn dependencies(&self) -> Vec<Dependency> {
+        self.inner.log.lock().unwrap().dependencies.clone()
+    }
+
+    pub fn to_json(&self) -> String {
+        to_json_impl(&self.inner)
+    }
+
+    pub fn to_tree_string(&self) -> String {
+        to_tree_string_impl(&self.inner)
+    }
+}
+
+impl ExecContext {
+    pub fn resolve<T, E>(
+        &mut self,
+        func_name: &str,
+        base_path: &str,
+        pre_ast: crate::types::PreExpr,
+        f: impl FnOnce(&mut ResolveContext, crate::types::Expr, crate::types::SymbolTable) -> Result<T, E>,
+    ) -> Result<T, E>
+    where
+        E: From<crate::types::ResolveError>,
+    {
+        let id = StepId::Resolve(ResolveId {
+            func_name: func_name.to_string(),
+        });
+
+        if self.inner.from_step != StepId::Root {
+            let dep = match &self.inner.from_step {
+                StepId::Resolve(_) => Dependency {
+                    from: self.inner.from_step.clone(),
+                    to: id.clone(),
+                },
+                _ => Dependency {
+                    from: id.clone(),
+                    to: self.inner.from_step.clone(),
+                },
+            };
+            println!(
+                "[qcompiler2] Dependency: {} -> {}",
+                serde_json::to_string(&dep.from).unwrap(),
+                serde_json::to_string(&dep.to).unwrap()
+            );
+            self.inner.log.lock().unwrap().dependencies.push(dep);
+        }
+
+        let old_from_step = self.inner.from_step.clone();
+        self.inner.from_step = id.clone();
+
+        let mut resolve_ctx = ResolveContext {
+            inner: self.inner.clone(),
+        };
+
+        let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path, &mut resolve_ctx)?;
+        let result = f(&mut resolve_ctx, ast, symbols);
+
+        self.inner = resolve_ctx.inner;
+        self.inner.from_step = old_from_step;
+
+        result
+    }
+}
+
+impl ResolveContext {
+    pub fn resolve<T, E>(
+        &mut self,
+        func_name: &str,
+        base_path: &str,
+        pre_ast: crate::types::PreExpr,
+        f: impl FnOnce(&mut ResolveContext, crate::types::Expr, crate::types::SymbolTable) -> Result<T, E>,
+    ) -> Result<T, E>
+    where
+        E: From<crate::types::ResolveError>,
+    {
+        let id = StepId::Resolve(ResolveId {
+            func_name: func_name.to_string(),
+        });
+
+        if self.inner.from_step != StepId::Root {
+            let dep = match &self.inner.from_step {
+                StepId::Resolve(_) => Dependency {
+                    from: self.inner.from_step.clone(),
+                    to: id.clone(),
+                },
+                _ => Dependency {
+                    from: id.clone(),
+                    to: self.inner.from_step.clone(),
+                },
+            };
+            println!(
+                "[qcompiler2] Dependency: {} -> {}",
+                serde_json::to_string(&dep.from).unwrap(),
+                serde_json::to_string(&dep.to).unwrap()
+            );
+            self.inner.log.lock().unwrap().dependencies.push(dep);
+        }
+
+        let old_from_step = self.inner.from_step.clone();
+        self.inner.from_step = id.clone();
+
+        let mut nested_ctx = ResolveContext {
+            inner: self.inner.clone(),
+        };
+
+        let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path, &mut nested_ctx)?;
+        let result = f(&mut nested_ctx, ast, symbols);
+
+        self.inner = nested_ctx.inner;
+        self.inner.from_step = old_from_step;
+
+        result
+    }
+
+    pub fn parse<T, E>(
+        &mut self,
+        path: &str,
+        f: impl FnOnce(&mut ParseContext, crate::types::PreExpr) -> Result<T, E>,
+    ) -> Result<T, E>
+    where
+        E: From<crate::types::ParseError> + From<std::io::Error>,
+    {
+        let id = StepId::Parse(ParseId {
+            file_path: path.to_string(),
+        });
+
+        let read_id = StepId::Read(ReadId {
+            file_path: path.to_string(),
+        });
+        let dep_read = Dependency {
+            from: id.clone(),
+            to: read_id.clone(),
+        };
+        println!(
+            "[qcompiler2] Dependency: {} -> {}",
+            serde_json::to_string(&dep_read.from).unwrap(),
+            serde_json::to_string(&dep_read.to).unwrap()
+        );
+        self.inner.log.lock().unwrap().dependencies.push(dep_read);
+
+        if self.inner.from_step != StepId::Root && self.inner.from_step != read_id {
+            let dep_context = Dependency {
+                from: self.inner.from_step.clone(),
+                to: id.clone(),
+            };
+            println!(
+                "[qcompiler2] Dependency: {} -> {}",
+                serde_json::to_string(&dep_context.from).unwrap(),
+                serde_json::to_string(&dep_context.to).unwrap()
+            );
+            self.inner.log.lock().unwrap().dependencies.push(dep_context);
+        }
+
+        let old_from_step = self.inner.from_step.clone();
+        self.inner.from_step = id.clone();
+
+        let mut parse_ctx = ParseContext {
+            inner: self.inner.clone(),
+        };
+
+        // Parse calls read internally to get the source
+        let pre_ast = parse_ctx.read(path, |_read_ctx, source| {
+            crate::parse::tokenize_and_parse(&source, path)
+        })?;
+
+        let result = f(&mut parse_ctx, pre_ast);
+
+        self.inner = parse_ctx.inner;
+        self.inner.from_step = old_from_step;
+
+        result
+    }
+}
+
+impl ParseContext {
+    pub fn read<T, E>(
+        &mut self,
+        path: &str,
+        f: impl FnOnce(&mut ReadContext, String) -> Result<T, E>,
+    ) -> Result<T, E>
+    where
+        E: From<std::io::Error>,
+    {
+        let _id = StepId::Read(ReadId {
+            file_path: path.to_string(),
+        });
+
+        let mut read_ctx = ReadContext {
+            inner: self.inner.clone(),
+        };
+
+        let source = std::fs::read_to_string(path)?;
+        let result = f(&mut read_ctx, source);
+
+        self.inner = read_ctx.inner;
+
+        result
+    }
+}
+
+impl ReadContext {
+    // Terminal context - no methods for calling other operations
+}
+
+// Helper functions for JSON/tree generation
+fn to_json_impl(inner: &ContextInner) -> String {
+    let dependencies = inner.log.lock().unwrap().dependencies.clone();
+    let dag = DagIndex::from_dependencies(&dependencies);
+    let mut all_nodes: HashSet<StepId> = HashSet::new();
+
+    for dep in &dependencies {
+        all_nodes.insert(dep.from.clone());
+        all_nodes.insert(dep.to.clone());
+    }
+
+    let roots: Vec<StepId> = all_nodes
+        .iter()
+        .filter(|node| !dag.parents.contains_key(node))
+        .cloned()
+        .collect();
+
+    let tree = build_tree_nodes(&roots, &dag.children, &mut HashSet::new());
+
+    let leaf_nodes: Vec<StepId> = all_nodes
+        .iter()
+        .filter(|node| !dag.children.contains_key(node))
+        .cloned()
+        .collect();
+
+    let leaf_paths: Vec<Vec<StepId>> = leaf_nodes
+        .iter()
+        .map(|leaf| dag.find_path_to_root(leaf))
+        .collect();
+
+    let output = DependencyGraphOutput {
+        tree,
+        leaf_nodes,
+        leaf_paths,
+    };
+
+    serde_json::to_string_pretty(&output).unwrap()
+}
+
+fn to_tree_string_impl(inner: &ContextInner) -> String {
+    let dependencies = inner.log.lock().unwrap().dependencies.clone();
+    let dag = DagIndex::from_dependencies(&dependencies);
+    let mut all_nodes: HashSet<StepId> = HashSet::new();
+
+    for dep in &dependencies {
+        all_nodes.insert(dep.from.clone());
+        all_nodes.insert(dep.to.clone());
+    }
+
+    let roots: Vec<StepId> = all_nodes
+        .iter()
+        .filter(|node| !dag.parents.contains_key(node))
+        .cloned()
+        .collect();
+
+    let leaf_nodes: HashSet<StepId> = all_nodes
+        .iter()
+        .filter(|node| !dag.children.contains_key(node))
+        .cloned()
+        .collect();
+
+    let mut result = String::new();
+    for (i, root) in roots.iter().enumerate() {
+        if i > 0 {
+            result.push_str("\n\n");
+        }
+        format_tree_node(root, "", true, &dag.children, &leaf_nodes, &mut result);
+    }
+
+    validate_tree(&roots, &all_nodes, &leaf_nodes);
+
+    result
+}
+
+fn validate_tree(roots: &[StepId], all_nodes: &HashSet<StepId>, leaf_nodes: &HashSet<StepId>) {
+    if roots.len() > 1 {
+        panic!("Dependency tree is disjoint! Found {} roots: {:?}", roots.len(), roots);
+    }
+
+    for leaf in leaf_nodes {
+        if !matches!(leaf, StepId::Read(_)) {
+            panic!("Leaf node is not a Read operation: {:?}", leaf);
+        }
+    }
+
+    for node in all_nodes {
+        if matches!(node, StepId::Read(_)) && !leaf_nodes.contains(node) {
+            panic!("Read operation is not a leaf node: {:?}", node);
+        }
+    }
+}
+
+fn format_tree_node(
+    node: &StepId,
+    prefix: &str,
+    is_last: bool,
+    children: &HashMap<StepId, Vec<StepId>>,
+    leaf_nodes: &HashSet<StepId>,
+    output: &mut String,
+) {
+    let node_str = format_step_id(node);
+    let is_leaf = leaf_nodes.contains(node);
+
+    output.push_str(prefix);
+    if !prefix.is_empty() {
+        output.push_str(if is_last { "└─ " } else { "├─ " });
+    }
+    output.push_str(&node_str);
+    if is_leaf {
+        output.push_str(" [LEAF]");
+    }
+    output.push('\n');
+
+    if let Some(child_nodes) = children.get(node) {
+        let child_count = child_nodes.len();
+        for (i, child) in child_nodes.iter().enumerate() {
+            let is_last_child = i == child_count - 1;
+            let new_prefix = if prefix.is_empty() {
+                String::from("  ")
+            } else {
+                format!("{}{}  ", prefix, if is_last { " " } else { "│" })
+            };
+            format_tree_node(child, &new_prefix, is_last_child, children, leaf_nodes, output);
+        }
+    }
+}
+
+fn format_step_id(step: &StepId) -> String {
+    match step {
+        StepId::Root => "Root".to_string(),
+        StepId::Read(id) => format!("Read({})", id.file_path),
+        StepId::Parse(id) => format!("Parse({})", id.file_path),
+        StepId::Resolve(id) => format!("Resolve({})", id.func_name),
+        StepId::Exec(id) => format!("Exec({})", id.main_func),
+    }
+}
+
+fn build_tree_nodes(
+    nodes: &[StepId],
+    children: &HashMap<StepId, Vec<StepId>>,
+    visited: &mut HashSet<StepId>,
+) -> Vec<DependencyNode> {
+    nodes
+        .iter()
+        .map(|node| build_tree_node(node, children, visited))
+        .collect()
+}
+
+fn build_tree_node(
+    node: &StepId,
+    children: &HashMap<StepId, Vec<StepId>>,
+    visited: &mut HashSet<StepId>,
+) -> DependencyNode {
+    if visited.contains(node) {
+        panic!("Cyclic dependency detected at: {:?}", node);
+    }
+
+    visited.insert(node.clone());
+
+    let deps = if let Some(child_nodes) = children.get(node) {
+        build_tree_nodes(child_nodes, children, visited)
+    } else {
+        Vec::new()
+    };
+
+    visited.remove(node);
+
+    DependencyNode {
+        step: node.clone(),
+        dependencies: deps,
+    }
+}
+
+// Legacy Context implementation for backward compatibility
 impl Context {
     fn root() -> Self {
         Self {
@@ -458,8 +929,8 @@ impl Context {
 
 }
 
-pub fn with_root_context<T>(f: impl FnOnce(&mut Context) -> T) -> T {
-    let mut ctx = Context::root();
+pub fn with_root_context<T>(f: impl FnOnce(&mut RootContext) -> T) -> T {
+    let mut ctx = RootContext::new();
     f(&mut ctx)
 }
 

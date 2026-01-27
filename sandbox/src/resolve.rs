@@ -259,7 +259,7 @@ impl Resolver {
         }
     }
 
-    fn process_imports(&mut self, pre_ast: &PreExpr, ctx: &mut Context) -> Result<(), ResolveError> {
+    fn process_imports(&mut self, pre_ast: &PreExpr, ctx: &mut crate::qcompiler2::ResolveContext) -> Result<(), ResolveError> {
         let imports = self.extract_imports(pre_ast)?;
 
         for import_name in imports {
@@ -468,7 +468,7 @@ impl Resolver {
     }
 }
 
-pub(crate) fn resolve_internal(pre_ast: PreExpr, base_path: &str, ctx: &mut Context) -> Result<(Expr, SymbolTable), ResolveError> {
+pub(crate) fn resolve_internal(pre_ast: PreExpr, base_path: &str, ctx: &mut crate::qcompiler2::ResolveContext) -> Result<(Expr, SymbolTable), ResolveError> {
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
 
