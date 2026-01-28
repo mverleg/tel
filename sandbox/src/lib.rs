@@ -34,7 +34,7 @@ impl std::error::Error for Error {}
 pub async fn run_file(path: &str) -> Result<(), Error> {
     let ctx = Context::new();
     let main = Name::of("main");
-    execute::execute(&ctx, path).await
+    ctx.execute(&ctx, path).await
         .map_err(|e| Error::Execute(main, e))?;
     Ok(())
 }
