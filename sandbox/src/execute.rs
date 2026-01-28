@@ -1,6 +1,10 @@
-use crate::types::{BinOp, ExecuteError, Expr, SymbolTable, VarId};
+use crate::types::SymbolTable;
+use crate::types::Expr;
+use crate::types::ExecuteError;
+use crate::types::BinOp;
+use crate::types::VarId;
 use std::collections::HashMap;
-use crate::common::{Name, Path};
+use crate::common::Name;
 use crate::context::Context;
 use crate::graph::{ExecId, ResolveId};
 

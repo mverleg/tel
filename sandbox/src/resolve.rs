@@ -1,6 +1,8 @@
+use crate::common::Name;
 use crate::types::{Expr, FuncId, PreExpr, ResolveError, ScopeId, SymbolTable, VarId};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 struct Resolver {
     symbol_table: SymbolTable,
@@ -11,6 +13,7 @@ struct Resolver {
     func_arities: HashMap<FuncId, usize>,
     in_function: bool,
     base_path: PathBuf,
+    current_context: Name,
 }
 
 struct Scope {
@@ -19,7 +22,7 @@ struct Scope {
 }
 
 impl Resolver {
-    fn new(base_path: PathBuf) -> Self {
+    fn new(base_path: PathBuf, context: Name) -> Self {
         let global_scope = Scope {
             parent: None,
             vars: HashMap::new(),
@@ -34,10 +37,11 @@ impl Resolver {
             func_arities: HashMap::new(),
             in_function: false,
             base_path,
+            current_context: context,
         }
     }
 
-    fn calculate_arity(expr: &PreExpr, func_name: &str) -> Result<usize, ResolveError> {
+    fn calculate_arity(expr: &PreExpr, func_name: &str, context: &Name) -> Result<usize, ResolveError> {
         let mut max_arg = 0u8;
         let mut arg_numbers = std::collections::HashSet::new();
 
@@ -50,6 +54,7 @@ impl Resolver {
         for i in 1..=max_arg {
             if !arg_numbers.contains(&i) {
                 return Err(ResolveError::ArityGap {
+                    context: context.clone(),
                     func_name: func_name.to_string(),
                     max_arg: max_arg as usize,
                 });
@@ -120,7 +125,7 @@ impl Resolver {
 
     fn declare_var(&mut self, name: String) -> Result<VarId, ResolveError> {
         if self.resolve_var(&name).is_ok() {
-            return Err(ResolveError::VariableAlreadyDefined(name));
+            return Err(ResolveError::VariableAlreadyDefined(self.current_context.clone(), name));
         }
         let var_id = self.symbol_table.add_var(name.clone(), self.current_scope);
         let scope = &mut self.scopes[self.current_scope.0];
@@ -139,7 +144,7 @@ impl Resolver {
             current = scope.parent;
         }
 
-        Err(ResolveError::UndefinedVariable(name.to_string()))
+        Err(ResolveError::UndefinedVariable(self.current_context.clone(), name.to_string()))
     }
 
     fn resolve_expr(&mut self, pre_expr: PreExpr) -> Result<Expr, ResolveError> {
@@ -207,18 +212,18 @@ impl Resolver {
                 Ok(Expr::Panic { source_location })
             }
             PreExpr::Unreachable { source_location } => {
-                Err(ResolveError::UnreachableCode { source_location })
+                Err(ResolveError::UnreachableCode { context: self.current_context.clone(), source_location })
             }
             PreExpr::Import(_) => {
-                Err(ResolveError::ImportNotAtTop)
+                Err(ResolveError::ImportNotAtTop(self.current_context.clone()))
             }
             PreExpr::FunctionDef { .. } => {
-                Err(ResolveError::FunctionDefNotAfterImports)
+                Err(ResolveError::FunctionDefNotAfterImports(self.current_context.clone()))
             }
             PreExpr::Call { func, args } => {
                 let func_id = self.funcs.get(&func)
                     .copied()
-                    .ok_or_else(|| ResolveError::UndefinedFunction(func.clone()))?;
+                    .ok_or_else(|| ResolveError::UndefinedFunction(self.current_context.clone(), func.clone()))?;
 
                 let expected_arity = self.func_arities.get(&func_id)
                     .copied()
@@ -227,6 +232,7 @@ impl Resolver {
 
                 if expected_arity != got_arity {
                     return Err(ResolveError::ArityMismatch {
+                        context: self.current_context.clone(),
                         func_name: func.clone(),
                         expected: expected_arity,
                         got: got_arity,
@@ -244,7 +250,7 @@ impl Resolver {
             }
             PreExpr::Arg(n) => {
                 if !self.in_function {
-                    return Err(ResolveError::ArgOutsideFunction);
+                    return Err(ResolveError::ArgOutsideFunction(self.current_context.clone()));
                 }
                 Ok(Expr::Arg(n))
             }
@@ -263,18 +269,19 @@ impl Resolver {
 
         for import_name in imports {
             if import_name.contains('.') {
-                return Err(ResolveError::InvalidImportPath(import_name.clone()));
+                return Err(ResolveError::InvalidImportPath(self.current_context.clone(), import_name.clone()));
             }
             let full_path = self.base_path.join(format!("{}.telsb", import_name));
 
             let my_source = std::fs::read_to_string(full_path.to_str().unwrap())
-                .map_err(|_| ResolveError::UndefinedFunction(import_name.clone()))?;
+                .map_err(|_| ResolveError::UndefinedFunction(self.current_context.clone(), import_name.clone()))?;
 
-            let imported_pre_ast = crate::parse::tokenize_and_parse(&my_source, full_path.to_str().unwrap())?;
+            let imported_pre_ast = crate::parse::tokenize_and_parse(&my_source, full_path.to_str().unwrap())
+                .map_err(|e| ResolveError::ParseError(crate::common::Path::of(full_path.to_str().unwrap()), e))?;
 
-            let arity = Self::calculate_arity(&imported_pre_ast, &import_name)?;
+            let arity = Self::calculate_arity(&imported_pre_ast, &import_name, &self.current_context)?;
 
-            let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf());
+            let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf(), Name::of(&import_name));
             func_resolver.in_function = true;
             func_resolver.process_imports(&imported_pre_ast)?;
 
@@ -322,7 +329,7 @@ impl Resolver {
                     match expr {
                         PreExpr::Import(path) => {
                             if seen_non_import {
-                                return Err(ResolveError::ImportNotAtTop);
+                                return Err(ResolveError::ImportNotAtTop(self.current_context.clone()));
                             }
                             imports.push(path.clone());
                         }
@@ -353,12 +360,12 @@ impl Resolver {
                     match expr {
                         PreExpr::Import(_) => {
                             if seen_function_def || seen_other {
-                                return Err(ResolveError::ImportNotAtTop);
+                                return Err(ResolveError::ImportNotAtTop(self.current_context.clone()));
                             }
                         }
                         PreExpr::FunctionDef { name, body } => {
                             if seen_other {
-                                return Err(ResolveError::FunctionDefNotAfterImports);
+                                return Err(ResolveError::FunctionDefNotAfterImports(self.current_context.clone()));
                             }
                             seen_function_def = true;
                             function_defs.push((name.clone(), (**body).clone()));
@@ -383,10 +390,10 @@ impl Resolver {
 
         for (func_name, func_body) in function_defs {
             if self.funcs.contains_key(&func_name) {
-                return Err(ResolveError::FunctionAlreadyDefined(func_name));
+                return Err(ResolveError::FunctionAlreadyDefined(self.current_context.clone(), func_name));
             }
 
-            let arity = Self::calculate_arity(&func_body, &func_name)?;
+            let arity = Self::calculate_arity(&func_body, &func_name, &self.current_context)?;
 
             let saved_in_function = self.in_function;
             self.in_function = true;
@@ -460,11 +467,11 @@ impl Resolver {
     }
 }
 
-pub fn resolve_internal(pre_ast: PreExpr, base_path: &str) -> Result<(Expr, SymbolTable), ResolveError> {
+pub fn resolve_internal(pre_ast: PreExpr, base_path: &str, context: Name) -> Result<(Expr, SymbolTable), ResolveError> {
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
 
-    let mut resolver = Resolver::new(dir.to_path_buf());
+    let mut resolver = Resolver::new(dir.to_path_buf(), context);
     resolver.process_imports(&pre_ast)?;
     resolver.process_local_functions(&pre_ast)?;
     let ast = resolver.resolve_body(&pre_ast)?;
@@ -472,7 +479,12 @@ pub fn resolve_internal(pre_ast: PreExpr, base_path: &str) -> Result<(Expr, Symb
 }
 
 pub fn resolve(path: &str) -> Result<(Expr, SymbolTable), ResolveError> {
-    let my_pre_ast = crate::parse::parse(path)?;
-    resolve_internal(my_pre_ast, path)
+    let my_pre_ast = crate::parse::parse(path)
+        .map_err(|e| ResolveError::ParseError(crate::common::Path::of(path), e))?;
+    let file_stem = Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("main");
+    resolve_internal(my_pre_ast, path, Name::of(file_stem))
 }
 

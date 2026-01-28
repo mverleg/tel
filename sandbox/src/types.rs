@@ -1,4 +1,5 @@
 use std::fmt;
+use crate::common::{Name, Path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinOp {
@@ -172,56 +173,44 @@ impl From<std::io::Error> for ParseError {
 
 #[derive(Debug)]
 pub enum ResolveError {
-    UndefinedVariable(String),
-    UndefinedFunction(String),
-    InvalidImportPath(String),
-    VariableAlreadyDefined(String),
-    ArgOutsideFunction,
-    InvalidArgNumber(u8),
-    ImportNotAtTop,
-    FunctionDefNotAfterImports,
-    FunctionAlreadyDefined(String),
-    ArityMismatch { func_name: String, expected: usize, got: usize },
-    ArityGap { func_name: String, max_arg: usize },
-    UnreachableCode { source_location: String },
-    IoError(std::io::Error),
-    ParseError(ParseError),
+    UndefinedVariable(Name, String),
+    UndefinedFunction(Name, String),
+    InvalidImportPath(Name, String),
+    VariableAlreadyDefined(Name, String),
+    ArgOutsideFunction(Name),
+    InvalidArgNumber(Name, u8),
+    ImportNotAtTop(Name),
+    FunctionDefNotAfterImports(Name),
+    FunctionAlreadyDefined(Name, String),
+    ArityMismatch { context: Name, func_name: String, expected: usize, got: usize },
+    ArityGap { context: Name, func_name: String, max_arg: usize },
+    UnreachableCode { context: Name, source_location: String },
+    IoError(Path, std::io::Error),
+    ParseError(Path, ParseError),
 }
 
 impl fmt::Display for ResolveError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ResolveError::UndefinedVariable(name) => write!(f, "Undefined variable: {}", name),
-            ResolveError::UndefinedFunction(name) => write!(f, "Undefined function: {}", name),
-            ResolveError::InvalidImportPath(name) => write!(f, "Invalid import: {}", name),
-            ResolveError::VariableAlreadyDefined(name) => write!(f, "Variable already defined: {}", name),
-            ResolveError::ArgOutsideFunction => write!(f, "Arg used outside of function"),
-            ResolveError::InvalidArgNumber(n) => write!(f, "Invalid arg number: {}", n),
-            ResolveError::ImportNotAtTop => write!(f, "Import statements must be at the top of the file"),
-            ResolveError::FunctionDefNotAfterImports => write!(f, "Function definitions must be after imports and before other code"),
-            ResolveError::FunctionAlreadyDefined(name) => write!(f, "Function already defined: {}", name),
-            ResolveError::ArityMismatch { func_name, expected, got } => write!(f, "Function '{}' expects {} arguments, but {} were provided", func_name, expected, got),
-            ResolveError::ArityGap { func_name, max_arg } => write!(f, "Function '{}' has gaps in argument numbers (highest arg is {} but not all args 1..{} are used)", func_name, max_arg, max_arg),
-            ResolveError::UnreachableCode { source_location } => write!(f, "Unreachable code at {}", source_location),
-            ResolveError::IoError(e) => write!(f, "IO error: {}", e),
-            ResolveError::ParseError(e) => write!(f, "Parse error: {}", e),
+            ResolveError::UndefinedVariable(ctx, name) => write!(f, "Undefined variable in {:?}: {}", ctx, name),
+            ResolveError::UndefinedFunction(ctx, name) => write!(f, "Undefined function in {:?}: {}", ctx, name),
+            ResolveError::InvalidImportPath(ctx, name) => write!(f, "Invalid import in {:?}: {}", ctx, name),
+            ResolveError::VariableAlreadyDefined(ctx, name) => write!(f, "Variable already defined in {:?}: {}", ctx, name),
+            ResolveError::ArgOutsideFunction(ctx) => write!(f, "Arg used outside of function in {:?}", ctx),
+            ResolveError::InvalidArgNumber(ctx, n) => write!(f, "Invalid arg number in {:?}: {}", ctx, n),
+            ResolveError::ImportNotAtTop(ctx) => write!(f, "Import statements must be at the top of the file in {:?}", ctx),
+            ResolveError::FunctionDefNotAfterImports(ctx) => write!(f, "Function definitions must be after imports and before other code in {:?}", ctx),
+            ResolveError::FunctionAlreadyDefined(ctx, name) => write!(f, "Function already defined in {:?}: {}", ctx, name),
+            ResolveError::ArityMismatch { context, func_name, expected, got } => write!(f, "Function '{}' in {:?} expects {} arguments, but {} were provided", func_name, context, expected, got),
+            ResolveError::ArityGap { context, func_name, max_arg } => write!(f, "Function '{}' in {:?} has gaps in argument numbers (highest arg is {} but not all args 1..{} are used)", func_name, context, max_arg, max_arg),
+            ResolveError::UnreachableCode { context, source_location } => write!(f, "Unreachable code in {:?} at {}", context, source_location),
+            ResolveError::IoError(path, e) => write!(f, "IO error in {:?}: {}", path, e),
+            ResolveError::ParseError(path, e) => write!(f, "Parse error in {:?}: {}", path, e),
         }
     }
 }
 
 impl std::error::Error for ResolveError {}
-
-impl From<std::io::Error> for ResolveError {
-    fn from(err: std::io::Error) -> Self {
-        ResolveError::IoError(err)
-    }
-}
-
-impl From<ParseError> for ResolveError {
-    fn from(err: ParseError) -> Self {
-        ResolveError::ParseError(err)
-    }
-}
 
 #[derive(Debug)]
 pub enum ExecuteError {

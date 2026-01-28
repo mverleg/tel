@@ -7,56 +7,35 @@ mod context;
 mod common;
 
 use std::fmt;
+use crate::common::{Name, Path};
 use crate::context::Context;
 
 #[derive(Debug)]
 pub enum Error {
-    Io(std::io::Error),
-    Parse(types::ParseError),
-    Resolve(types::ResolveError),
-    Execute(types::ExecuteError),
+    Io(Path, std::io::Error),
+    Parse(Path, types::ParseError),
+    Resolve(Name, types::ResolveError),
+    Execute(Name, types::ExecuteError),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Error::Io(e) => write!(f, "IO error: {}", e),
-            Error::Parse(e) => write!(f, "Parse error: {}", e),
-            Error::Resolve(e) => write!(f, "Resolve error: {}", e),
-            Error::Execute(e) => write!(f, "Execute error: {}", e),
+            Error::Io(path, e) => write!(f, "IO error in {:?}: {}", path, e),
+            Error::Parse(path, e) => write!(f, "Parse error in {:?}: {}", path, e),
+            Error::Resolve(name, e) => write!(f, "Resolve error in {:?}: {}", name, e),
+            Error::Execute(name, e) => write!(f, "Execute error in {:?}: {}", name, e),
         }
     }
 }
 
 impl std::error::Error for Error {}
 
-impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Self {
-        Error::Io(e)
-    }
-}
-
-impl From<types::ParseError> for Error {
-    fn from(e: types::ParseError) -> Self {
-        Error::Parse(e)
-    }
-}
-
-impl From<types::ResolveError> for Error {
-    fn from(e: types::ResolveError) -> Self {
-        Error::Resolve(e)
-    }
-}
-
-impl From<types::ExecuteError> for Error {
-    fn from(e: types::ExecuteError) -> Self {
-        Error::Execute(e)
-    }
-}
-
 pub fn run_file(path: &str) -> Result<(), Error> {
     let ctx = Context::new();
-    execute::execute(&ctx, path)?;
+    let main = Name::of("main");
+    execute::execute(&ctx, path)
+        .map_err(|e| Error::Execute(main, e))?;
     Ok(())
 }
 

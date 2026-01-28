@@ -204,7 +204,7 @@ impl ExecContext {
             },
         };
 
-        let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path)?;
+        let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path, Name::of(func_name))?;
 
         Ok((resolve_ctx, ast, symbols))
     }
@@ -259,7 +259,7 @@ impl ResolveContext {
             },
         };
 
-        let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path)?;
+        let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path, Name::of(func_name))?;
 
         Ok((nested_ctx, ast, symbols))
     }
@@ -842,7 +842,7 @@ impl Context {
         E: From<crate::types::ResolveError>,
     {
         self.in_resolve(func_name, |ctx| {
-            let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path)?;
+            let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path, Name::of(func_name))?;
             f(ctx, ast, symbols)
         })
     }
