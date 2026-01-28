@@ -148,18 +148,14 @@ impl<'a> Interpreter<'a> {
     }
 }
 
-pub fn execute_internal(ast: &Expr, symbols: &SymbolTable) -> Result<(), ExecuteError> {
-    let mut interpreter = Interpreter::new(symbols);
-    interpreter.eval(ast)?;
-    Ok(())
-}
-
 pub async fn execute(ctx: &Context, path: &str) -> Result<(), ExecuteError> {
     let main = Name::of(path);
     let reesolve_id = ResolveId { func_name: main.clone() };
     // let (my_ast, my_symbols) = crate::resolve::resolve(path)?;
     let (my_ast, my_symbols) = ctx.resolve(reesolve_id).await?;
     let exec_id = ExecId { main_func: main };
-    execute_internal(&my_ast, &my_symbols)
+    let mut interpreter = Interpreter::new(&my_symbols);
+    interpreter.eval(&my_ast)?;
+    Ok(())
 }
 

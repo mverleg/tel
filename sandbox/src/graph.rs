@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+use std::collections::hash_map::Entry;
 use serde::Deserialize;
 use serde::Serialize;
 use crate::common::Name;
@@ -33,11 +35,18 @@ pub enum StepId {
 }
 
 pub struct Graph {
-    dependencies: Vec<(StepId, Vec<StepId>)>,
+    dependencies: HashMap<StepId, HashSet<StepId>>,
 }
 
 impl Graph {
     pub fn new() -> Graph {
-        Graph { dependencies: vec![] }
+        Graph { dependencies: HashMap::with_capacity(256) }
+    }
+
+    pub fn register_dependency(&self, caller: StepId, callee: StepId) {
+        match self.dependencies.entry(caller) {
+            Entry::Occupied(deps) => deps.push(callee),
+            Entry::Vacant(new) => new.insert({ let mut h = HashSet::new(); h.insert(callee); h }),
+        }
     }
 }
