@@ -31,3 +31,15 @@ impl Path {
         Path { path: path.into() }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FQ {
+    path: Path,
+    name: Name,
+}
+
+impl FQ {
+    pub fn of(path: impl Into<PathBuf>, name: impl Into<String>) -> FQ {
+        FQ { path: Path::of(path), name: Name::of(name) }
+    }
+}

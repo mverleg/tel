@@ -1,8 +1,8 @@
-use std::collections::{HashMap, HashSet};
-use std::collections::hash_map::Entry;
+use std::collections::HashSet;
+use dashmap::DashMap;
 use serde::Deserialize;
 use serde::Serialize;
-use crate::common::Name;
+use crate::common::{Name, FQ};
 use crate::common::Path;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -17,12 +17,12 @@ pub struct ParseId {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ResolveId {
-    pub func_name: Name,
+    pub func_name: FQ,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExecId {
-    pub main_func: Name,
+    pub main_func: FQ,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -35,18 +35,17 @@ pub enum StepId {
 }
 
 pub struct Graph {
-    dependencies: HashMap<StepId, HashSet<StepId>>,
+    dependencies: DashMap<StepId, HashSet<StepId>>,
 }
 
 impl Graph {
     pub fn new() -> Graph {
-        Graph { dependencies: HashMap::with_capacity(256) }
+        Graph { dependencies: DashMap::with_capacity(256) }
     }
 
     pub fn register_dependency(&self, caller: StepId, callee: StepId) {
-        match self.dependencies.entry(caller) {
-            Entry::Occupied(deps) => deps.push(callee),
-            Entry::Vacant(new) => new.insert({ let mut h = HashSet::new(); h.insert(callee); h }),
-        }
+        self.dependencies.entry(caller)
+            .or_insert_with(HashSet::new)
+            .insert(callee);
     }
 }

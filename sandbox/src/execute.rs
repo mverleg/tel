@@ -148,8 +148,8 @@ impl<'a> Interpreter<'a> {
     }
 }
 
-pub async fn execute(ctx: &Context, path: &str) -> Result<(), ExecuteError> {
-    let main = Name::of(path);
+pub async fn execute(ctx: &Context, path: ExecId) -> Result<(), ExecuteError> {
+    let main = Name::of(path.main_func.as_str());
     let reesolve_id = ResolveId { func_name: main.clone() };
     // let (my_ast, my_symbols) = crate::resolve::resolve(path)?;
     let (my_ast, my_symbols) = ctx.resolve(reesolve_id).await?;
