@@ -30,6 +30,14 @@ impl Path {
     pub fn of(path: impl Into<PathBuf>) -> Path {
         Path { path: path.into() }
     }
+
+    pub fn as_str(&self) -> &str {
+        self.path.to_str().unwrap_or("")
+    }
+
+    pub fn as_path(&self) -> &std::path::Path {
+        &self.path
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -41,5 +49,21 @@ pub struct FQ {
 impl FQ {
     pub fn of(path: impl Into<PathBuf>, name: impl Into<String>) -> FQ {
         FQ { path: Path::of(path), name: Name::of(name) }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn name(&self) -> &Name {
+        &self.name
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.path.as_str()
+    }
+
+    pub fn name_str(&self) -> &str {
+        self.name.as_str()
     }
 }

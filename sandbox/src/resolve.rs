@@ -1,10 +1,10 @@
 use crate::common::Name;
+use crate::context::Context;
+use crate::graph::ResolveId;
 use crate::types::{Expr, FuncId, PreExpr, ResolveError, ScopeId, SymbolTable, VarId};
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
-use crate::context::Context;
-use crate::graph::ResolveId;
 
 struct Resolver {
     symbol_table: SymbolTable,
@@ -480,14 +480,10 @@ pub fn resolve_internal(pre_ast: PreExpr, base_path: &str, context: Name) -> Res
     Ok((ast, resolver.symbol_table))
 }
 
-pub async fn resolve(ctx: &Context, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
-    let ResolveId { func_name: path } = id;
-    let my_pre_ast = crate::parse::parse(path.as_str()).await
-        .map_err(|e| ResolveError::ParseError(path, e))?;
-    let file_stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("main");
-    resolve_internal(my_pre_ast, path, Name::of(file_stem))
+pub async fn resolve(_ctx: &Context, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
+    let ResolveId { func_name: fq } = id;
+    let my_pre_ast = crate::parse::parse(fq.as_str()).await
+        .map_err(|e| ResolveError::ParseError(fq.path().clone(), e))?;
+    resolve_internal(my_pre_ast, fq.as_str(), fq.name().clone())
 }
 

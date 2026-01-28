@@ -4,7 +4,6 @@ use crate::types::ExecuteError;
 use crate::types::BinOp;
 use crate::types::VarId;
 use std::collections::HashMap;
-use crate::common::Name;
 use crate::context::Context;
 use crate::graph::{ExecId, ResolveId};
 
@@ -149,11 +148,10 @@ impl<'a> Interpreter<'a> {
 }
 
 pub async fn execute(ctx: &Context, path: ExecId) -> Result<(), ExecuteError> {
-    let main = Name::of(path.main_func.as_str());
-    let reesolve_id = ResolveId { func_name: main.clone() };
+    let my_main_func = path.main_func.clone();
+    let reesolve_id = ResolveId { func_name: my_main_func.clone() };
     // let (my_ast, my_symbols) = crate::resolve::resolve(path)?;
     let (my_ast, my_symbols) = ctx.resolve(reesolve_id).await?;
-    let exec_id = ExecId { main_func: main };
     let mut interpreter = Interpreter::new(&my_symbols);
     interpreter.eval(&my_ast)?;
     Ok(())

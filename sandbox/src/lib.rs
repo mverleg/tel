@@ -7,8 +7,9 @@ mod context;
 mod common;
 
 use std::fmt;
-use crate::common::{Name, Path};
+use crate::common::{Name, Path, FQ};
 use crate::context::Context;
+use crate::graph::ExecId;
 
 #[derive(Debug)]
 pub enum Error {
@@ -34,7 +35,8 @@ impl std::error::Error for Error {}
 pub async fn run_file(path: &str) -> Result<(), Error> {
     let ctx = Context::new();
     let main = Name::of("main");
-    ctx.execute(&ctx, path).await
+    let exec_id = ExecId { main_func: FQ::of(path, "main") };
+    ctx.execute(exec_id).await
         .map_err(|e| Error::Execute(main, e))?;
     Ok(())
 }

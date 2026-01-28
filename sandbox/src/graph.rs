@@ -2,8 +2,7 @@ use std::collections::HashSet;
 use dashmap::DashMap;
 use serde::Deserialize;
 use serde::Serialize;
-use crate::common::{Name, FQ};
-use crate::common::Path;
+use crate::common::{FQ, Path};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ReadId {

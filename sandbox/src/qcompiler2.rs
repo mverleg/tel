@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use crate::common::Name;
+use crate::common::{Name, FQ};
 use crate::graph::{ExecId, ParseId, ReadId, ResolveId, StepId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,12 +123,13 @@ impl RootContext {
 
     pub fn exec(
         &self,
+        path: &str,
         main_func: &str,
         ast: &crate::types::Expr,
         symbols: &crate::types::SymbolTable,
     ) -> Result<ExecContext, crate::types::ExecuteError> {
         let id = StepId::Exec(ExecId {
-            main_func: Name::of(main_func),
+            main_func: FQ::of(path, main_func),
         });
 
         if self.inner.from_step != StepId::Root {
@@ -175,7 +176,7 @@ impl ExecContext {
         pre_ast: crate::types::PreExpr,
     ) -> Result<(ResolveContext, crate::types::Expr, crate::types::SymbolTable), crate::types::ResolveError> {
         let id = StepId::Resolve(ResolveId {
-            func_name: Name::of(func_name),
+            func_name: FQ::of(base_path, func_name),
         });
 
         if self.inner.from_step != StepId::Root {
@@ -230,7 +231,7 @@ impl ResolveContext {
         pre_ast: crate::types::PreExpr,
     ) -> Result<(ResolveContext, crate::types::Expr, crate::types::SymbolTable), crate::types::ResolveError> {
         let id = StepId::Resolve(ResolveId {
-            func_name: func_name.to_string(),
+            func_name: FQ::of(base_path, func_name),
         });
 
         if self.inner.from_step != StepId::Root {
@@ -269,11 +270,11 @@ impl ResolveContext {
         path: &str,
     ) -> Result<(ParseContext, crate::types::PreExpr), crate::types::ParseError> {
         let id = StepId::Parse(ParseId {
-            file_path: path.to_string(),
+            file_path: crate::common::Path::of(path),
         });
 
         let read_id = StepId::Read(ReadId {
-            file_path: path.to_string(),
+            file_path: crate::common::Path::of(path),
         });
         let dep_read = Dependency {
             from: id.clone(),
@@ -455,10 +456,10 @@ fn format_tree_node(
 fn format_step_id(step: &StepId) -> String {
     match step {
         StepId::Root => "Root".to_string(),
-        StepId::Read(id) => format!("Read({})", id.file_path),
-        StepId::Parse(id) => format!("Parse({})", id.file_path),
-        StepId::Resolve(id) => format!("Resolve({})", id.func_name),
-        StepId::Exec(id) => format!("Exec({})", id.main_func),
+        StepId::Read(id) => format!("Read({})", id.file_path.as_str()),
+        StepId::Parse(id) => format!("Parse({})", id.file_path.as_str()),
+        StepId::Resolve(id) => format!("Resolve({})", id.func_name.name_str()),
+        StepId::Exec(id) => format!("Exec({})", id.main_func.name_str()),
     }
 }
 
@@ -511,7 +512,7 @@ impl Context {
 
     pub fn in_read<T>(&mut self, file_path: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
         let _id = StepId::Read(ReadId {
-            file_path: file_path.into(),
+            file_path: crate::common::Path::of(file_path.into()),
         });
 
         // Read operations never have dependencies - they're always leaf nodes
@@ -564,9 +565,9 @@ impl Context {
         result
     }
 
-    pub fn in_resolve<T>(&mut self, func_name: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub fn in_resolve<T>(&mut self, path: impl Into<std::path::PathBuf>, func_name: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
         let id = StepId::Resolve(ResolveId {
-            func_name: func_name.into(),
+            func_name: FQ::of(path, func_name),
         });
 
         // Dependency direction depends on the context:
@@ -605,9 +606,9 @@ impl Context {
         result
     }
 
-    pub fn in_exec<T>(&mut self, main_func: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub fn in_exec<T>(&mut self, path: impl Into<std::path::PathBuf>, main_func: impl Into<String>, f: impl FnOnce(&mut Self) -> T) -> T {
         let id = StepId::Exec(ExecId {
-            main_func: main_func.into(),
+            main_func: FQ::of(path, main_func),
         });
 
         // Don't record dependencies to Root - Root is the starting context, not a real step
@@ -771,10 +772,10 @@ impl Context {
     fn format_step_id(&self, step: &StepId) -> String {
         match step {
             StepId::Root => "Root".to_string(),
-            StepId::Read(id) => format!("Read({})", id.file_path),
-            StepId::Parse(id) => format!("Parse({})", id.file_path),
-            StepId::Resolve(id) => format!("Resolve({})", id.func_name),
-            StepId::Exec(id) => format!("Exec({})", id.main_func),
+            StepId::Read(id) => format!("Read({})", id.file_path.as_str()),
+            StepId::Parse(id) => format!("Parse({})", id.file_path.as_str()),
+            StepId::Resolve(id) => format!("Resolve({})", id.func_name.name_str()),
+            StepId::Exec(id) => format!("Exec({})", id.main_func.name_str()),
         }
     }
 
@@ -841,17 +842,17 @@ impl Context {
     where
         E: From<crate::types::ResolveError>,
     {
-        self.in_resolve(func_name, |ctx| {
+        self.in_resolve(base_path, func_name, |ctx| {
             let (ast, symbols) = crate::resolve::resolve_internal(pre_ast, base_path, Name::of(func_name))?;
             f(ctx, ast, symbols)
         })
     }
 
-    pub fn exec<T, E>(&mut self, main_func: &str, ast: crate::types::Expr, symbols: &crate::types::SymbolTable, f: impl FnOnce(&mut Self) -> Result<T, E>) -> Result<T, E>
+    pub fn exec<T, E>(&mut self, path: &str, main_func: &str, ast: crate::types::Expr, symbols: &crate::types::SymbolTable, f: impl FnOnce(&mut Self) -> Result<T, E>) -> Result<T, E>
     where
         E: From<crate::types::ExecuteError>,
     {
-        self.in_exec(main_func, |ctx| {
+        self.in_exec(path, main_func, |ctx| {
             crate::execute::execute_internal(&ast, symbols)?;
             f(ctx)
         })
@@ -871,7 +872,7 @@ mod tests {
     #[test]
     fn test_read_id_serialization() {
         let id = ReadId {
-            file_path: "test.telsb".to_string(),
+            file_path: crate::common::Path::of("test.telsb"),
         };
         let json = serde_json::to_string(&id).unwrap();
         let deserialized: ReadId = serde_json::from_str(&json).unwrap();
@@ -883,8 +884,8 @@ mod tests {
         let mut ctx = Context::root();
         ctx.in_read("main.telsb", |ctx| {
             ctx.in_parse("main.telsb", |ctx| {
-                ctx.in_resolve("main", |ctx| {
-                    ctx.in_exec("main", |_ctx| {
+                ctx.in_resolve("main.telsb", "main", |ctx| {
+                    ctx.in_exec("main.telsb", "main", |_ctx| {
                     })
                 })
             })
@@ -903,13 +904,13 @@ mod tests {
     #[test]
     fn test_all_id_types_serializable() {
         let parse_id = ParseId {
-            file_path: "test.telsb".to_string(),
+            file_path: crate::common::Path::of("test.telsb"),
         };
         let resolve_id = ResolveId {
-            func_name: "my_func".to_string(),
+            func_name: FQ::of("test.telsb", "my_func"),
         };
         let exec_id = ExecId {
-            main_func: "main".to_string(),
+            main_func: FQ::of("main.telsb", "main"),
         };
 
         assert!(serde_json::to_string(&parse_id).is_ok());
@@ -922,8 +923,8 @@ mod tests {
         let mut ctx = Context::root();
         ctx.in_read("main.telsb", |ctx| {
             ctx.in_parse("main.telsb", |ctx| {
-                ctx.in_resolve("main", |ctx| {
-                    ctx.in_exec("main", |_ctx| {
+                ctx.in_resolve("main.telsb", "main", |ctx| {
+                    ctx.in_exec("main.telsb", "main", |_ctx| {
                     })
                 })
             })
