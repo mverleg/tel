@@ -58,7 +58,9 @@ fn main() {
         }
     };
 
-    let result = sandbox::run_file(my_file_str);
+    let my_runtime = tokio::runtime::Builder::new_current_thread()
+        .build().unwrap();
+    let result = my_runtime.block_on(sandbox::run_file(my_file_str));
 
     if my_show_deps {
         eprintln!("Warning: --show-deps is no longer supported");

@@ -154,11 +154,11 @@ pub fn execute_internal(ast: &Expr, symbols: &SymbolTable) -> Result<(), Execute
     Ok(())
 }
 
-pub fn execute(ctx: &Context, path: &str) -> Result<(), ExecuteError> {
+pub async fn execute(ctx: &Context, path: &str) -> Result<(), ExecuteError> {
     let main = Name::of("main");
     let reesolve_id = ResolveId { func_name: main.clone() };
     // let (my_ast, my_symbols) = crate::resolve::resolve(path)?;
-    let (my_ast, my_symbols) = ctx.resolve(reesolve_id)?;
+    let (my_ast, my_symbols) = ctx.resolve(reesolve_id).await?;
     let exec_id = ExecId { main_func: main };
     execute_internal(&my_ast, &my_symbols)
 }

@@ -478,8 +478,8 @@ pub fn resolve_internal(pre_ast: PreExpr, base_path: &str, context: Name) -> Res
     Ok((ast, resolver.symbol_table))
 }
 
-pub fn resolve(path: &str) -> Result<(Expr, SymbolTable), ResolveError> {
-    let my_pre_ast = crate::parse::parse(path)
+pub async fn resolve(path: &str) -> Result<(Expr, SymbolTable), ResolveError> {
+    let my_pre_ast = crate::parse::parse(path).await
         .map_err(|e| ResolveError::ParseError(crate::common::Path::of(path), e))?;
     let file_stem = Path::new(path)
         .file_stem()

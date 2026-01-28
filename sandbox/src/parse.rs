@@ -293,7 +293,7 @@ pub fn tokenize_and_parse(source: &str, file_path: &str) -> Result<PreExpr, Pars
     parser.parse_all()
 }
 
-pub fn parse(path: &str) -> Result<PreExpr, ParseError> {
-    let my_source = std::fs::read_to_string(path)?;
+pub async fn parse(path: &str) -> Result<PreExpr, ParseError> {
+    let my_source = tokio::fs::read_to_string(path).await?;
     tokenize_and_parse(&my_source, path)
 }

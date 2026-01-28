@@ -67,9 +67,9 @@ fn main() {
 
                 let my_rel_path = format!("examples/{}/{}", my_example_name_str, my_file_name_str);
 
-                writeln!(my_file, "#[test]").unwrap();
-                writeln!(my_file, "fn test_example_{}() {{", my_test_name).unwrap();
-                writeln!(my_file, "    let my_result = sandbox::run_file(\"{}\");", my_rel_path).unwrap();
+                writeln!(my_file, "#[tokio::test]").unwrap();
+                writeln!(my_file, "async fn test_example_{}() {{", my_test_name).unwrap();
+                writeln!(my_file, "    let my_result = sandbox::run_file(\"{}\").await;", my_rel_path).unwrap();
                 writeln!(my_file, "    assert!(my_result.is_ok(), \"Example {} failed: {{:?}}\", my_result.err());", my_test_name).unwrap();
                 writeln!(my_file, "}}").unwrap();
                 writeln!(my_file).unwrap();

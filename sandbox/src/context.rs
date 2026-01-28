@@ -10,7 +10,7 @@ impl Context {
         Context { graph: Graph::new() }
     }
 
-    pub fn resolve(&self, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
-        crate::resolve::resolve(&id.func_name.as_str())
+    pub async fn resolve(&self, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
+        crate::resolve::resolve(&id.func_name.as_str()).await
     }
 }
