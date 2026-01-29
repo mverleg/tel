@@ -273,7 +273,7 @@ impl Resolver {
         }
     }
 
-    fn process_imports<'a>(&'a mut self, ctx: &'a Context, pre_ast: &'a PreExpr) -> Pin<Box<dyn Future<Output = Result<(), ResolveError>> + 'a>> {
+    fn process_imports<'a>(&'a mut self, ctx: &'a Context, pre_ast: &'a PreExpr) -> Pin<Box<dyn Future<Output = Result<(), ResolveError>> + Send + 'a>> {
         Box::pin(async move {
             let imports = self.extract_imports(pre_ast)?;
             debug!("process_imports: found {} imports", imports.len());

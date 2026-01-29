@@ -187,6 +187,7 @@ pub enum ResolveError {
     UnreachableCode { context: Name, source_location: String },
     IoError(Path, std::io::Error),
     ParseError(Path, ParseError),
+    JoinError(String),
 }
 
 impl fmt::Display for ResolveError {
@@ -206,6 +207,7 @@ impl fmt::Display for ResolveError {
             ResolveError::UnreachableCode { context, source_location } => write!(f, "Unreachable code in {:?} at {}", context, source_location),
             ResolveError::IoError(path, e) => write!(f, "IO error in {:?}: {}", path, e),
             ResolveError::ParseError(path, e) => write!(f, "Parse error in {:?}: {}", path, e),
+            ResolveError::JoinError(msg) => write!(f, "Join error: {}", msg),
         }
     }
 }
