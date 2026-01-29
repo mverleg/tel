@@ -1,3 +1,4 @@
+use env_logger;
 use std::env;
 use std::path::Path;
 use std::process;
@@ -14,6 +15,7 @@ fn print_help(program: &str) {
 }
 
 fn main() {
+    env_logger::init();
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
@@ -60,11 +62,7 @@ fn main() {
 
     let my_runtime = tokio::runtime::Builder::new_current_thread()
         .build().unwrap();
-    let result = my_runtime.block_on(sandbox::run_file(my_file_str));
-
-    if my_show_deps {
-        eprintln!("Warning: --show-deps is no longer supported");
-    }
+    let result = my_runtime.block_on(sandbox::run_file(my_file_str, my_show_deps));
 
     match result {
         Ok(()) => {}

@@ -17,7 +17,7 @@ Or using the library directly from Rust code:
 
 ```rust
 use sandbox::run_file;
-run_file("examples/factorial/main.telsb").unwrap();
+run_file("examples/factorial/main.telsb", false).unwrap();
 ```
 
 ## Examples

@@ -310,7 +310,7 @@ impl ResolveContext {
         // Parse calls read internally to get the source
         let source = std::fs::read_to_string(path)
             .map_err(|_| crate::types::ParseError::EmptyExpression)?;
-        let pre_ast = crate::parse::tokenize_and_parse(&source, path)?;
+        let pre_ast = crate::parse::tokenize_and_parse(&source, crate::common::Path::of(path))?;
 
         Ok((parse_ctx, pre_ast))
     }
@@ -833,7 +833,7 @@ impl Context {
         E: From<crate::types::ParseError>,
     {
         self.in_parse(path, |ctx| {
-            let pre_ast = crate::parse::tokenize_and_parse(source, path)?;
+            let pre_ast = crate::parse::tokenize_and_parse(source, crate::common::Path::of(path))?;
             f(ctx, pre_ast)
         })
     }

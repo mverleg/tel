@@ -1,3 +1,6 @@
+use crate::common::Path;
+use crate::context::Context;
+use crate::graph::ParseId;
 use crate::types::{BinOp, ParseError, PreExpr};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,11 +95,11 @@ fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
-    file_path: String,
+    file_path: Path,
 }
 
 impl Parser {
-    fn new(tokens: Vec<Token>, file_path: String) -> Self {
+    fn new(tokens: Vec<Token>, file_path: Path) -> Self {
         Parser { tokens, pos: 0, file_path }
     }
 
@@ -218,11 +221,11 @@ impl Parser {
                     }
                     "panic" => {
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::Panic { source_location: self.file_path.clone() })
+                        Ok(PreExpr::Panic { source_location: self.file_path.as_str().to_string() })
                     }
                     "unreachable" => {
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::Unreachable { source_location: self.file_path.clone() })
+                        Ok(PreExpr::Unreachable { source_location: self.file_path.as_str().to_string() })
                     }
                     "import" => {
                         let path = match self.advance() {
@@ -287,13 +290,14 @@ impl Parser {
 }
 
 
-pub fn tokenize_and_parse(source: &str, file_path: &str) -> Result<PreExpr, ParseError> {
+pub fn tokenize_and_parse(source: &str, file_path: Path) -> Result<PreExpr, ParseError> {
     let tokens = tokenize(source)?;
-    let mut parser = Parser::new(tokens, file_path.to_string());
+    let mut parser = Parser::new(tokens, file_path);
     parser.parse_all()
 }
 
-pub async fn parse(path: &str) -> Result<PreExpr, ParseError> {
-    let my_source = tokio::fs::read_to_string(path).await?;
-    tokenize_and_parse(&my_source, path)
+pub async fn parse(_ctx: &Context, id: ParseId) -> Result<PreExpr, ParseError> {
+    let my_source = tokio::fs::read_to_string(id.file_path.as_path()).await?;
+    //TODO @mark: delegate to threadpool?
+    tokenize_and_parse(&my_source, id.file_path)
 }

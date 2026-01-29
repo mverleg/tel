@@ -1,10 +1,13 @@
-use crate::common::Name;
+use crate::common::{Name, FQ};
 use crate::context::Context;
-use crate::graph::ResolveId;
+use crate::graph::{ParseId, ResolveId};
 use crate::types::{Expr, FuncId, PreExpr, ResolveError, ScopeId, SymbolTable, VarId};
+use log::debug;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::future::Future;
 
 struct Resolver {
     symbol_table: SymbolTable,
@@ -150,6 +153,7 @@ impl Resolver {
     }
 
     fn resolve_expr(&mut self, pre_expr: PreExpr) -> Result<Expr, ResolveError> {
+        debug!("resolve_expr: {:?} (in_function={})", pre_expr, self.in_function);
         match pre_expr {
             PreExpr::Number(n) => Ok(Expr::Number(n)),
             PreExpr::Ident(name) => {
@@ -251,9 +255,12 @@ impl Resolver {
                 })
             }
             PreExpr::Arg(n) => {
+                debug!("Processing Arg({}) in context {:?}, in_function={}", n, self.current_context, self.in_function);
                 if !self.in_function {
+                    debug!("ERROR: Arg used outside function - in_function={}", self.in_function);
                     return Err(ResolveError::ArgOutsideFunction(self.current_context.clone()));
                 }
+                debug!("Arg({}) resolved successfully", n);
                 Ok(Expr::Arg(n))
             }
             PreExpr::Sequence(exprs) => {
@@ -266,36 +273,36 @@ impl Resolver {
         }
     }
 
-    fn process_imports(&mut self, pre_ast: &PreExpr) -> Result<(), ResolveError> {
-        let imports = self.extract_imports(pre_ast)?;
+    fn process_imports<'a>(&'a mut self, ctx: &'a Context, pre_ast: &'a PreExpr) -> Pin<Box<dyn Future<Output = Result<(), ResolveError>> + 'a>> {
+        Box::pin(async move {
+            let imports = self.extract_imports(pre_ast)?;
+            debug!("process_imports: found {} imports", imports.len());
 
         for import_name in imports {
+            debug!("Processing import: {}", import_name);
             if import_name.contains('.') {
                 return Err(ResolveError::InvalidImportPath(self.current_context.clone(), import_name.clone()));
             }
             let full_path = self.base_path.join(format!("{}.telsb", import_name));
 
-            let my_source = std::fs::read_to_string(full_path.to_str().unwrap())
-                .map_err(|_| ResolveError::UndefinedFunction(self.current_context.clone(), import_name.clone()))?;
+            // Call ctx.resolve() to properly register dependency
+            let resolve_id = ResolveId {
+                func_loc: FQ::of(&full_path, &import_name)
+            };
+            debug!("Resolving imported file: {:?}", resolve_id);
+            let (func_ast, imported_symbols) = ctx.resolve(resolve_id).await?;
+            debug!("Import {} resolved, has {} functions", import_name, imported_symbols.funcs.len());
 
-            let imported_pre_ast = crate::parse::tokenize_and_parse(&my_source, full_path.to_str().unwrap())
-                .map_err(|e| ResolveError::ParseError(crate::common::Path::of(full_path.to_str().unwrap()), e))?;
+            // Find the imported function's position and arity before consuming the vector
+            let func_position = imported_symbols.funcs.iter()
+                .position(|f| f.name.as_str() == import_name)
+                .ok_or_else(|| ResolveError::UndefinedFunction(self.current_context.clone(), import_name.clone()))?;
 
-            let arity = Self::calculate_arity(&imported_pre_ast, &import_name, &self.current_context)?;
-
-            let mut func_resolver = Resolver::new(full_path.parent().unwrap_or(Path::new(".")).to_path_buf(), Name::of(&import_name));
-            func_resolver.in_function = true;
-            func_resolver.process_imports(&imported_pre_ast)?;
-
-            let placeholder_id = FuncId(self.symbol_table.funcs.len() + func_resolver.symbol_table.funcs.len());
-            func_resolver.funcs.insert(import_name.clone(), placeholder_id);
-            func_resolver.func_arities.insert(placeholder_id, arity);
-
-            let func_ast = func_resolver.resolve_body(&imported_pre_ast)?;
+            let arity = imported_symbols.funcs[func_position].arity;
 
             let offset = self.symbol_table.funcs.len();
 
-            for mut func_info in func_resolver.symbol_table.funcs {
+            for mut func_info in imported_symbols.funcs {
                 Self::remap_func_ids(&mut func_info.ast, offset);
                 self.symbol_table.funcs.push(func_info);
             }
@@ -303,22 +310,14 @@ impl Resolver {
             let mut my_func_ast = func_ast;
             Self::remap_func_ids(&mut my_func_ast, offset);
 
-            for (name, old_id) in func_resolver.funcs {
-                let new_id = FuncId(old_id.0 + offset);
-                self.funcs.insert(name, new_id);
-            }
+            let func_id = FuncId(offset + func_position);
 
-            for (old_id, arity_value) in func_resolver.func_arities {
-                let new_id = FuncId(old_id.0 + offset);
-                self.func_arities.insert(new_id, arity_value);
-            }
-
-            let func_id = self.symbol_table.add_func(import_name.clone(), my_func_ast, arity);
-            self.funcs.insert(import_name, func_id);
+            self.funcs.insert(import_name.clone(), func_id);
             self.func_arities.insert(func_id, arity);
         }
 
         Ok(())
+        })
     }
 
     fn extract_imports(&self, pre_expr: &PreExpr) -> Result<Vec<String>, ResolveError> {
@@ -389,20 +388,25 @@ impl Resolver {
 
     fn process_local_functions(&mut self, pre_ast: &PreExpr) -> Result<(), ResolveError> {
         let function_defs = self.extract_function_defs(pre_ast)?;
+        debug!("process_local_functions: found {} function definitions", function_defs.len());
 
         for (func_name, func_body) in function_defs {
+            debug!("Processing local function: {}", func_name);
             if self.funcs.contains_key(&func_name) {
                 return Err(ResolveError::FunctionAlreadyDefined(self.current_context.clone(), func_name));
             }
 
             let arity = Self::calculate_arity(&func_body, &func_name, &self.current_context)?;
+            debug!("Function {} has arity {}", func_name, arity);
 
             let saved_in_function = self.in_function;
+            debug!("Setting in_function=true for local function {} (was {})", func_name, saved_in_function);
             self.in_function = true;
 
             let resolved_body = self.resolve_expr(func_body)?;
 
             self.in_function = saved_in_function;
+            debug!("Restored in_function={} after local function {}", saved_in_function, func_name);
 
             let func_id = self.symbol_table.add_func(func_name.clone(), resolved_body, arity);
             self.funcs.insert(func_name, func_id);
@@ -445,6 +449,7 @@ impl Resolver {
     }
 
     fn resolve_body(&mut self, pre_ast: &PreExpr) -> Result<Expr, ResolveError> {
+        debug!("resolve_body: in_function={}, context={:?}", self.in_function, self.current_context);
         match pre_ast {
             PreExpr::Sequence(exprs) => {
                 let mut resolved_exprs = Vec::new();
@@ -469,21 +474,55 @@ impl Resolver {
     }
 }
 
-pub fn resolve_internal(pre_ast: PreExpr, base_path: &str, context: Name) -> Result<(Expr, SymbolTable), ResolveError> {
+pub async fn resolve_internal(ctx: &Context, pre_ast: PreExpr, base_path: &str, context: Name, is_function: bool) -> Result<(Expr, SymbolTable), ResolveError> {
+    debug!("resolve_internal: starting for context {:?}, is_function={}", context, is_function);
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
 
-    let mut resolver = Resolver::new(dir.to_path_buf(), context);
-    resolver.process_imports(&pre_ast)?;
+    let mut resolver = Resolver::new(dir.to_path_buf(), context.clone());
+    debug!("resolve_internal: processing imports for {:?}", context);
+    resolver.process_imports(ctx, &pre_ast).await?;
+    debug!("resolve_internal: processing local functions for {:?}", context);
     resolver.process_local_functions(&pre_ast)?;
+
+    // If this file is being resolved as an implicit function (e.g., an import),
+    // we need to pre-register it so that recursive calls can find it
+    if is_function {
+        debug!("resolve_internal: setting in_function=true for {:?}", context);
+        resolver.in_function = true;
+
+        // Calculate arity and pre-register the function (with a placeholder AST)
+        // so that recursive calls can find it during body resolution
+        let arity = Resolver::calculate_arity(&pre_ast, context.as_str(), &context)?;
+        debug!("resolve_internal: pre-registering implicit function {:?} with arity {}", context, arity);
+        let func_id = resolver.symbol_table.add_func(context.as_str().to_string(), Expr::Number(0), arity);
+        resolver.funcs.insert(context.as_str().to_string(), func_id);
+        resolver.func_arities.insert(func_id, arity);
+    }
+
+    debug!("resolve_internal: resolving body for {:?} (in_function={})", context, resolver.in_function);
     let ast = resolver.resolve_body(&pre_ast)?;
+
+    // If this file is being resolved as a function, update the function entry with the real AST
+    if is_function {
+        debug!("resolve_internal: updating implicit function {:?} with resolved AST", context);
+        // Update the function info with the actual resolved AST
+        let func_id = resolver.funcs.get(context.as_str()).unwrap();
+        resolver.symbol_table.funcs[func_id.0].ast = ast.clone();
+    }
+
+    debug!("resolve_internal: completed for {:?}", context);
     Ok((ast, resolver.symbol_table))
 }
 
-pub async fn resolve(_ctx: &Context, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
-    let ResolveId { func_name: fq } = id;
-    let my_pre_ast = crate::parse::parse(fq.as_str()).await
+pub async fn resolve(ctx: &Context, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
+    let ResolveId { func_loc: fq } = id;
+    debug!("resolve: starting for {:?}", fq);
+    let my_pre_ast = ctx.parse(ParseId { file_path: fq.path().clone() }).await
         .map_err(|e| ResolveError::ParseError(fq.path().clone(), e))?;
-    resolve_internal(my_pre_ast, fq.as_str(), fq.name().clone())
+    debug!("resolve: parsed {:?}, calling resolve_internal as function", fq);
+    // When resolving via ResolveId, we're always resolving a function (either imported or main)
+    // The file body is treated as the function body, so Args are allowed
+    resolve_internal(ctx, my_pre_ast, fq.as_str(), fq.name().clone(), true).await
 }
 

@@ -18,8 +18,10 @@ The compiler processes programs in four phases:
 ## Query engine features
 
 - [x] Build dependency graph
+- [ ] Force always going through context
+- [ ] Process imports in parallel
 - [ ] Inverse dependency graph
-- [ ] Concurrency-safe
+- [x] Concurrency-safe
 - [ ] Prevent ctx leak outside scope (just pure fn pointers?)
 - [ ] Lock-free (during compile)
 - [ ] Write using async
@@ -32,7 +34,9 @@ The compiler processes programs in four phases:
 
 ```rust
 use sandbox::run_file;
-run_file("path/to/main.telsb").unwrap();
+run_file("path/to/main.telsb", false).unwrap();
+// Or with dependency graph:
+run_file("path/to/main.telsb", true).unwrap();
 ```
 
 Or via the examples:

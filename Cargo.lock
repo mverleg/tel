@@ -1253,6 +1253,8 @@ name = "sandbox"
 version = "0.1.0"
 dependencies = [
  "dashmap",
+ "env_logger",
+ "log",
  "serde",
  "serde_json",
  "tokio",
