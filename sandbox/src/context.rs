@@ -2,7 +2,6 @@ use crate::graph::{ExecId, Graph, ParseId, ResolveId, StepId};
 use crate::types::{ExecuteError, Expr, ParseError, PreExpr, ResolveError, SymbolTable};
 use dashmap::DashMap;
 use log::debug;
-use ::std::sync::Arc;
 
 pub struct CoreContext {
     graph: Graph,
@@ -18,17 +17,16 @@ impl CoreContext {
     }
 }
 
-#[derive(Clone)]
 pub struct RefContext {
     current: StepId,
-    core: Arc<CoreContext>,
+    core: &'static CoreContext,
 }
 
 impl RefContext {
-    pub fn new() -> Self {
+    pub fn root(core: &'static CoreContext) -> Self {
         RefContext {
             current: StepId::Root,
-            core: Arc::new(CoreContext::new()),
+            core,
         }
     }
 
@@ -40,16 +38,16 @@ impl RefContext {
         self.core.graph.register_dependency(self.current.clone(), step.clone());
         RefContext {
             current: step,
-            core: self.core.clone(),
+            core: self.core,
         }
     }
 
     pub async fn parse(&self, id: ParseId) -> Result<PreExpr, ParseError> {
         debug!("RefContext::parse: {:?}", id);
 
-        if let Some(cached_bytes) = self.core.parse_cache.get(&id) {
+        if let Some(cached_bytes_ref) = self.core.parse_cache.get(&id) {
             debug!("RefContext::parse cache hit: {:?}", id);
-            return postcard::from_bytes(&cached_bytes)
+            return postcard::from_bytes(&*cached_bytes_ref)
                 .map_err(|e| ParseError::IoError(
                     std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Cache deserialization failed: {}", e))
                 ));
@@ -90,10 +88,11 @@ impl RefContext {
 
         // Spawn tasks for items 0..N-1
         let mut handles = Vec::new();
+        let core = self.core;
         for i in 0..n-1 {
             let id = ids[i].clone();
-            let ctx = self.clone();
             let handle = tokio::spawn(async move {
+                let ctx = RefContext { current: StepId::Root, core };
                 crate::resolve::resolve(&ctx.dependent(StepId::Resolve(id.clone())), id).await
             });
             handles.push(handle);
@@ -124,6 +123,15 @@ impl RefContext {
         }
 
         Ok((exprs, merged_table))
+    }
+}
+
+impl Clone for RefContext {
+    fn clone(&self) -> Self {
+        RefContext {
+            current: self.current.clone(),
+            core: self.core,
+        }
     }
 }
 
