@@ -4,48 +4,58 @@ use dashmap::DashMap;
 use log::debug;
 use ::std::sync::Arc;
 
-#[derive(Clone)]
-pub struct Context {
-    current: StepId,
-    graph: Arc<Graph>,
-    parse_cache: Arc<DashMap<ParseId, Vec<u8>>>,
+pub struct CoreContext {
+    graph: Graph,
+    parse_cache: DashMap<ParseId, Vec<u8>>,
 }
 
-impl Context {
+impl CoreContext {
     pub fn new() -> Self {
-        Context {
+        CoreContext {
+            graph: Graph::new(),
+            parse_cache: DashMap::new(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct RefContext {
+    current: StepId,
+    core: Arc<CoreContext>,
+}
+
+impl RefContext {
+    pub fn new() -> Self {
+        RefContext {
             current: StepId::Root,
-            graph: Arc::new(Graph::new()),
-            parse_cache: Arc::new(DashMap::new()),
+            core: Arc::new(CoreContext::new()),
         }
     }
 
     pub fn graph(&self) -> &Graph {
-        &self.graph
+        &self.core.graph
     }
 
-    fn dependent(&self, step: StepId) -> Context {
-        //TODO @mark: lot of clone
-        self.graph.register_dependency(self.current.clone(), step.clone());
-        Context {
+    fn dependent(&self, step: StepId) -> RefContext {
+        self.core.graph.register_dependency(self.current.clone(), step.clone());
+        RefContext {
             current: step,
-            graph: self.graph.clone(),
-            parse_cache: self.parse_cache.clone(),
+            core: self.core.clone(),
         }
     }
 
     pub async fn parse(&self, id: ParseId) -> Result<PreExpr, ParseError> {
-        debug!("Context::parse: {:?}", id);
+        debug!("RefContext::parse: {:?}", id);
 
-        if let Some(cached_bytes) = self.parse_cache.get(&id) {
-            debug!("Context::parse cache hit: {:?}", id);
+        if let Some(cached_bytes) = self.core.parse_cache.get(&id) {
+            debug!("RefContext::parse cache hit: {:?}", id);
             return postcard::from_bytes(&cached_bytes)
                 .map_err(|e| ParseError::IoError(
                     std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Cache deserialization failed: {}", e))
                 ));
         }
 
-        debug!("Context::parse cache miss: {:?}", id);
+        debug!("RefContext::parse cache miss: {:?}", id);
         let result = crate::parse::parse(&self.dependent(StepId::Parse(id.clone())), id.clone()).await?;
 
         let serialized = postcard::to_allocvec(&result)
@@ -53,19 +63,18 @@ impl Context {
                 std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Cache serialization failed: {}", e))
             ))?;
 
-        self.parse_cache.insert(id, serialized);
+        self.core.parse_cache.insert(id, serialized);
 
         Ok(result)
     }
 
     pub async fn execute(&self, id: ExecId) -> Result<(), ExecuteError> {
-        debug!("Context::execute: {:?}", id);
-        //TODO @mark: avoid clone?
+        debug!("RefContext::execute: {:?}", id);
         crate::execute::execute(&self.dependent(StepId::Exec(id.clone())), id).await
     }
 
     pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
-        debug!("Context::resolve_all x{}: {:?}", ids.len(), ids);
+        debug!("RefContext::resolve_all x{}: {:?}", ids.len(), ids);
 
         if ids.is_empty() {
             return Ok((Vec::new(), SymbolTable::new()));
@@ -118,8 +127,8 @@ impl Context {
     }
 }
 
-// Compile-time assertion to ensure Context is Send (required for tokio::spawn)
+// Compile-time assertion to ensure RefContext is Send (required for tokio::spawn)
 const _: fn() = || {
     fn assert_send<T: Send>() {}
-    assert_send::<Context>();
+    assert_send::<RefContext>();
 };

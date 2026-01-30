@@ -1,5 +1,5 @@
 use crate::common::Path;
-use crate::context::Context;
+use crate::context::RefContext;
 use crate::graph::ParseId;
 use crate::types::{BinOp, ParseError, PreExpr};
 
@@ -296,7 +296,7 @@ pub fn tokenize_and_parse(source: &str, file_path: Path) -> Result<PreExpr, Pars
     parser.parse_all()
 }
 
-pub async fn parse(_ctx: &Context, id: ParseId) -> Result<PreExpr, ParseError> {
+pub async fn parse(_ctx: &RefContext, id: ParseId) -> Result<PreExpr, ParseError> {
     let my_source = tokio::fs::read_to_string(id.file_path.as_path()).await?;
     //TODO @mark: delegate to threadpool?
     tokenize_and_parse(&my_source, id.file_path)

@@ -9,7 +9,7 @@ mod common;
 use std::fmt;
 use std::collections::HashSet;
 use crate::common::{Name, Path, FQ};
-use crate::context::Context;
+use crate::context::RefContext;
 use crate::graph::{ExecId, StepId};
 
 #[derive(Debug)]
@@ -33,7 +33,7 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-fn visualize_tree(ctx: &Context, step: &StepId, prefix: &str, is_last: bool, visited: &mut HashSet<StepId>) {
+fn visualize_tree(ctx: &RefContext, step: &StepId, prefix: &str, is_last: bool, visited: &mut HashSet<StepId>) {
     let connector = if is_last { "└── " } else { "├── " };
     println!("{}{}{}", prefix, connector, step);
 
@@ -58,7 +58,7 @@ fn visualize_tree(ctx: &Context, step: &StepId, prefix: &str, is_last: bool, vis
 }
 
 pub async fn run_file(path: &str, show_deps: bool) -> Result<(), Error> {
-    let ctx = Context::new();
+    let ctx = RefContext::new();
     let main = Name::of("main");
     let exec_id = ExecId { main_loc: FQ::of(path, "main") };
     ctx.execute(exec_id).await
