@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::common::{Name, Path};
+use crate::common::{Name, Path, FQ};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,9 +103,15 @@ pub struct VarInfo {
     pub scope_id: ScopeId,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FuncSignature {
+    pub loc: FQ,
+    pub arity: usize,
+}
+
 #[derive(Debug, Clone)]
 pub struct FuncInfo {
-    pub name: String,
+    pub loc: FQ,
     pub ast: Expr,
     pub arity: usize,
 }
@@ -136,9 +142,9 @@ impl SymbolTable {
         id
     }
 
-    pub fn add_func(&mut self, name: String, ast: Expr, arity: usize) -> FuncId {
+    pub fn add_func(&mut self, loc: FQ, ast: Expr, arity: usize) -> FuncId {
         let id = FuncId(self.funcs.len());
-        self.funcs.push(FuncInfo { name, ast, arity });
+        self.funcs.push(FuncInfo { loc, ast, arity });
         id
     }
 }
@@ -183,6 +189,7 @@ pub enum ResolveError {
     ImportNotAtTop(Name),
     FunctionDefNotAfterImports(Name),
     FunctionAlreadyDefined(Name, String),
+    FunctionOverload { loc: FQ, existing_arity: usize, new_arity: usize },
     ArityMismatch { context: Name, func_name: String, expected: usize, got: usize },
     ArityGap { context: Name, func_name: String, max_arg: usize },
     UnreachableCode { context: Name, source_location: String },
@@ -203,6 +210,7 @@ impl fmt::Display for ResolveError {
             ResolveError::ImportNotAtTop(ctx) => write!(f, "Import statements must be at the top of the file in {:?}", ctx),
             ResolveError::FunctionDefNotAfterImports(ctx) => write!(f, "Function definitions must be after imports and before other code in {:?}", ctx),
             ResolveError::FunctionAlreadyDefined(ctx, name) => write!(f, "Function already defined in {:?}: {}", ctx, name),
+            ResolveError::FunctionOverload { loc, existing_arity, new_arity } => write!(f, "Function overloading not allowed: {}::{} has arity {} but trying to define with arity {}", loc.as_str(), loc.name_str(), existing_arity, new_arity),
             ResolveError::ArityMismatch { context, func_name, expected, got } => write!(f, "Function '{}' in {:?} expects {} arguments, but {} were provided", func_name, context, expected, got),
             ResolveError::ArityGap { context, func_name, max_arg } => write!(f, "Function '{}' in {:?} has gaps in argument numbers (highest arg is {} but not all args 1..{} are used)", func_name, context, max_arg, max_arg),
             ResolveError::UnreachableCode { context, source_location } => write!(f, "Unreachable code in {:?} at {}", context, source_location),
