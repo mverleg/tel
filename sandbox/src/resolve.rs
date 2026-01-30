@@ -1,5 +1,5 @@
 use crate::common::{Name, FQ};
-use crate::context::RefContext;
+use crate::context::ResolveContext;
 use crate::graph::{ParseId, ResolveId};
 use crate::types::{Expr, FuncId, PreExpr, ResolveError, ScopeId, SymbolTable, VarId};
 use log::debug;
@@ -273,7 +273,7 @@ impl Resolver {
         }
     }
 
-    fn process_imports<'a>(&'a mut self, ctx: &'a RefContext, pre_ast: &'a PreExpr) -> Pin<Box<dyn Future<Output = Result<(), ResolveError>> + Send + 'a>> {
+    fn process_imports<'a>(&'a mut self, ctx: &'a ResolveContext, pre_ast: &'a PreExpr) -> Pin<Box<dyn Future<Output = Result<(), ResolveError>> + Send + 'a>> {
         Box::pin(async move {
             let imports = self.extract_imports(pre_ast)?;
             debug!("process_imports: found {} imports", imports.len());
@@ -475,7 +475,7 @@ impl Resolver {
     }
 }
 
-pub async fn resolve_internal(ctx: &RefContext, pre_ast: PreExpr, base_path: &str, context: Name, is_function: bool) -> Result<(Expr, SymbolTable), ResolveError> {
+pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: PreExpr, base_path: &str, context: Name, is_function: bool) -> Result<(Expr, SymbolTable), ResolveError> {
     debug!("resolve_internal: starting for context {:?}, is_function={}", context, is_function);
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
@@ -516,7 +516,7 @@ pub async fn resolve_internal(ctx: &RefContext, pre_ast: PreExpr, base_path: &st
     Ok((ast, resolver.symbol_table))
 }
 
-pub async fn resolve(ctx: &RefContext, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
+pub async fn resolve(ctx: &ResolveContext, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
     let ResolveId { func_loc: fq } = id;
     debug!("resolve: starting for {:?}", fq);
     let my_pre_ast = ctx.parse(ParseId { file_path: fq.path().clone() }).await

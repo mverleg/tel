@@ -5,7 +5,7 @@ use crate::types::BinOp;
 use crate::types::VarId;
 use log::debug;
 use std::collections::HashMap;
-use crate::context::RefContext;
+use crate::context::ExecContext;
 use crate::graph::{ExecId, ResolveId};
 
 enum EvalResult {
@@ -148,7 +148,7 @@ impl<'a> Interpreter<'a> {
     }
 }
 
-pub async fn execute(ctx: &RefContext, path: ExecId) -> Result<(), ExecuteError> {
+pub async fn execute(ctx: &ExecContext, path: ExecId) -> Result<(), ExecuteError> {
     debug!("execute: starting for {:?}", path);
     let my_main_func = path.main_loc.clone();
     let reesolve_id = ResolveId { func_loc: my_main_func.clone() };

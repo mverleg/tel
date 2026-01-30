@@ -17,62 +17,38 @@ impl CoreContext {
     }
 }
 
-pub struct RefContext {
-    current: StepId,
-    core: &'static CoreContext,
-}
+impl CoreContext {
+    async fn parse_impl(&'static self, caller: StepId, id: ParseId) -> Result<PreExpr, ParseError> {
+        debug!("CoreContext::parse_impl: {:?}", id);
 
-impl RefContext {
-    pub fn root(core: &'static CoreContext) -> Self {
-        RefContext {
-            current: StepId::Root,
-            core,
-        }
-    }
-
-    pub fn graph(&self) -> &Graph {
-        &self.core.graph
-    }
-
-    fn dependent(&self, step: StepId) -> RefContext {
-        self.core.graph.register_dependency(self.current.clone(), step.clone());
-        RefContext {
-            current: step,
-            core: self.core,
-        }
-    }
-
-    pub async fn parse(&self, id: ParseId) -> Result<PreExpr, ParseError> {
-        debug!("RefContext::parse: {:?}", id);
-
-        if let Some(cached_bytes_ref) = self.core.parse_cache.get(&id) {
-            debug!("RefContext::parse cache hit: {:?}", id);
+        if let Some(cached_bytes_ref) = self.parse_cache.get(&id) {
+            debug!("CoreContext::parse_impl cache hit: {:?}", id);
             return postcard::from_bytes(&*cached_bytes_ref)
                 .map_err(|e| ParseError::IoError(
                     std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Cache deserialization failed: {}", e))
                 ));
         }
 
-        debug!("RefContext::parse cache miss: {:?}", id);
-        let result = crate::parse::parse(&self.dependent(StepId::Parse(id.clone())), id.clone()).await?;
+        debug!("CoreContext::parse_impl cache miss: {:?}", id);
+        self.graph.register_dependency(caller, StepId::Parse(id.clone()));
+        let ctx = ParseContext {
+            current: id.clone(),
+            core: self,
+        };
+        let result = crate::parse::parse(&ctx, id.clone()).await?;
 
         let serialized = postcard::to_allocvec(&result)
             .map_err(|e| ParseError::IoError(
                 std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Cache serialization failed: {}", e))
             ))?;
 
-        self.core.parse_cache.insert(id, serialized);
+        self.parse_cache.insert(id, serialized);
 
         Ok(result)
     }
 
-    pub async fn execute(&self, id: ExecId) -> Result<(), ExecuteError> {
-        debug!("RefContext::execute: {:?}", id);
-        crate::execute::execute(&self.dependent(StepId::Exec(id.clone())), id).await
-    }
-
-    pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
-        debug!("RefContext::resolve_all x{}: {:?}", ids.len(), ids);
+    async fn resolve_all_impl(&'static self, caller: StepId, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
+        debug!("CoreContext::resolve_all_impl x{}: {:?}", ids.len(), ids);
 
         if ids.is_empty() {
             return Ok((Vec::new(), SymbolTable::new()));
@@ -80,27 +56,37 @@ impl RefContext {
 
         let n = ids.len();
         if n == 1 {
-            // Single item - just resolve it directly
             let id = ids[0].clone();
-            let (expr, table) = crate::resolve::resolve(&self.dependent(StepId::Resolve(id.clone())), id).await?;
+            self.graph.register_dependency(caller, StepId::Resolve(id.clone()));
+            let ctx = ResolveContext {
+                current: id.clone(),
+                core: self,
+            };
+            let (expr, table) = crate::resolve::resolve(&ctx, id).await?;
             return Ok((vec![expr], table));
         }
 
         // Spawn tasks for items 0..N-1
         let mut handles = Vec::new();
-        let core = self.core;
+        let core = self;
         for i in 0..n-1 {
             let id = ids[i].clone();
             let handle = tokio::spawn(async move {
-                let ctx = RefContext { current: StepId::Root, core };
-                crate::resolve::resolve(&ctx.dependent(StepId::Resolve(id.clone())), id).await
+                core.graph.register_dependency(StepId::Root, StepId::Resolve(id.clone()));
+                let ctx = ResolveContext { current: id.clone(), core };
+                crate::resolve::resolve(&ctx, id).await
             });
             handles.push(handle);
         }
 
         // Use current task for the Nth item
         let last_id = ids[n-1].clone();
-        let last_result = crate::resolve::resolve(&self.dependent(StepId::Resolve(last_id.clone())), last_id).await?;
+        self.graph.register_dependency(caller.clone(), StepId::Resolve(last_id.clone()));
+        let ctx = ResolveContext {
+            current: last_id.clone(),
+            core: self,
+        };
+        let last_result = crate::resolve::resolve(&ctx, last_id).await?;
 
         // Wait for all spawned tasks
         let mut all_results = Vec::with_capacity(n);
@@ -117,26 +103,101 @@ impl RefContext {
 
         for (expr, table) in all_results {
             exprs.push(expr);
-            // Merge symbol tables by appending
             merged_table.vars.extend(table.vars);
             merged_table.funcs.extend(table.funcs);
         }
 
         Ok((exprs, merged_table))
     }
+
+    async fn execute_impl(&'static self, caller: StepId, id: ExecId) -> Result<(), ExecuteError> {
+        debug!("CoreContext::execute_impl: {:?}", id);
+        self.graph.register_dependency(caller, StepId::Exec(id.clone()));
+        let ctx = ExecContext {
+            current: id.clone(),
+            core: self,
+        };
+        crate::execute::execute(&ctx, id).await
+    }
 }
 
-impl Clone for RefContext {
+pub struct RootContext {
+    core: &'static CoreContext,
+}
+
+impl RootContext {
+    pub fn new(core: &'static CoreContext) -> Self {
+        RootContext { core }
+    }
+
+    pub fn graph(&self) -> &Graph {
+        &self.core.graph
+    }
+
+    pub async fn execute(&self, id: ExecId) -> Result<(), ExecuteError> {
+        self.core.execute_impl(StepId::Root, id).await
+    }
+}
+
+pub struct ParseContext {
+    current: ParseId,
+    core: &'static CoreContext,
+}
+
+impl ParseContext {
+    pub fn graph(&self) -> &Graph {
+        &self.core.graph
+    }
+}
+
+pub struct ResolveContext {
+    current: ResolveId,
+    core: &'static CoreContext,
+}
+
+impl ResolveContext {
+    pub fn graph(&self) -> &Graph {
+        &self.core.graph
+    }
+
+    pub async fn parse(&self, id: ParseId) -> Result<PreExpr, ParseError> {
+        self.core.parse_impl(StepId::Resolve(self.current.clone()), id).await
+    }
+
+    pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
+        self.core.resolve_all_impl(StepId::Resolve(self.current.clone()), ids).await
+    }
+}
+
+impl Clone for ResolveContext {
     fn clone(&self) -> Self {
-        RefContext {
+        ResolveContext {
             current: self.current.clone(),
             core: self.core,
         }
     }
 }
 
-// Compile-time assertion to ensure RefContext is Send (required for tokio::spawn)
+pub struct ExecContext {
+    current: ExecId,
+    core: &'static CoreContext,
+}
+
+impl ExecContext {
+    pub fn graph(&self) -> &Graph {
+        &self.core.graph
+    }
+
+    pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
+        self.core.resolve_all_impl(StepId::Exec(self.current.clone()), ids).await
+    }
+}
+
+// Compile-time assertions to ensure contexts are Send (required for tokio::spawn)
 const _: fn() = || {
     fn assert_send<T: Send>() {}
-    assert_send::<RefContext>();
+    assert_send::<RootContext>();
+    assert_send::<ParseContext>();
+    assert_send::<ResolveContext>();
+    assert_send::<ExecContext>();
 };
