@@ -35,11 +35,6 @@ impl Context {
         crate::execute::execute(&self.dependent(StepId::Exec(id.clone())), id).await
     }
 
-    pub async fn resolve(&self, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
-        debug!("Context::resolve: {:?}", id);
-        crate::resolve::resolve(&self.dependent(StepId::Resolve(id.clone())), id).await
-    }
-
     pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
         debug!("Context::resolve_all x{}: {:?}", ids.len(), ids);
 
@@ -50,7 +45,8 @@ impl Context {
         let n = ids.len();
         if n == 1 {
             // Single item - just resolve it directly
-            let (expr, table) = self.resolve(ids[0].clone()).await?;
+            let id = ids[0].clone();
+            let (expr, table) = crate::resolve::resolve(&self.dependent(StepId::Resolve(id.clone())), id).await?;
             return Ok((vec![expr], table));
         }
 
@@ -60,13 +56,14 @@ impl Context {
             let id = ids[i].clone();
             let ctx = self.clone();
             let handle = tokio::spawn(async move {
-                ctx.resolve(id).await
+                crate::resolve::resolve(&ctx.dependent(StepId::Resolve(id.clone())), id).await
             });
             handles.push(handle);
         }
 
         // Use current task for the Nth item
-        let last_result = self.resolve(ids[n-1].clone()).await?;
+        let last_id = ids[n-1].clone();
+        let last_result = crate::resolve::resolve(&self.dependent(StepId::Resolve(last_id.clone())), last_id).await?;
 
         // Wait for all spawned tasks
         let mut all_results = Vec::with_capacity(n);

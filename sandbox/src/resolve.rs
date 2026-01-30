@@ -285,12 +285,13 @@ impl Resolver {
             }
             let full_path = self.base_path.join(format!("{}.telsb", import_name));
 
-            // Call ctx.resolve() to properly register dependency
+            // Call ctx.resolve_all() to properly register dependency
             let resolve_id = ResolveId {
                 func_loc: FQ::of(&full_path, &import_name)
             };
             debug!("Resolving imported file: {:?}", resolve_id);
-            let (func_ast, imported_symbols) = ctx.resolve(resolve_id).await?;
+            let (exprs, imported_symbols) = ctx.resolve_all(&[resolve_id]).await?;
+            let func_ast = exprs.into_iter().next().unwrap();
             debug!("Import {} resolved, has {} functions", import_name, imported_symbols.funcs.len());
 
             // Find the imported function's position and arity before consuming the vector

@@ -154,7 +154,8 @@ pub async fn execute(ctx: &Context, path: ExecId) -> Result<(), ExecuteError> {
     let reesolve_id = ResolveId { func_loc: my_main_func.clone() };
     debug!("execute: resolving {:?}", reesolve_id);
     // let (my_ast, my_symbols) = crate::resolve::resolve(path)?;
-    let (my_ast, my_symbols) = ctx.resolve(reesolve_id).await?;
+    let (exprs, my_symbols) = ctx.resolve_all(&[reesolve_id]).await?;
+    let my_ast = exprs.into_iter().next().unwrap();
     debug!("execute: resolved, now evaluating");
     let mut interpreter = Interpreter::new(&my_symbols);
     interpreter.eval(&my_ast)?;
