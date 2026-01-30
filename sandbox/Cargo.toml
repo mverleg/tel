@@ -7,10 +7,7 @@ version.workspace = true
 dashmap.workspace = true
 env_logger.workspace = true
 log.workspace = true
+postcard.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-
-[[example]]
-name = "dependency_graph_demo"
-path = "examples/dependency_graph_demo.rs"

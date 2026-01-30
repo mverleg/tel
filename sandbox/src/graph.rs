@@ -57,8 +57,4 @@ impl Graph {
     pub fn get_dependencies(&self, step: &StepId) -> Option<dashmap::mapref::one::Ref<StepId, HashSet<StepId>>> {
         self.dependencies.get(step)
     }
-
-    pub fn iter_dependencies(&self) -> dashmap::iter::Iter<StepId, HashSet<StepId>> {
-        self.dependencies.iter()
-    }
 }

@@ -1255,6 +1255,7 @@ dependencies = [
  "dashmap",
  "env_logger",
  "log",
+ "postcard",
  "serde",
  "serde_json",
  "tokio",

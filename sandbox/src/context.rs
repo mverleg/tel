@@ -1,5 +1,6 @@
 use crate::graph::{ExecId, Graph, ParseId, ResolveId, StepId};
 use crate::types::{ExecuteError, Expr, ParseError, PreExpr, ResolveError, SymbolTable};
+use dashmap::DashMap;
 use log::debug;
 use ::std::sync::Arc;
 
@@ -7,11 +8,16 @@ use ::std::sync::Arc;
 pub struct Context {
     current: StepId,
     graph: Arc<Graph>,
+    parse_cache: Arc<DashMap<ParseId, Vec<u8>>>,
 }
 
 impl Context {
     pub fn new() -> Self {
-        Context { current: StepId::Root, graph: Arc::new(Graph::new()) }
+        Context {
+            current: StepId::Root,
+            graph: Arc::new(Graph::new()),
+            parse_cache: Arc::new(DashMap::new()),
+        }
     }
 
     pub fn graph(&self) -> &Graph {
@@ -21,12 +27,35 @@ impl Context {
     fn dependent(&self, step: StepId) -> Context {
         //TODO @mark: lot of clone
         self.graph.register_dependency(self.current.clone(), step.clone());
-        Context { current: step, graph: self.graph.clone() }
+        Context {
+            current: step,
+            graph: self.graph.clone(),
+            parse_cache: self.parse_cache.clone(),
+        }
     }
 
     pub async fn parse(&self, id: ParseId) -> Result<PreExpr, ParseError> {
         debug!("Context::parse: {:?}", id);
-        crate::parse::parse(&self.dependent(StepId::Parse(id.clone())), id).await
+
+        if let Some(cached_bytes) = self.parse_cache.get(&id) {
+            debug!("Context::parse cache hit: {:?}", id);
+            return postcard::from_bytes(&cached_bytes)
+                .map_err(|e| ParseError::IoError(
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Cache deserialization failed: {}", e))
+                ));
+        }
+
+        debug!("Context::parse cache miss: {:?}", id);
+        let result = crate::parse::parse(&self.dependent(StepId::Parse(id.clone())), id.clone()).await?;
+
+        let serialized = postcard::to_allocvec(&result)
+            .map_err(|e| ParseError::IoError(
+                std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Cache serialization failed: {}", e))
+            ))?;
+
+        self.parse_cache.insert(id, serialized);
+
+        Ok(result)
     }
 
     pub async fn execute(&self, id: ExecId) -> Result<(), ExecuteError> {
