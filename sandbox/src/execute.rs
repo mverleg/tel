@@ -90,9 +90,6 @@ impl<'a> Interpreter<'a> {
             Expr::Panic { source_location } => {
                 Err(ExecuteError::Panic { source_location: source_location.clone() })
             }
-            Expr::Unreachable { .. } => {
-                panic!("Unreachable code was reached during execution - this should have been caught during resolution")
-            }
             Expr::Call { func, args } => {
                 let mut arg_vals = Vec::new();
                 for arg in args {

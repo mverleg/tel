@@ -17,7 +17,8 @@ struct Resolver {
     funcs: HashMap<String, FuncId>,
     func_arities: HashMap<FuncId, usize>,
     in_function: bool,
-    base_path: PathBuf,
+    current_file: PathBuf,
+    base_dir: PathBuf,
     current_context: Name,
 }
 
@@ -27,7 +28,7 @@ struct Scope {
 }
 
 impl Resolver {
-    fn new(base_path: PathBuf, context: Name) -> Self {
+    fn new(current_file: PathBuf, base_dir: PathBuf, context: Name) -> Self {
         let global_scope = Scope {
             parent: None,
             vars: HashMap::new(),
@@ -41,7 +42,8 @@ impl Resolver {
             funcs: HashMap::new(),
             func_arities: HashMap::new(),
             in_function: false,
-            base_path,
+            current_file,
+            base_dir,
             current_context: context,
         }
     }
@@ -283,7 +285,7 @@ impl Resolver {
             if import_name.contains('.') {
                 return Err(ResolveError::InvalidImportPath(self.current_context.clone(), import_name.clone()));
             }
-            let full_path = self.base_path.join(format!("{}.telsb", import_name));
+            let full_path = self.base_dir.join(format!("{}.telsb", import_name));
 
             // Call ctx.resolve_all() to properly register dependency
             let resolve_id = ResolveId {
@@ -294,23 +296,26 @@ impl Resolver {
             let func_ast = exprs.into_iter().next().unwrap();
             debug!("Import {} resolved, has {} functions", import_name, imported_symbols.funcs.len());
 
-            // Find the imported function's position and arity before consuming the vector
+            // Find the imported file-function's position and arity
             let func_position = imported_symbols.funcs.iter()
-                .position(|f| f.name.as_str() == import_name)
+                .position(|f| f.loc.name_str() == import_name)
                 .ok_or_else(|| ResolveError::UndefinedFunction(self.current_context.clone(), import_name.clone()))?;
 
             let arity = imported_symbols.funcs[func_position].arity;
 
+            // Add ALL functions from imported file to symbol table (including local ones)
+            // This is necessary because the file-function may call local functions at runtime
+            // Local functions are not added to self.funcs HashMap, so they're not callable by name
             let offset = self.symbol_table.funcs.len();
 
             for mut func_info in imported_symbols.funcs {
+                // Remap FuncIds in ASTs since they're indices into the symbol table
                 Self::remap_func_ids(&mut func_info.ast, offset);
                 self.symbol_table.funcs.push(func_info);
             }
 
-            let mut my_func_ast = func_ast;
-            Self::remap_func_ids(&mut my_func_ast, offset);
-
+            // Register only the file-function for name lookup (not local functions)
+            // func_ast from resolve_all is not used - we get it from symbol_table instead
             let func_id = FuncId(offset + func_position);
 
             self.funcs.insert(import_name.clone(), func_id);
@@ -409,7 +414,8 @@ impl Resolver {
             self.in_function = saved_in_function;
             debug!("Restored in_function={} after local function {}", saved_in_function, func_name);
 
-            let func_id = self.symbol_table.add_func(func_name.clone(), resolved_body, arity);
+            let func_loc = FQ::of(&self.current_file, &func_name);
+            let func_id = self.symbol_table.add_func(func_loc, resolved_body, arity);
             self.funcs.insert(func_name, func_id);
             self.func_arities.insert(func_id, arity);
         }
@@ -445,7 +451,7 @@ impl Resolver {
                     Self::remap_func_ids(expr, offset);
                 }
             }
-            Expr::Number(_) | Expr::VarRef(_) | Expr::Arg(_) | Expr::Panic { .. } | Expr::Unreachable { .. } => {}
+            Expr::Number(_) | Expr::VarRef(_) | Expr::Arg(_) | Expr::Panic { .. } => {}
         }
     }
 
@@ -480,7 +486,7 @@ pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: PreExpr, base_path:
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
 
-    let mut resolver = Resolver::new(dir.to_path_buf(), context.clone());
+    let mut resolver = Resolver::new(path.to_path_buf(), dir.to_path_buf(), context.clone());
     debug!("resolve_internal: processing imports for {:?}", context);
     resolver.process_imports(ctx, &pre_ast).await?;
     debug!("resolve_internal: processing local functions for {:?}", context);
@@ -496,7 +502,8 @@ pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: PreExpr, base_path:
         // so that recursive calls can find it during body resolution
         let arity = Resolver::calculate_arity(&pre_ast, context.as_str(), &context)?;
         debug!("resolve_internal: pre-registering implicit function {:?} with arity {}", context, arity);
-        let func_id = resolver.symbol_table.add_func(context.as_str().to_string(), Expr::Number(0), arity);
+        let func_loc = FQ::of(&resolver.current_file, context.as_str());
+        let func_id = resolver.symbol_table.add_func(func_loc, Expr::Number(0), arity);
         resolver.funcs.insert(context.as_str().to_string(), func_id);
         resolver.func_arities.insert(func_id, arity);
     }

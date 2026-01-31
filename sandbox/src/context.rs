@@ -1,11 +1,14 @@
+use crate::common::FQ;
 use crate::graph::{ExecId, Graph, ParseId, ResolveId, StepId};
-use crate::types::{ExecuteError, Expr, ParseError, PreExpr, ResolveError, SymbolTable};
+use crate::types::{ExecuteError, Expr, FuncSignature, ParseError, PreExpr, ResolveError, SymbolTable};
 use dashmap::DashMap;
 use log::debug;
 
 pub struct CoreContext {
     graph: Graph,
     parse_cache: DashMap<ParseId, Vec<u8>>,
+    signature_cache: DashMap<ResolveId, Vec<FuncSignature>>,
+    ast_cache: DashMap<FQ, Expr>,
 }
 
 impl CoreContext {
@@ -13,6 +16,8 @@ impl CoreContext {
         CoreContext {
             graph: Graph::new(),
             parse_cache: DashMap::new(),
+            signature_cache: DashMap::new(),
+            ast_cache: DashMap::new(),
         }
     }
 }

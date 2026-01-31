@@ -88,7 +88,6 @@ pub enum Expr {
     Print(Box<Expr>),
     Return(Box<Expr>),
     Panic { source_location: String },
-    Unreachable { source_location: String },
     Call {
         func: FuncId,
         args: Vec<Box<Expr>>,
