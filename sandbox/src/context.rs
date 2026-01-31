@@ -1,6 +1,6 @@
 use crate::common::FQ;
 use crate::graph::{ExecId, Graph, ParseId, ResolveId, StepId};
-use crate::types::{ExecuteError, Expr, FuncSignature, ParseError, PreExpr, ResolveError, SymbolTable};
+use crate::types::{ExecuteError, Expr, FuncData, FuncSignature, ParseError, PreExpr, ResolveError, SymbolTable};
 use dashmap::DashMap;
 use log::debug;
 
@@ -10,6 +10,7 @@ pub struct Global {
     parse_cache: DashMap<ParseId, Vec<u8>>,
     signature_cache: DashMap<ResolveId, Vec<FuncSignature>>,
     ast_cache: DashMap<FQ, Expr>,
+    func_registry: DashMap<FQ, FuncData>,
 }
 
 impl Global {
@@ -19,6 +20,7 @@ impl Global {
             parse_cache: DashMap::new(),
             signature_cache: DashMap::new(),
             ast_cache: DashMap::new(),
+            func_registry: DashMap::new(),
         }
     }
 }
@@ -110,7 +112,7 @@ impl Global {
         for (expr, table) in all_results {
             exprs.push(expr);
             merged_table.vars.extend(table.vars);
-            merged_table.funcs.extend(table.funcs);
+            // funcs are now in global registry, no need to merge
         }
 
         Ok((exprs, merged_table))
@@ -166,6 +168,10 @@ impl ResolveContext {
         &self.core.graph
     }
 
+    pub fn func_registry(&self) -> &DashMap<FQ, FuncData> {
+        &self.core.func_registry
+    }
+
     pub async fn parse(&self, id: ParseId) -> Result<PreExpr, ParseError> {
         self.core.parse_impl(StepId::Resolve(self.current.clone()), id).await
     }
@@ -192,6 +198,10 @@ pub struct ExecContext {
 impl ExecContext {
     pub fn graph(&self) -> &Graph {
         &self.core.graph
+    }
+
+    pub fn func_registry(&self) -> &DashMap<FQ, FuncData> {
+        &self.core.func_registry
     }
 
     pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {

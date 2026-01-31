@@ -1,12 +1,14 @@
-use crate::types::SymbolTable;
 use crate::types::Expr;
 use crate::types::ExecuteError;
 use crate::types::BinOp;
 use crate::types::VarId;
+use crate::common::FQ;
 use log::debug;
 use std::collections::HashMap;
 use crate::context::ExecContext;
 use crate::graph::{ExecId, ResolveId};
+use dashmap::DashMap;
+use crate::types::FuncData;
 
 enum EvalResult {
     Value(i64),
@@ -15,15 +17,15 @@ enum EvalResult {
 
 struct Interpreter<'a> {
     values: HashMap<VarId, i64>,
-    symbols: &'a SymbolTable,
+    func_registry: &'a DashMap<FQ, FuncData>,
     args: Option<Vec<i64>>,
 }
 
 impl<'a> Interpreter<'a> {
-    fn new(symbols: &'a SymbolTable) -> Self {
+    fn new(func_registry: &'a DashMap<FQ, FuncData>) -> Self {
         Interpreter {
             values: HashMap::new(),
-            symbols,
+            func_registry,
             args: None,
         }
     }
@@ -96,8 +98,11 @@ impl<'a> Interpreter<'a> {
                     arg_vals.push(self.eval_value(arg)?);
                 }
 
-                let func_info = &self.symbols.funcs[func.0];
-                let result = self.call_function(&func_info.ast, arg_vals)?;
+                let func_data = self.func_registry.get(&func.0)
+                    .ok_or_else(|| ExecuteError::Panic {
+                        source_location: format!("Function not found: {:?}", func.0)
+                    })?;
+                let result = self.call_function(&func_data.ast, arg_vals)?;
                 Ok(EvalResult::Value(result))
             }
             Expr::Arg(n) => {
@@ -150,11 +155,10 @@ pub async fn execute(ctx: &ExecContext, path: ExecId) -> Result<(), ExecuteError
     let my_main_func = path.main_loc.clone();
     let reesolve_id = ResolveId { func_loc: my_main_func.clone() };
     debug!("execute: resolving {:?}", reesolve_id);
-    // let (my_ast, my_symbols) = crate::resolve::resolve(path)?;
-    let (exprs, my_symbols) = ctx.resolve_all(&[reesolve_id]).await?;
+    let (exprs, _my_symbols) = ctx.resolve_all(&[reesolve_id]).await?;
     let my_ast = exprs.into_iter().next().unwrap();
     debug!("execute: resolved, now evaluating");
-    let mut interpreter = Interpreter::new(&my_symbols);
+    let mut interpreter = Interpreter::new(ctx.func_registry());
     interpreter.eval(&my_ast)?;
     debug!("execute: completed successfully");
     Ok(())

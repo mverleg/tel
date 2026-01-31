@@ -9,13 +9,13 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::future::Future;
 
-struct Resolver {
-    symbol_table: SymbolTable,
+struct Resolver<'a> {
+    ctx: &'a ResolveContext,
+    symbol_table: SymbolTable,  // Now only for vars
     scopes: Vec<Scope>,
     current_scope: ScopeId,
     next_scope_id: usize,
-    funcs: HashMap<String, FuncId>,
-    func_arities: HashMap<FuncId, usize>,
+    funcs: HashMap<String, FuncId>,  // Name -> FQ-based FuncId (what's callable in this scope)
     in_function: bool,
     current_file: PathBuf,
     base_dir: PathBuf,
@@ -27,20 +27,20 @@ struct Scope {
     vars: HashMap<String, VarId>,
 }
 
-impl Resolver {
-    fn new(current_file: PathBuf, base_dir: PathBuf, context: Name) -> Self {
+impl<'a> Resolver<'a> {
+    fn new(ctx: &'a ResolveContext, current_file: PathBuf, base_dir: PathBuf, context: Name) -> Self {
         let global_scope = Scope {
             parent: None,
             vars: HashMap::new(),
         };
 
         Resolver {
+            ctx,
             symbol_table: SymbolTable::new(),
             scopes: vec![global_scope],
             current_scope: ScopeId(0),
             next_scope_id: 1,
             funcs: HashMap::new(),
-            func_arities: HashMap::new(),
             in_function: false,
             current_file,
             base_dir,
@@ -230,12 +230,13 @@ impl Resolver {
             }
             PreExpr::Call { func, args } => {
                 let func_id = self.funcs.get(&func)
-                    .copied()
+                    .cloned()
                     .ok_or_else(|| ResolveError::UndefinedFunction(self.current_context.clone(), func.clone()))?;
 
-                let expected_arity = self.func_arities.get(&func_id)
-                    .copied()
-                    .unwrap_or_else(|| self.symbol_table.funcs[func_id.0].arity);
+                let expected_arity = self.ctx.func_registry()
+                    .get(&func_id.0)
+                    .map(|f| f.arity)
+                    .ok_or_else(|| ResolveError::UndefinedFunction(self.current_context.clone(), func.clone()))?;
                 let got_arity = args.len();
 
                 if expected_arity != got_arity {
@@ -275,7 +276,7 @@ impl Resolver {
         }
     }
 
-    fn process_imports<'a>(&'a mut self, ctx: &'a ResolveContext, pre_ast: &'a PreExpr) -> Pin<Box<dyn Future<Output = Result<(), ResolveError>> + Send + 'a>> {
+    fn process_imports<'b>(&'b mut self, ctx: &'b ResolveContext, pre_ast: &'b PreExpr) -> Pin<Box<dyn Future<Output = Result<(), ResolveError>> + Send + 'b>> {
         Box::pin(async move {
             let imports = self.extract_imports(pre_ast)?;
             debug!("process_imports: found {} imports", imports.len());
@@ -288,38 +289,20 @@ impl Resolver {
             let full_path = self.base_dir.join(format!("{}.telsb", import_name));
 
             // Call ctx.resolve_all() to properly register dependency
+            // This will resolve the imported file and register all its functions in global registry
             let resolve_id = ResolveId {
                 func_loc: FQ::of(&full_path, &import_name)
             };
             debug!("Resolving imported file: {:?}", resolve_id);
-            let (exprs, imported_symbols) = ctx.resolve_all(&[resolve_id]).await?;
-            let func_ast = exprs.into_iter().next().unwrap();
-            debug!("Import {} resolved, has {} functions", import_name, imported_symbols.funcs.len());
-
-            // Find the imported file-function's position and arity
-            let func_position = imported_symbols.funcs.iter()
-                .position(|f| f.loc.name_str() == import_name)
-                .ok_or_else(|| ResolveError::UndefinedFunction(self.current_context.clone(), import_name.clone()))?;
-
-            let arity = imported_symbols.funcs[func_position].arity;
-
-            // Add ALL functions from imported file to symbol table (including local ones)
-            // This is necessary because the file-function may call local functions at runtime
-            // Local functions are not added to self.funcs HashMap, so they're not callable by name
-            let offset = self.symbol_table.funcs.len();
-
-            for mut func_info in imported_symbols.funcs {
-                // Remap FuncIds in ASTs since they're indices into the symbol table
-                Self::remap_func_ids(&mut func_info.ast, offset);
-                self.symbol_table.funcs.push(func_info);
-            }
+            let (_exprs, _imported_symbols) = ctx.resolve_all(&[resolve_id]).await?;
+            debug!("Import {} resolved", import_name);
 
             // Register only the file-function for name lookup (not local functions)
-            // func_ast from resolve_all is not used - we get it from symbol_table instead
-            let func_id = FuncId(offset + func_position);
+            // Functions are already in the global registry from the resolve_all call
+            let func_fq = FQ::of(&full_path, &import_name);
+            let func_id = FuncId(func_fq);
 
             self.funcs.insert(import_name.clone(), func_id);
-            self.func_arities.insert(func_id, arity);
         }
 
         Ok(())
@@ -415,45 +398,22 @@ impl Resolver {
             debug!("Restored in_function={} after local function {}", saved_in_function, func_name);
 
             let func_loc = FQ::of(&self.current_file, &func_name);
-            let func_id = self.symbol_table.add_func(func_loc, resolved_body, arity);
+            let func_id = FuncId(func_loc.clone());
+
+            // Register in global registry
+            use crate::types::FuncData;
+            self.ctx.func_registry().insert(func_loc.clone(), FuncData {
+                loc: func_loc,
+                arity,
+                ast: resolved_body,
+            });
+
             self.funcs.insert(func_name, func_id);
-            self.func_arities.insert(func_id, arity);
         }
 
         Ok(())
     }
 
-    fn remap_func_ids(expr: &mut Expr, offset: usize) {
-        match expr {
-            Expr::Call { func, args } => {
-                func.0 += offset;
-                for arg in args {
-                    Self::remap_func_ids(arg, offset);
-                }
-            }
-            Expr::BinaryOp { left, right, .. } => {
-                Self::remap_func_ids(left, offset);
-                Self::remap_func_ids(right, offset);
-            }
-            Expr::Let { value, .. } | Expr::Set { value, .. } => {
-                Self::remap_func_ids(value, offset);
-            }
-            Expr::If { cond, then_branch, else_branch } => {
-                Self::remap_func_ids(cond, offset);
-                Self::remap_func_ids(then_branch, offset);
-                Self::remap_func_ids(else_branch, offset);
-            }
-            Expr::Print(e) | Expr::Return(e) => {
-                Self::remap_func_ids(e, offset);
-            }
-            Expr::Sequence(exprs) => {
-                for expr in exprs {
-                    Self::remap_func_ids(expr, offset);
-                }
-            }
-            Expr::Number(_) | Expr::VarRef(_) | Expr::Arg(_) | Expr::Panic { .. } => {}
-        }
-    }
 
     fn resolve_body(&mut self, pre_ast: &PreExpr) -> Result<Expr, ResolveError> {
         debug!("resolve_body: in_function={}, context={:?}", self.in_function, self.current_context);
@@ -486,7 +446,7 @@ pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: PreExpr, base_path:
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
 
-    let mut resolver = Resolver::new(path.to_path_buf(), dir.to_path_buf(), context.clone());
+    let mut resolver = Resolver::new(ctx, path.to_path_buf(), dir.to_path_buf(), context.clone());
     debug!("resolve_internal: processing imports for {:?}", context);
     resolver.process_imports(ctx, &pre_ast).await?;
     debug!("resolve_internal: processing local functions for {:?}", context);
@@ -503,9 +463,17 @@ pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: PreExpr, base_path:
         let arity = Resolver::calculate_arity(&pre_ast, context.as_str(), &context)?;
         debug!("resolve_internal: pre-registering implicit function {:?} with arity {}", context, arity);
         let func_loc = FQ::of(&resolver.current_file, context.as_str());
-        let func_id = resolver.symbol_table.add_func(func_loc, Expr::Number(0), arity);
+        let func_id = FuncId(func_loc.clone());
+
+        // Register in global registry with placeholder AST
+        use crate::types::FuncData;
+        ctx.func_registry().insert(func_loc.clone(), FuncData {
+            loc: func_loc,
+            arity,
+            ast: Expr::Number(0),
+        });
+
         resolver.funcs.insert(context.as_str().to_string(), func_id);
-        resolver.func_arities.insert(func_id, arity);
     }
 
     debug!("resolve_internal: resolving body for {:?} (in_function={})", context, resolver.in_function);
@@ -516,7 +484,9 @@ pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: PreExpr, base_path:
         debug!("resolve_internal: updating implicit function {:?} with resolved AST", context);
         // Update the function info with the actual resolved AST
         let func_id = resolver.funcs.get(context.as_str()).unwrap();
-        resolver.symbol_table.funcs[func_id.0].ast = ast.clone();
+        if let Some(mut func_data) = ctx.func_registry().get_mut(&func_id.0) {
+            func_data.ast = ast.clone();
+        }
     }
 
     debug!("resolve_internal: completed for {:?}", context);

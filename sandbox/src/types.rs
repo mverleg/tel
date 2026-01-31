@@ -62,6 +62,7 @@ pub struct FuncId(pub FQ);
 
 #[derive(Debug, Clone)]
 pub struct FuncData {
+    pub loc: FQ,
     pub arity: usize,
     pub ast: Expr,
 }
@@ -115,16 +116,9 @@ pub struct FuncSignature {
 }
 
 #[derive(Debug, Clone)]
-pub struct FuncInfo {
-    pub loc: FQ,
-    pub ast: Expr,
-    pub arity: usize,
-}
-
-#[derive(Debug, Clone)]
 pub struct SymbolTable {
     pub vars: Vec<VarInfo>,
-    pub funcs: Vec<FuncInfo>,
+    // funcs now stored in Global.func_registry
 }
 
 impl Default for SymbolTable {
@@ -137,19 +131,12 @@ impl SymbolTable {
     pub fn new() -> Self {
         SymbolTable {
             vars: Vec::new(),
-            funcs: Vec::new(),
         }
     }
 
     pub fn add_var(&mut self, name: String, scope_id: ScopeId) -> VarId {
         let id = VarId(self.vars.len());
         self.vars.push(VarInfo { name, scope_id });
-        id
-    }
-
-    pub fn add_func(&mut self, loc: FQ, ast: Expr, arity: usize) -> FuncId {
-        let id = FuncId(self.funcs.len());
-        self.funcs.push(FuncInfo { loc, ast, arity });
         id
     }
 }
