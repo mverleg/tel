@@ -11,6 +11,7 @@ members = [
     "testing",
     "telc-cache",
     "sandbox",
+    "async-lazy",
 ]
 
 [workspace.package]
