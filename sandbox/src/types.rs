@@ -57,8 +57,14 @@ pub enum PreExpr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VarId(pub usize);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FuncId(pub usize);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FuncId(pub FQ);
+
+#[derive(Debug, Clone)]
+pub struct FuncData {
+    pub arity: usize,
+    pub ast: Expr,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScopeId(pub usize);

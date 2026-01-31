@@ -4,16 +4,17 @@ use crate::types::{ExecuteError, Expr, FuncSignature, ParseError, PreExpr, Resol
 use dashmap::DashMap;
 use log::debug;
 
-pub struct CoreContext {
+/// Not actually forced to be singleton, but it's leaked so singleton is encouraged.
+pub struct Global {
     graph: Graph,
     parse_cache: DashMap<ParseId, Vec<u8>>,
     signature_cache: DashMap<ResolveId, Vec<FuncSignature>>,
     ast_cache: DashMap<FQ, Expr>,
 }
 
-impl CoreContext {
+impl Global {
     pub fn new() -> Self {
-        CoreContext {
+        Global {
             graph: Graph::new(),
             parse_cache: DashMap::new(),
             signature_cache: DashMap::new(),
@@ -22,7 +23,7 @@ impl CoreContext {
     }
 }
 
-impl CoreContext {
+impl Global {
     async fn parse_impl(&'static self, caller: StepId, id: ParseId) -> Result<PreExpr, ParseError> {
         debug!("CoreContext::parse_impl: {:?}", id);
 
@@ -127,11 +128,11 @@ impl CoreContext {
 }
 
 pub struct RootContext {
-    core: &'static CoreContext,
+    core: &'static Global,
 }
 
 impl RootContext {
-    pub fn new(core: &'static CoreContext) -> Self {
+    pub fn new(core: &'static Global) -> Self {
         RootContext { core }
     }
 
@@ -146,7 +147,7 @@ impl RootContext {
 
 pub struct ParseContext {
     current: ParseId,
-    core: &'static CoreContext,
+    core: &'static Global,
 }
 
 impl ParseContext {
@@ -157,7 +158,7 @@ impl ParseContext {
 
 pub struct ResolveContext {
     current: ResolveId,
-    core: &'static CoreContext,
+    core: &'static Global,
 }
 
 impl ResolveContext {
@@ -185,7 +186,7 @@ impl Clone for ResolveContext {
 
 pub struct ExecContext {
     current: ExecId,
-    core: &'static CoreContext,
+    core: &'static Global,
 }
 
 impl ExecContext {

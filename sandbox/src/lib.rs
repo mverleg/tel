@@ -9,7 +9,7 @@ mod common;
 use std::fmt;
 use std::collections::HashSet;
 use crate::common::{Name, Path, FQ};
-use crate::context::{CoreContext, RootContext};
+use crate::context::{Global, RootContext};
 use crate::graph::{ExecId, StepId};
 
 #[derive(Debug)]
@@ -59,7 +59,7 @@ fn visualize_tree(ctx: &RootContext, step: &StepId, prefix: &str, is_last: bool,
 
 pub async fn run_file(path: &str, show_deps: bool) -> Result<(), Error> {
     //TODO @mark: get rid of leak if ever continuous process without shared cache
-    let core = Box::leak(Box::new(CoreContext::new()));
+    let core = Box::leak(Box::new(Global::new()));
     let ctx = RootContext::new(core);
     let main = Name::of("main");
     let exec_id = ExecId { main_loc: FQ::of(path, "main") };
