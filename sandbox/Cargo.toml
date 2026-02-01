@@ -4,10 +4,10 @@ edition.workspace = true
 version.workspace = true
 
 [dependencies]
+async-lazy = { path = "../async-lazy" }
 dashmap.workspace = true
 env_logger.workspace = true
 log.workspace = true
-postcard.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

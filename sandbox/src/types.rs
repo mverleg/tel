@@ -141,13 +141,13 @@ impl SymbolTable {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ParseError {
     UnexpectedEof,
     UnexpectedToken(String),
     InvalidNumber(String),
     EmptyExpression,
-    IoError(std::io::Error),
+    IoError(String),
 }
 
 impl fmt::Display for ParseError {
@@ -166,7 +166,7 @@ impl std::error::Error for ParseError {}
 
 impl From<std::io::Error> for ParseError {
     fn from(err: std::io::Error) -> Self {
-        ParseError::IoError(err)
+        ParseError::IoError(err.to_string())
     }
 }
 

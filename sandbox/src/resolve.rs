@@ -441,16 +441,16 @@ impl<'a> Resolver<'a> {
     }
 }
 
-pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: PreExpr, base_path: &str, context: Name, is_function: bool) -> Result<(Expr, SymbolTable), ResolveError> {
+pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: &PreExpr, base_path: &str, context: Name, is_function: bool) -> Result<(Expr, SymbolTable), ResolveError> {
     debug!("resolve_internal: starting for context {:?}, is_function={}", context, is_function);
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
 
     let mut resolver = Resolver::new(ctx, path.to_path_buf(), dir.to_path_buf(), context.clone());
     debug!("resolve_internal: processing imports for {:?}", context);
-    resolver.process_imports(ctx, &pre_ast).await?;
+    resolver.process_imports(ctx, pre_ast).await?;
     debug!("resolve_internal: processing local functions for {:?}", context);
-    resolver.process_local_functions(&pre_ast)?;
+    resolver.process_local_functions(pre_ast)?;
 
     // If this file is being resolved as an implicit function (e.g., an import),
     // we need to pre-register it so that recursive calls can find it
@@ -460,7 +460,7 @@ pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: PreExpr, base_path:
 
         // Calculate arity and pre-register the function (with a placeholder AST)
         // so that recursive calls can find it during body resolution
-        let arity = Resolver::calculate_arity(&pre_ast, context.as_str(), &context)?;
+        let arity = Resolver::calculate_arity(pre_ast, context.as_str(), &context)?;
         debug!("resolve_internal: pre-registering implicit function {:?} with arity {}", context, arity);
         let func_loc = FQ::of(&resolver.current_file, context.as_str());
         let func_id = FuncId(func_loc.clone());
@@ -477,7 +477,7 @@ pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: PreExpr, base_path:
     }
 
     debug!("resolve_internal: resolving body for {:?} (in_function={})", context, resolver.in_function);
-    let ast = resolver.resolve_body(&pre_ast)?;
+    let ast = resolver.resolve_body(pre_ast)?;
 
     // If this file is being resolved as a function, update the function entry with the real AST
     if is_function {
@@ -497,7 +497,7 @@ pub async fn resolve(ctx: &ResolveContext, id: ResolveId) -> Result<(Expr, Symbo
     let ResolveId { func_loc: fq } = id;
     debug!("resolve: starting for {:?}", fq);
     let my_pre_ast = ctx.parse(ParseId { file_path: fq.path().clone() }).await
-        .map_err(|e| ResolveError::ParseError(fq.path().clone(), e))?;
+        .map_err(|e| ResolveError::ParseError(fq.path().clone(), e.clone()))?;
     debug!("resolve: parsed {:?}, calling resolve_internal as function", fq);
     // When resolving via ResolveId, we're always resolving a function (either imported or main)
     // The file body is treated as the function body, so Args are allowed

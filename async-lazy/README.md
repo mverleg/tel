@@ -69,6 +69,24 @@ The `Cache` type combines:
 - `append_only_vec::AppendOnlyVec` for stable value storage
 - `ALazy` for per-entry lazy initialization
 
+### Why scc::HashMap?
+
+We use `scc::HashMap` instead of `DashMap` because:
+
+- **Native async support**: `scc` provides async methods (`read_async`, `entry_async`) that work naturally with async code
+- **Better write scaling**: scc uses dynamic lock granularity (~`entries * 2 / 32` locks) that scales with data size, while DashMap uses fixed shards based on CPU cores
+- **Borrowed key lookups**: Both support borrowing keys for reads (scc via `Equivalent` trait, DashMap via `Borrow`), but scc's async API integrates better with our use case
+- **Lock-free design**: scc is optimized for highly concurrent write-heavy workloads
+
+### Performance Optimizations
+
+The `Cache::get` method uses a two-phase lookup to minimize allocations:
+
+1. **Fast path (cache hit)**: Check existence with `read_async(&key)` - borrows the key, no allocation
+2. **Slow path (cache miss)**: Insert new entry with `entry_async(key)` - consumes the key
+
+This optimization is particularly effective when cache hit rates are 30-70%, as it eliminates heap allocations for PathBuf/String keys on every cache hit.
+
 ## License
 
 See the workspace license.

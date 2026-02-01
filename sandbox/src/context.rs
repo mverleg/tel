@@ -1,15 +1,14 @@
 use crate::common::FQ;
 use crate::graph::{ExecId, Graph, ParseId, ResolveId, StepId};
-use crate::types::{ExecuteError, Expr, FuncData, FuncSignature, ParseError, PreExpr, ResolveError, SymbolTable};
+use crate::types::{ExecuteError, Expr, FuncData, ParseError, PreExpr, ResolveError, SymbolTable};
+use async_lazy::Cache;
 use dashmap::DashMap;
 use log::debug;
 
 /// Not actually forced to be singleton, but it's leaked so singleton is encouraged.
 pub struct Global {
     graph: Graph,
-    parse_cache: DashMap<ParseId, Vec<u8>>,
-    signature_cache: DashMap<ResolveId, Vec<FuncSignature>>,
-    ast_cache: DashMap<FQ, Expr>,
+    parse_cache: Cache<ParseId, PreExpr, ParseError>,
     func_registry: DashMap<FQ, FuncData>,
 }
 
@@ -17,42 +16,36 @@ impl Global {
     pub fn new() -> Self {
         Global {
             graph: Graph::new(),
-            parse_cache: DashMap::new(),
-            signature_cache: DashMap::new(),
-            ast_cache: DashMap::new(),
+            parse_cache: Cache::new(),
             func_registry: DashMap::new(),
         }
     }
 }
 
 impl Global {
-    async fn parse_impl(&'static self, caller: StepId, id: ParseId) -> Result<PreExpr, ParseError> {
+    async fn parse_impl(&'static self, caller: StepId, id: ParseId) -> Result<&'static PreExpr, &'static ParseError> {
         debug!("CoreContext::parse_impl: {:?}", id);
 
-        if let Some(cached_bytes_ref) = self.parse_cache.get(&id) {
-            debug!("CoreContext::parse_impl cache hit: {:?}", id);
-            return postcard::from_bytes(&*cached_bytes_ref)
-                .map_err(|e| ParseError::IoError(
-                    std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Cache deserialization failed: {}", e))
-                ));
-        }
-
-        debug!("CoreContext::parse_impl cache miss: {:?}", id);
+        // Always register dependency, regardless of cache hit/miss
         self.graph.register_dependency(caller, StepId::Parse(id.clone()));
-        let ctx = ParseContext {
-            current: id.clone(),
-            core: self,
-        };
-        let result = crate::parse::parse(&ctx, id.clone()).await?;
 
-        let serialized = postcard::to_allocvec(&result)
-            .map_err(|e| ParseError::IoError(
-                std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Cache serialization failed: {}", e))
-            ))?;
+        // Clone once for closure (only used on cache miss)
+        let id_for_init = id.clone();
 
-        self.parse_cache.insert(id, serialized);
+        // Get or initialize the cached parse result
+        // On cache hit: id is borrowed (no clone), id_for_init is dropped
+        // On cache miss: id is consumed, id_for_init is used in closure
+        let result = self.parse_cache.get(id, move || async move {
+            debug!("CoreContext::parse_impl initializing: {:?}", id_for_init);
+            let ctx = ParseContext {
+                current: id_for_init.clone(),
+                core: self,
+            };
+            crate::parse::parse(&ctx, id_for_init).await
+        }).await;
 
-        Ok(result)
+        // Return borrowed reference to cached result
+        result.as_ref()
     }
 
     async fn resolve_all_impl(&'static self, caller: StepId, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
@@ -172,7 +165,7 @@ impl ResolveContext {
         &self.core.func_registry
     }
 
-    pub async fn parse(&self, id: ParseId) -> Result<PreExpr, ParseError> {
+    pub async fn parse(&self, id: ParseId) -> Result<&'static PreExpr, &'static ParseError> {
         self.core.parse_impl(StepId::Resolve(self.current.clone()), id).await
     }
 

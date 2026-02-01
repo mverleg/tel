@@ -84,13 +84,23 @@ impl<K: Eq + Hash, V, E> Cache<K, V, E> {
     ///
     /// # Returns
     /// A reference to the cached result (Ok or Err).
+    ///
+    /// # Performance
+    /// Uses a two-phase lookup to avoid cloning keys on cache hits:
+    /// - Fast path: Check existence with borrowed key (no allocation)
+    /// - Slow path: Insert new entry (consumes key)
     pub async fn get<F, Fut>(&self, key: K, init: F) -> &Result<V, E>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<V, E>>,
     {
-        // Get or insert the index for this key
-        let ix = match self.lookup.entry(key) {
+        // Fast path: check if key exists without cloning
+        if let Some(ix) = self.lookup.read_async(&key, |_, &ix| ix).await {
+            return self.data[ix].get_or_init(init).await;
+        }
+
+        // Slow path: insert new entry (key is moved here)
+        let ix = match self.lookup.entry_async(key).await {
             scc::hash_map::Entry::Occupied(occupied) => *occupied.get(),
             scc::hash_map::Entry::Vacant(vacant) => {
                 let new_ix = self.data.push(ALazy::new());
