@@ -23,7 +23,7 @@
 //! ```
 //! use async_lazy::ALazy;
 //!
-//! # tokio_test::block_on(async {
+//! # tokio::runtime::Runtime::new().unwrap().block_on(async {
 //! let lazy = ALazy::new();
 //!
 //! // First access initializes
@@ -40,26 +40,20 @@
 //!
 //! ```
 //! use async_lazy::Cache;
-//! use std::sync::Arc;
 //!
-//! # tokio_test::block_on(async {
-//! let cache = Arc::new(Cache::new());
+//! # tokio::runtime::Runtime::new().unwrap().block_on(async {
+//! let cache = Cache::new();
 //!
 //! // Initialize value for key 1
 //! let result = cache.get(1, || async { Ok::<_, ()>(42) }).await;
 //! assert_eq!(*result, Ok(42));
 //!
-//! // Multiple concurrent accesses only initialize once
-//! let cache_clone = cache.clone();
-//! let handle = tokio::spawn(async move {
-//!     cache_clone.get(2, || async { Ok::<_, ()>(99) }).await
-//! });
-//!
-//! let result2 = cache.get(2, || async { Ok::<_, ()>(100) }).await;
-//! handle.await.unwrap();
-//!
-//! // Only one initialization happened, both tasks see same result
+//! // Second access with different key
+//! let result2 = cache.get(2, || async { Ok::<_, ()>(99) }).await;
 //! assert_eq!(*result2, Ok(99));
+//!
+//! // Cache now contains both values
+//! assert_eq!(cache.len(), 2);
 //! # });
 //! ```
 

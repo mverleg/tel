@@ -16,14 +16,22 @@ pub trait HasId {
     fn id(&self) -> Self::Uid;
 }
 
-// Implementations for common types
-impl<T: Clone + Eq + Hash> HasId for T {
-    type Uid = T;
+impl HasId for i32 {
+    type Uid = i32;
 
     fn id(&self) -> Self::Uid {
-        self.clone()
+        *self
     }
 }
+
+impl HasId for usize {
+    type Uid = usize;
+
+    fn id(&self) -> Self::Uid {
+        *self
+    }
+}
+
 
 /// A concurrent cache with lazy async initialization.
 ///
@@ -47,7 +55,7 @@ pub struct Cache<K, V, E> {
     data: AppendOnlyVec<ALazy<V, E>>,
 }
 
-impl<K, V, E> Cache<K, V, E> {
+impl<K: Eq + Hash, V, E> Cache<K, V, E> {
     /// Create a new empty cache.
     pub fn new() -> Self {
         Cache {
@@ -63,7 +71,7 @@ impl<K, V, E> Cache<K, V, E> {
 
     /// Check if the cache is empty.
     pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
+        self.data.len() == 0
     }
 }
 
@@ -128,7 +136,7 @@ impl<K: Eq + Hash, V, E> Cache<K, V, E> {
     }
 }
 
-impl<K, V, E> Default for Cache<K, V, E> {
+impl<K: Eq + Hash, V, E> Default for Cache<K, V, E> {
     fn default() -> Self {
         Self::new()
     }
@@ -174,6 +182,23 @@ mod tests {
         assert_eq!(*result2, Err("error"));
     }
 
+    async fn spawn_cache_task<K: Eq + Hash + Send + Sync + 'static>(
+        cache: Arc<Cache<K, i32, ()>>,
+        counter: Arc<AtomicUsize>,
+        key: K,
+        value: i32,
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            cache
+                .get(key, || async {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                    Ok::<_, ()>(value)
+                })
+                .await;
+        })
+    }
+
     #[tokio::test]
     async fn test_cache_concurrent_access() {
         let cache = Arc::new(Cache::new());
@@ -182,18 +207,7 @@ mod tests {
         // Spawn multiple tasks accessing the same key
         let mut handles = vec![];
         for _ in 0..10 {
-            let cache_clone = cache.clone();
-            let counter_clone = counter.clone();
-            let handle = tokio::spawn(async move {
-                cache_clone
-                    .get(1, || async {
-                        counter_clone.fetch_add(1, Ordering::SeqCst);
-                        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-                        Ok::<_, ()>(42)
-                    })
-                    .await;
-            });
-            handles.push(handle);
+            handles.push(spawn_cache_task(cache.clone(), counter.clone(), 1, 42).await);
         }
 
         // Wait for all tasks
@@ -214,18 +228,7 @@ mod tests {
         // Spawn tasks for different keys
         let mut handles = vec![];
         for i in 0..5 {
-            let cache_clone = cache.clone();
-            let counter_clone = counter.clone();
-            let handle = tokio::spawn(async move {
-                cache_clone
-                    .get(i, || async {
-                        counter_clone.fetch_add(1, Ordering::SeqCst);
-                        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-                        Ok::<_, ()>(i * 10)
-                    })
-                    .await;
-            });
-            handles.push(handle);
+            handles.push(spawn_cache_task(cache.clone(), counter.clone(), i, i * 10).await);
         }
 
         // Wait for all tasks
