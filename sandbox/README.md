@@ -18,7 +18,7 @@ The compiler processes programs in four phases:
 ## Query engine features
 
 - [x] Build dependency graph
-- [ ] Force always going through context
+- [x] Force always going through context
 - [x] Process imports in parallel
 - [ ] What if same task twice in parallel? and recursion?
 - [ ] Inverse dependency graph

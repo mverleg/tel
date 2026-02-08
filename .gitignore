@@ -3,4 +3,6 @@ target/
 .idea/
 /target
 .claude/
+perf.data
+perf.data.*
 
