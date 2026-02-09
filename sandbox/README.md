@@ -25,7 +25,7 @@ The compiler processes programs in four phases:
 - [x] Concurrency-safe
 - [ ] Prevent ctx leak outside scope (just pure fn pointers?)
 - [ ] Lock-free (during compile)
-- [ ] Write using async
+- [x] Write using async
 - [ ] Cache computation steps
 - [ ] Cache IO steps
 - [ ] Store cache in LMDB (with postcard)
