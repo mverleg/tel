@@ -1,10 +1,10 @@
 use crate::common::FQ;
 use crate::graph::{ExecId, Graph, ParseId, ResolveId, StepId};
-use crate::types::{CycleStepInfo, ExecuteError, Expr, FuncData, ParseError, PreExpr, ResolveError, SymbolTable};
+use crate::types::{ExecuteError, Expr, FuncData, ParseError, PreExpr, ResolveError, SymbolTable};
 use async_lazy::Cache;
 use dashmap::DashMap;
 use log::debug;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// State of a resolution process, used for cycle detection
 #[derive(Clone)]
@@ -175,6 +175,7 @@ impl ResolveContext {
         &self.core.func_registry
     }
 
+    //TODO @mark: not pub?
     pub fn resolution_states(&self) -> &DashMap<FQ, ResolutionState> {
         &self.core.resolution_states
     }
@@ -185,41 +186,6 @@ impl ResolveContext {
 
     pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
         self.core.resolve_all_impl(StepId::Resolve(self.current.clone()), ids).await
-    }
-
-    pub fn detect_and_report_cycle(&self, id: &ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
-        // Find cycle path in graph
-        let cycle_path = self.core.graph.find_resolve_cycle(&id.func_loc)
-            .ok_or_else(|| ResolveError::JoinError("Cycle suspected but not found in graph".to_string()))?;
-
-        // Gather metadata for each step in the cycle
-        let cycle_details: Vec<CycleStepInfo> = cycle_path.iter()
-            .filter_map(|fq| {
-                self.core.resolution_states.get(fq).map(|state| {
-                    match state.value() {
-                        ResolutionState::InProgress { started_at } => {
-                            CycleStepInfo {
-                                location: fq.clone(),
-                                state: "in_progress".to_string(),
-                                duration: started_at.elapsed(),
-                            }
-                        }
-                        ResolutionState::Completed => {
-                            CycleStepInfo {
-                                location: fq.clone(),
-                                state: "completed".to_string(),
-                                duration: Duration::ZERO,
-                            }
-                        }
-                    }
-                })
-            })
-            .collect();
-
-        Err(ResolveError::CyclicDependency {
-            cycle: cycle_path,
-            details: cycle_details,
-        })
     }
 }
 

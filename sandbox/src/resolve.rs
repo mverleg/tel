@@ -494,6 +494,15 @@ pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: &PreExpr, base_path
     Ok((ast, resolver.symbol_table))
 }
 
+fn detect_and_report_cycle(ctx: &ResolveContext, id: &ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
+    let cycle_path = ctx.graph().find_resolve_cycle(&id.func_loc)
+        .ok_or_else(|| ResolveError::JoinError("Cycle suspected but not found in graph".to_string()))?;
+
+    Err(ResolveError::CyclicDependency {
+        cycle: cycle_path,
+    })
+}
+
 pub async fn resolve(ctx: &ResolveContext, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
     let ResolveId { func_loc: fq } = id;
     debug!("resolve: starting for {:?}", fq);
@@ -508,7 +517,7 @@ pub async fn resolve(ctx: &ResolveContext, id: ResolveId) -> Result<(Expr, Symbo
 
     if is_in_progress {
         debug!("resolve: cycle detected for {:?}", fq);
-        return ctx.detect_and_report_cycle(&ResolveId { func_loc: fq });
+        return detect_and_report_cycle(ctx, &ResolveId { func_loc: fq });
     }
 
     // Mark as in progress

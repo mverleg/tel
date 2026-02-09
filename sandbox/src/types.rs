@@ -1,5 +1,4 @@
 use std::fmt;
-use std::time::Duration;
 use crate::common::{Name, Path, FQ};
 use serde::{Deserialize, Serialize};
 
@@ -171,13 +170,6 @@ impl From<std::io::Error> for ParseError {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct CycleStepInfo {
-    pub location: FQ,
-    pub state: String,
-    pub duration: Duration,
-}
-
 #[derive(Debug)]
 pub enum ResolveError {
     UndefinedVariable(Name, String),
@@ -193,7 +185,7 @@ pub enum ResolveError {
     ArityMismatch { context: Name, func_name: String, expected: usize, got: usize },
     ArityGap { context: Name, func_name: String, max_arg: usize },
     UnreachableCode { context: Name, source_location: String },
-    CyclicDependency { cycle: Vec<FQ>, details: Vec<CycleStepInfo> },
+    CyclicDependency { cycle: Vec<FQ> },
     IoError(Path, std::io::Error),
     ParseError(Path, ParseError),
     JoinError(String),
@@ -215,17 +207,16 @@ impl fmt::Display for ResolveError {
             ResolveError::ArityMismatch { context, func_name, expected, got } => write!(f, "Function '{}' in {:?} expects {} arguments, but {} were provided", func_name, context, expected, got),
             ResolveError::ArityGap { context, func_name, max_arg } => write!(f, "Function '{}' in {:?} has gaps in argument numbers (highest arg is {} but not all args 1..{} are used)", func_name, context, max_arg, max_arg),
             ResolveError::UnreachableCode { context, source_location } => write!(f, "Unreachable code in {:?} at {}", context, source_location),
-            ResolveError::CyclicDependency { cycle: _, details } => {
+            ResolveError::CyclicDependency { cycle } => {
                 writeln!(f, "Cyclic dependency detected\n")?;
                 writeln!(f, "Cycle:")?;
-                for (i, step_info) in details.iter().enumerate() {
-                    let duration_ms = step_info.duration.as_millis();
-                    if i == details.len() - 1 {
-                        writeln!(f, "  {}. {}::{} (in progress for {}ms) <- cycle completes here",
-                            i + 1, step_info.location.as_str(), step_info.location.name_str(), duration_ms)?;
+                for (i, location) in cycle.iter().enumerate() {
+                    if i == cycle.len() - 1 {
+                        writeln!(f, "  {}. {}::{} <- cycle completes here",
+                            i + 1, location.as_str(), location.name_str())?;
                     } else {
-                        writeln!(f, "  {}. {}::{} (in progress for {}ms)",
-                            i + 1, step_info.location.as_str(), step_info.location.name_str(), duration_ms)?;
+                        writeln!(f, "  {}. {}::{}",
+                            i + 1, location.as_str(), location.name_str())?;
                     }
                 }
                 write!(f, "\nTo fix: Remove one of the import dependencies above.")

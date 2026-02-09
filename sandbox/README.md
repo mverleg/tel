@@ -20,7 +20,7 @@ The compiler processes programs in four phases:
 - [x] Build dependency graph
 - [x] Force always going through context
 - [x] Process imports in parallel
-- [ ] What if same task twice in parallel? and recursion?
+- [x] What if same task twice in parallel? and recursion?
 - [ ] Inverse dependency graph
 - [x] Concurrency-safe
 - [ ] Prevent ctx leak outside scope (just pure fn pointers?)
@@ -54,3 +54,28 @@ cargo run --example run_math
 ## Examples
 
 See the `examples/` directory for complete working programs.
+
+## Profiling
+
+Benchmarks show excellent performance: 107k functions compile in 1.82s.
+
+### Quick Profiling with samply (recommended)
+
+```bash
+cargo install samply
+samply record cargo run --example profile_run --release
+```
+
+This opens an interactive flamegraph in your browser.
+
+### Alternative: cargo-flamegraph
+
+```bash
+cargo install flamegraph
+cargo flamegraph --example profile_run -o flamegraph.svg
+firefox flamegraph.svg
+```
+
+### Benchmark Reports
+
+Detailed criterion benchmark HTML reports are at `target/criterion/compile_project/report/index.html`.
