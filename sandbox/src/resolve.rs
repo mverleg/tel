@@ -1,5 +1,5 @@
 use crate::common::{Name, FQ};
-use crate::context::ResolveContext;
+use crate::context::{ResolveContext, ResolutionState};
 use crate::graph::{ParseId, ResolveId};
 use crate::types::{Expr, FuncId, PreExpr, ResolveError, ScopeId, SymbolTable, VarId};
 use log::debug;
@@ -8,6 +8,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::future::Future;
+use std::time::Instant;
 
 struct Resolver<'a> {
     ctx: &'a ResolveContext,
@@ -496,11 +497,41 @@ pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: &PreExpr, base_path
 pub async fn resolve(ctx: &ResolveContext, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
     let ResolveId { func_loc: fq } = id;
     debug!("resolve: starting for {:?}", fq);
+
+    // Cycle detection: Check if already in progress
+    // Must read and drop the guard before any other operations
+    let is_in_progress = ctx.resolution_states()
+        .get(&fq)
+        .map(|ref_guard| matches!(*ref_guard, ResolutionState::InProgress { .. }))
+        .unwrap_or(false);
+    // Guard is dropped here
+
+    if is_in_progress {
+        debug!("resolve: cycle detected for {:?}", fq);
+        return ctx.detect_and_report_cycle(&ResolveId { func_loc: fq });
+    }
+
+    // Mark as in progress
+    debug!("resolve: marking {:?} as in progress", fq);
+    ctx.resolution_states().insert(
+        fq.clone(),
+        ResolutionState::InProgress { started_at: Instant::now() }
+    );
+
     let my_pre_ast = ctx.parse(ParseId { file_path: fq.path().clone() }).await
         .map_err(|e| ResolveError::ParseError(fq.path().clone(), e.clone()))?;
     debug!("resolve: parsed {:?}, calling resolve_internal as function", fq);
     // When resolving via ResolveId, we're always resolving a function (either imported or main)
     // The file body is treated as the function body, so Args are allowed
-    resolve_internal(ctx, my_pre_ast, fq.as_str(), fq.name().clone(), true).await
+    let result = resolve_internal(ctx, my_pre_ast, fq.as_str(), fq.name().clone(), true).await;
+
+    // Mark as completed (whether success or failure)
+    debug!("resolve: marking {:?} as completed", fq);
+    ctx.resolution_states().insert(
+        fq,
+        ResolutionState::Completed
+    );
+
+    result
 }
 

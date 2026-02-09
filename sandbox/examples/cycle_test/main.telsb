@@ -1,0 +1,3 @@
+(import moduleA)
+
+(print (call moduleA 10))
