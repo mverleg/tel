@@ -3,6 +3,7 @@ use crate::types::ExecuteError;
 use crate::types::BinOp;
 use crate::types::VarId;
 use crate::common::FQ;
+use crate::Printer;
 use log::debug;
 use std::collections::HashMap;
 use crate::context::ExecContext;
@@ -18,14 +19,16 @@ enum EvalResult {
 struct Interpreter<'a> {
     values: HashMap<VarId, i64>,
     func_registry: &'a DashMap<FQ, FuncData>,
+    printer: &'a dyn Printer,
     args: Option<Vec<i64>>,
 }
 
 impl<'a> Interpreter<'a> {
-    fn new(func_registry: &'a DashMap<FQ, FuncData>) -> Self {
+    fn new(func_registry: &'a DashMap<FQ, FuncData>, printer: &'a dyn Printer) -> Self {
         Interpreter {
             values: HashMap::new(),
             func_registry,
+            printer,
             args: None,
         }
     }
@@ -82,7 +85,7 @@ impl<'a> Interpreter<'a> {
             }
             Expr::Print(expr) => {
                 let val = self.eval_value(expr)?;
-                println!("{}", val);
+                self.printer.print(&val.to_string());
                 Ok(EvalResult::Value(val))
             }
             Expr::Return(expr) => {
@@ -158,7 +161,7 @@ pub async fn execute(ctx: &ExecContext, path: ExecId) -> Result<(), ExecuteError
     let (exprs, _my_symbols) = ctx.resolve_all(&[reesolve_id]).await?;
     let my_ast = exprs.into_iter().next().unwrap();
     debug!("execute: resolved, now evaluating");
-    let mut interpreter = Interpreter::new(ctx.func_registry());
+    let mut interpreter = Interpreter::new(ctx.func_registry(), ctx.printer());
     interpreter.eval(&my_ast)?;
     debug!("execute: completed successfully");
     Ok(())

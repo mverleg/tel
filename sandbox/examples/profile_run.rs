@@ -1,6 +1,7 @@
 //! Profile-friendly test run for flamegraph generation
 //! Run with: cargo flamegraph --example profile_run
 
+use std::error::Error;
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -161,27 +162,38 @@ impl ProjectGenerator {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Use medium config for profiling
+    // Use larger config for profiling - should take a few seconds
     let config = ProjectConfig {
-        num_base_funcs: 7000,
-        num_mid_funcs: 30000,
-        num_leaf_funcs: 70000,
+        num_base_funcs: 10_000,
+        num_mid_funcs: 50_000,
+        num_leaf_funcs: 100_000,
     };
 
-    println!("Generating project with 107k functions for profiling...");
+    println!("Generating project with 160k functions...");
     let mut generator = ProjectGenerator::new(config)?;
     let main_path = generator.generate_project()?;
+    println!("Project generated, starting profiling loop...\n");
 
-    println!("Running compilation (this will be profiled)...");
+    // Keep temp_dir alive for the entire loop
+    let _temp_dir = generator.temp_dir;
+
+    bench_code(&main_path).await?;
+
+    println!("\nProfiling complete!");
+    Ok(())
+}
+
+async fn bench_code(main_path: &String) -> Result<(), Box<dyn Error>> {
+    let noop_printer: &'static dyn sandbox::Printer = Box::leak(Box::new(sandbox::NoopPrinter));
 
     // Run multiple iterations to get better profile data
-    for i in 0..10 {
-        if i % 2 == 0 {
-            println!("Iteration {}/10", i + 1);
+    // The compilation itself is what we want to profile, not file generation
+    for i in 0..10_000 {
+        if i % 100 == 0 {
+            println!("Iteration {}/10000", i + 1);
         }
-        sandbox::run_file(&main_path, false).await?;
+        //TODO @mark: make sure to clean first, once we have multi-run cache
+        sandbox::run_file_with_printer(&main_path, false, noop_printer).await?;
     }
-
-    println!("Profiling complete!");
     Ok(())
 }

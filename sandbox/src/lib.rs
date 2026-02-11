@@ -12,6 +12,26 @@ use crate::common::{Name, Path, FQ};
 use crate::context::{Global, RootContext};
 use crate::graph::{ExecId, StepId};
 
+pub trait Printer: Send + Sync {
+    fn print(&self, message: &str);
+}
+
+pub struct StdoutPrinter;
+
+impl Printer for StdoutPrinter {
+    fn print(&self, message: &str) {
+        println!("{}", message);
+    }
+}
+
+pub struct NoopPrinter;
+
+impl Printer for NoopPrinter {
+    fn print(&self, _message: &str) {
+        // Do nothing
+    }
+}
+
 #[derive(Debug)]
 pub enum Error {
     Io(Path, std::io::Error),
@@ -33,13 +53,13 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-fn visualize_tree(ctx: &RootContext, step: &StepId, prefix: &str, is_last: bool, visited: &mut HashSet<StepId>) {
+fn visualize_tree(ctx: &RootContext, step: &StepId, prefix: &str, is_last: bool, visited: &mut HashSet<StepId>, printer: &dyn Printer) {
     let connector = if is_last { "└── " } else { "├── " };
-    println!("{}{}{}", prefix, connector, step);
+    printer.print(&format!("{}{}{}", prefix, connector, step));
 
     if visited.contains(step) {
         let extension = if is_last { "    " } else { "│   " };
-        println!("{}{}(already shown)", prefix, extension);
+        printer.print(&format!("{}{}(already shown)", prefix, extension));
         return;
     }
     visited.insert(step.clone());
@@ -52,14 +72,19 @@ fn visualize_tree(ctx: &RootContext, step: &StepId, prefix: &str, is_last: bool,
             let is_last_dep = idx == dep_count - 1;
             let extension = if is_last { "    " } else { "│   " };
             let new_prefix = format!("{}{}", prefix, extension);
-            visualize_tree(ctx, dep, &new_prefix, is_last_dep, visited);
+            visualize_tree(ctx, dep, &new_prefix, is_last_dep, visited, printer);
         }
     }
 }
 
 pub async fn run_file(path: &str, show_deps: bool) -> Result<(), Error> {
+    let printer: &'static dyn Printer = Box::leak(Box::new(StdoutPrinter));
+    run_file_with_printer(path, show_deps, printer).await
+}
+
+pub async fn run_file_with_printer(path: &str, show_deps: bool, printer: &'static dyn Printer) -> Result<(), Error> {
     //TODO @mark: get rid of leak if ever continuous process without shared cache
-    let core = Box::leak(Box::new(Global::new()));
+    let core = Box::leak(Box::new(Global::new(printer)));
     let ctx = RootContext::new(core);
     let main = Name::of("main");
     let exec_id = ExecId { main_loc: FQ::of(path, "main") };
@@ -67,7 +92,7 @@ pub async fn run_file(path: &str, show_deps: bool) -> Result<(), Error> {
         .map_err(|e| Error::Execute(main, e))?;
 
     if show_deps {
-        println!("\nDependency tree:");
+        printer.print("\nDependency tree:");
         let mut visited = HashSet::new();
         visited.insert(StepId::Root);
         if let Some(my_root_deps_ref) = ctx.graph().get_dependencies(&StepId::Root) {
@@ -75,7 +100,7 @@ pub async fn run_file(path: &str, show_deps: bool) -> Result<(), Error> {
             let dep_count = my_root_deps.len();
             for (idx, dep) in my_root_deps.iter().enumerate() {
                 let is_last = idx == dep_count - 1;
-                visualize_tree(&ctx, dep, "", is_last, &mut visited);
+                visualize_tree(&ctx, dep, "", is_last, &mut visited, printer);
             }
         }
     }

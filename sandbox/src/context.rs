@@ -1,6 +1,7 @@
 use crate::common::FQ;
 use crate::graph::{ExecId, Graph, ParseId, ResolveId, StepId};
 use crate::types::{ExecuteError, Expr, FuncData, ParseError, PreExpr, ResolveError, SymbolTable};
+use crate::Printer;
 use async_lazy::Cache;
 use dashmap::DashMap;
 use log::debug;
@@ -19,16 +20,22 @@ pub struct Global {
     parse_cache: Cache<ParseId, PreExpr, ParseError>,
     func_registry: DashMap<FQ, FuncData>,
     resolution_states: DashMap<FQ, ResolutionState>,
+    printer: &'static dyn Printer,
 }
 
 impl Global {
-    pub fn new() -> Self {
+    pub fn new(printer: &'static dyn Printer) -> Self {
         Global {
             graph: Graph::new(),
             parse_cache: Cache::new(),
             func_registry: DashMap::new(),
             resolution_states: DashMap::new(),
+            printer,
         }
+    }
+
+    pub fn printer(&self) -> &dyn Printer {
+        self.printer
     }
 }
 
@@ -210,6 +217,10 @@ impl ExecContext {
 
     pub fn func_registry(&self) -> &DashMap<FQ, FuncData> {
         &self.core.func_registry
+    }
+
+    pub fn printer(&self) -> &dyn Printer {
+        self.core.printer
     }
 
     pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
