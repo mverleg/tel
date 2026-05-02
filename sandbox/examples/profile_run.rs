@@ -190,7 +190,7 @@ async fn bench_code(main_path: &String) -> Result<(), Box<dyn Error>> {
     // The compilation itself is what we want to profile, not file generation
     for i in 0..10_000 {
         if i % 100 == 0 {
-            println!("Iteration {}/10000", i + 1);
+            println!("Iteration {}/10000", i);
         }
         //TODO @mark: make sure to clean first, once we have multi-run cache
         sandbox::run_file_with_printer(&main_path, false, noop_printer).await?;

@@ -33,10 +33,6 @@ impl Global {
             printer,
         }
     }
-
-    pub fn printer(&self) -> &dyn Printer {
-        self.printer
-    }
 }
 
 impl Global {

@@ -11,9 +11,12 @@ const SEED: u64 = 42;
 
 #[derive(Debug, Clone)]
 struct ProjectConfig {
-    num_base_funcs: usize,
-    num_mid_funcs: usize,
-    num_leaf_funcs: usize,
+    num_l0: usize,
+    num_l1: usize,
+    num_l2: usize,
+    num_l3: usize,
+    num_l4: usize,
+    num_l5: usize,
 }
 
 struct ProjectGenerator {
@@ -33,56 +36,150 @@ impl ProjectGenerator {
         })
     }
 
-    fn generate_func_body(&mut self) -> String {
-        let operations = ["+", "-", "*"];
-        let op = operations[self.rng.gen_range(0..operations.len())];
-        format!("({} (arg 1) (arg 2))\n", op)
+    fn generate_expr(&mut self, depth: usize, max_depth: usize) -> String {
+        if depth >= max_depth {
+            if self.rng.gen_bool(0.6) {
+                let arg_num = self.rng.gen_range(1..=2);
+                format!("(arg {})", arg_num)
+            } else {
+                self.rng.gen_range(1..100).to_string()
+            }
+        } else {
+            let operations = ["+", "-", "*"];
+            let op = operations[self.rng.gen_range(0..operations.len())];
+            let left = self.generate_expr(depth + 1, max_depth);
+            let right = self.generate_expr(depth + 1, max_depth);
+            format!("({} {} {})", op, left, right)
+        }
     }
 
     fn generate_base_func(&mut self, _func_idx: usize) -> String {
-        self.generate_func_body()
-    }
-
-    fn generate_mid_func(&mut self, _func_idx: usize) -> String {
         let mut content = String::new();
-        let num_imports = self.rng.gen_range(1..=3.min(self.config.num_base_funcs));
-        let mut imported_funcs = Vec::new();
+        let complexity = self.rng.gen_range(0..4);
 
-        for _ in 0..num_imports {
-            let base_idx = self.rng.gen_range(0..self.config.num_base_funcs);
-            content.push_str(&format!("(import base_{})\n", base_idx));
-            imported_funcs.push(base_idx);
+        match complexity {
+            0 => {
+                content.push_str(&self.generate_expr(0, 2));
+                content.push('\n');
+            }
+            1 => {
+                content.push_str("(let temp ");
+                content.push_str(&self.generate_expr(0, 2));
+                content.push_str(")\n");
+                content.push_str(&self.generate_expr(0, 2));
+                content.push('\n');
+            }
+            2 => {
+                let num_bindings = self.rng.gen_range(2..=4);
+                for i in 0..num_bindings {
+                    content.push_str(&format!("(let temp{} ", i));
+                    content.push_str(&self.generate_expr(0, 2));
+                    content.push_str(")\n");
+                }
+                content.push_str(&self.generate_expr(0, 2));
+                content.push('\n');
+            }
+            _ => {
+                content.push_str("(let check ");
+                content.push_str(&self.generate_expr(0, 2));
+                content.push_str(")\n");
+                content.push_str("(if (< check 50)\n");
+                content.push_str("  ");
+                content.push_str(&self.generate_expr(0, 3));
+                content.push_str("\n  ");
+                content.push_str(&self.generate_expr(0, 3));
+                content.push_str(")\n");
+            }
         }
-        content.push('\n');
 
-        let import_idx = imported_funcs[self.rng.gen_range(0..imported_funcs.len())];
-        content.push_str(&format!("(call base_{} (arg 1) (arg 2))\n", import_idx));
         content
     }
 
-    fn generate_leaf_func(&mut self, _func_idx: usize) -> String {
+    fn generate_level_func(&mut self, level: usize) -> String {
         let mut content = String::new();
-        let num_base = self.rng.gen_range(1..=2.min(self.config.num_base_funcs));
         let mut imported_funcs = Vec::new();
 
-        for _ in 0..num_base {
-            let base_idx = self.rng.gen_range(0..self.config.num_base_funcs);
-            content.push_str(&format!("(import base_{})\n", base_idx));
-            imported_funcs.push(("base", base_idx));
-        }
+        let levels_to_import = match level {
+            1 => vec![(0, self.config.num_l0, 2..=4)],
+            2 => vec![
+                (0, self.config.num_l0, 1..=2),
+                (1, self.config.num_l1, 2..=3),
+            ],
+            3 => vec![
+                (0, self.config.num_l0, 1..=2),
+                (1, self.config.num_l1, 1..=2),
+                (2, self.config.num_l2, 2..=3),
+            ],
+            4 => vec![
+                (1, self.config.num_l1, 1..=2),
+                (2, self.config.num_l2, 1..=2),
+                (3, self.config.num_l3, 2..=3),
+            ],
+            5 => vec![
+                (2, self.config.num_l2, 1..=2),
+                (3, self.config.num_l3, 1..=2),
+                (4, self.config.num_l4, 2..=3),
+            ],
+            _ => panic!("Invalid level"),
+        };
 
-        if self.config.num_mid_funcs > 0 {
-            let num_mid = self.rng.gen_range(1..=2.min(self.config.num_mid_funcs));
-            for _ in 0..num_mid {
-                let mid_idx = self.rng.gen_range(0..self.config.num_mid_funcs);
-                content.push_str(&format!("(import mid_{})\n", mid_idx));
-                imported_funcs.push(("mid", mid_idx));
+        for (prev_level, count, range) in levels_to_import {
+            if count > 0 {
+                let num_imports = self.rng.gen_range(range.start().max(&1)..=range.end().min(&count));
+                for _ in 0..num_imports {
+                    let idx = self.rng.gen_range(0..count);
+                    content.push_str(&format!("(import l{}_{})\n", prev_level, idx));
+                    imported_funcs.push((prev_level, idx));
+                }
             }
         }
         content.push('\n');
 
-        let (prefix, idx) = imported_funcs[self.rng.gen_range(0..imported_funcs.len())];
-        content.push_str(&format!("(call {}_{} (arg 1) (arg 2))\n", prefix, idx));
+        if imported_funcs.is_empty() {
+            content.push_str(&self.generate_expr(0, 3));
+            content.push('\n');
+            return content;
+        }
+
+        let complexity = self.rng.gen_range(0..4);
+
+        match complexity {
+            0 => {
+                let (lv, idx) = imported_funcs[self.rng.gen_range(0..imported_funcs.len())];
+                content.push_str(&format!("(let result (call l{}_{} (arg 1) (arg 2)))\n", lv, idx));
+                content.push_str(&format!("(+ result {})\n", self.rng.gen_range(1..20)));
+            }
+            1 => {
+                let (lv1, idx1) = imported_funcs[self.rng.gen_range(0..imported_funcs.len())];
+                let (lv2, idx2) = imported_funcs[self.rng.gen_range(0..imported_funcs.len())];
+                content.push_str(&format!("(let r1 (call l{}_{} (arg 1) (arg 2)))\n", lv1, idx1));
+                content.push_str(&format!("(let r2 (call l{}_{} (arg 2) (arg 1)))\n", lv2, idx2));
+                let op = ["+", "-", "*"][self.rng.gen_range(0..3)];
+                content.push_str(&format!("({} r1 r2)\n", op));
+            }
+            2 => {
+                let (lv1, idx1) = imported_funcs[self.rng.gen_range(0..imported_funcs.len())];
+                let (lv2, idx2) = imported_funcs[self.rng.gen_range(0..imported_funcs.len())];
+                content.push_str(&format!("(let step1 (call l{}_{} (arg 1) (arg 2)))\n", lv1, idx1));
+                content.push_str(&format!("(let step2 (call l{}_{} step1 (arg 1)))\n", lv2, idx2));
+                content.push_str("(+ step1 step2)\n");
+            }
+            _ => {
+                if imported_funcs.len() >= 3 {
+                    let (lv1, idx1) = imported_funcs[self.rng.gen_range(0..imported_funcs.len())];
+                    let (lv2, idx2) = imported_funcs[self.rng.gen_range(0..imported_funcs.len())];
+                    let (lv3, idx3) = imported_funcs[self.rng.gen_range(0..imported_funcs.len())];
+                    content.push_str(&format!("(let val (call l{}_{} (arg 1) (arg 2)))\n", lv1, idx1));
+                    content.push_str("(if (< val 30)\n");
+                    content.push_str(&format!("  (call l{}_{} val (arg 1))\n", lv2, idx2));
+                    content.push_str(&format!("  (call l{}_{} (arg 2) val))\n", lv3, idx3));
+                } else {
+                    let (lv, idx) = imported_funcs[self.rng.gen_range(0..imported_funcs.len())];
+                    content.push_str(&format!("(call l{}_{} (arg 1) (arg 2))\n", lv, idx));
+                }
+            }
+        }
+
         content
     }
 
@@ -90,38 +187,35 @@ impl ProjectGenerator {
         let mut content = String::new();
         let mut imported_funcs = Vec::new();
 
-        let num_base = (self.config.num_base_funcs / 2).max(1).min(5);
-        for i in 0..num_base {
-            let base_idx = i % self.config.num_base_funcs;
-            content.push_str(&format!("(import base_{})\n", base_idx));
-            imported_funcs.push(("base", base_idx));
-        }
+        let layers = [
+            (0, self.config.num_l0, 2),
+            (1, self.config.num_l1, 2),
+            (2, self.config.num_l2, 3),
+            (3, self.config.num_l3, 3),
+            (4, self.config.num_l4, 2),
+            (5, self.config.num_l5, 3),
+        ];
 
-        if self.config.num_mid_funcs > 0 {
-            let num_mid = (self.config.num_mid_funcs / 3).max(1).min(5);
-            for i in 0..num_mid {
-                let mid_idx = i % self.config.num_mid_funcs;
-                content.push_str(&format!("(import mid_{})\n", mid_idx));
-                imported_funcs.push(("mid", mid_idx));
-            }
-        }
-
-        if self.config.num_leaf_funcs > 0 {
-            let num_leaf = (self.config.num_leaf_funcs / 5).max(1).min(5);
-            for i in 0..num_leaf {
-                let leaf_idx = i % self.config.num_leaf_funcs;
-                content.push_str(&format!("(import leaf_{})\n", leaf_idx));
-                imported_funcs.push(("leaf", leaf_idx));
+        for (level, count, num_to_import) in layers {
+            if count > 0 {
+                let num = num_to_import.min(count).min(3);
+                for i in 0..num {
+                    let idx = (i * count / num.max(1)) % count;
+                    content.push_str(&format!("(import l{}_{})\n", level, idx));
+                    imported_funcs.push((level, idx));
+                }
             }
         }
         content.push('\n');
 
-        for (prefix, idx) in imported_funcs.iter().take(3) {
+        let num_calls = imported_funcs.len().min(5);
+        for i in 0..num_calls {
+            let (level, idx) = imported_funcs[i];
             content.push_str(&format!(
-                "(let result_{}_{} (call {}_{} {} {}))\n",
-                prefix,
+                "(let result_{}_{} (call l{}_{} {} {}))\n",
+                level,
                 idx,
-                prefix,
+                level,
                 idx,
                 self.rng.gen_range(1..50),
                 self.rng.gen_range(1..50)
@@ -133,22 +227,26 @@ impl ProjectGenerator {
     }
 
     fn generate_project(&mut self) -> std::io::Result<String> {
-        for i in 0..self.config.num_base_funcs {
+        for i in 0..self.config.num_l0 {
             let content = self.generate_base_func(i);
-            let path = self.temp_dir.path().join(format!("base_{}.telsb", i));
+            let path = self.temp_dir.path().join(format!("l0_{}.telsb", i));
             fs::write(&path, content)?;
         }
 
-        for i in 0..self.config.num_mid_funcs {
-            let content = self.generate_mid_func(i);
-            let path = self.temp_dir.path().join(format!("mid_{}.telsb", i));
-            fs::write(&path, content)?;
-        }
+        let levels = [
+            (1, self.config.num_l1),
+            (2, self.config.num_l2),
+            (3, self.config.num_l3),
+            (4, self.config.num_l4),
+            (5, self.config.num_l5),
+        ];
 
-        for i in 0..self.config.num_leaf_funcs {
-            let content = self.generate_leaf_func(i);
-            let path = self.temp_dir.path().join(format!("leaf_{}.telsb", i));
-            fs::write(&path, content)?;
+        for (level, count) in levels {
+            for i in 0..count {
+                let content = self.generate_level_func(level);
+                let path = self.temp_dir.path().join(format!("l{}_{}.telsb", level, i));
+                fs::write(&path, content)?;
+            }
         }
 
         let main_content = self.generate_main();
@@ -163,26 +261,36 @@ impl ProjectGenerator {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let configs = vec![
         ("2k funcs", ProjectConfig {
-            num_base_funcs: 100,
-            num_mid_funcs: 500,
-            num_leaf_funcs: 1400,
+            num_l0: 100,
+            num_l1: 300,
+            num_l2: 600,
+            num_l3: 700,
+            num_l4: 250,
+            num_l5: 50,
         }),
-        ("6k funcs", ProjectConfig {
-            num_base_funcs: 200,
-            num_mid_funcs: 1500,
-            num_leaf_funcs: 4300,
+        ("5k funcs", ProjectConfig {
+            num_l0: 200,
+            num_l1: 600,
+            num_l2: 1400,
+            num_l3: 1800,
+            num_l4: 800,
+            num_l5: 200,
         }),
-        ("12k funcs", ProjectConfig {
-            num_base_funcs: 400,
-            num_mid_funcs: 3000,
-            num_leaf_funcs: 8600,
+        ("10k funcs", ProjectConfig {
+            num_l0: 400,
+            num_l1: 1200,
+            num_l2: 2800,
+            num_l3: 3600,
+            num_l4: 1600,
+            num_l5: 400,
         }),
     ];
 
     println!("Testing compilation times for different project sizes:\n");
 
     for (name, config) in configs {
-        let total = config.num_base_funcs + config.num_mid_funcs + config.num_leaf_funcs;
+        let total = config.num_l0 + config.num_l1 + config.num_l2
+                  + config.num_l3 + config.num_l4 + config.num_l5;
         print!("{}: {} functions... ", name, total);
         std::io::Write::flush(&mut std::io::stdout())?;
 
