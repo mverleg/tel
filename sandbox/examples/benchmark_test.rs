@@ -125,7 +125,7 @@ impl ProjectGenerator {
 
         for (prev_level, count, range) in levels_to_import {
             if count > 0 {
-                let num_imports = self.rng.gen_range(range.start().max(&1)..=range.end().min(&count));
+                let num_imports = self.rng.gen_range((*range.start()).max(1)..=(*range.end()).min(count));
                 for _ in 0..num_imports {
                     let idx = self.rng.gen_range(0..count);
                     content.push_str(&format!("(import l{}_{})\n", prev_level, idx));
