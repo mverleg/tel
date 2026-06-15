@@ -29,7 +29,7 @@ fn main() {
         let my_example_name = my_entry.file_name();
         let my_example_name_str = my_example_name.to_string_lossy();
 
-        if my_example_name_str == "README.md" {
+        if my_example_name_str == "tel-top.md" {
             continue;
         }
 
