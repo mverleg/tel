@@ -197,6 +197,21 @@ mod tests {
     }
 
     #[test]
+    fn stepid_serde_roundtrips_within_one_interner() {
+        // Derives round-trip the interned indices. This is only valid within a
+        // single run (indices are process-local); portable, string-based serde
+        // for the disk cache is deferred. Nothing wires this in yet.
+        let i = &Interner::new();
+        let step = resolve(i, "foo");
+
+        let json = serde_json::to_string(&step).unwrap();
+        let back: StepId = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(step, back);
+        assert_eq!(format!("{}", Ctx(&step, i)), format!("{}", Ctx(&back, i)));
+    }
+
+    #[test]
     fn transitive_dependents_is_cycle_safe() {
         // Malformed cyclic graph: a -> b -> a. Must terminate.
         let i = &Interner::new();
