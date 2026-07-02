@@ -21,7 +21,7 @@ The compiler processes programs in four phases:
 - [x] Force always going through context
 - [x] Process imports in parallel
 - [x] What if same task twice in parallel? and recursion?
-- [ ] Inverse dependency graph
+- [x] Inverse dependency graph
 - [x] Concurrency-safe
 - [ ] Prevent ctx leak outside scope (just pure fn pointers?)
 - [ ] Lock-free (during compile)
