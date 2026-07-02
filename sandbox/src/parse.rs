@@ -1,4 +1,3 @@
-use crate::common::Path;
 use crate::context::ParseContext;
 use crate::graph::ParseId;
 use crate::types::{BinOp, ParseError, PreExpr};
@@ -95,11 +94,11 @@ fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
-    file_path: Path,
+    file_path: String,
 }
 
 impl Parser {
-    fn new(tokens: Vec<Token>, file_path: Path) -> Self {
+    fn new(tokens: Vec<Token>, file_path: String) -> Self {
         Parser { tokens, pos: 0, file_path }
     }
 
@@ -221,11 +220,11 @@ impl Parser {
                     }
                     "panic" => {
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::Panic { source_location: self.file_path.as_str().to_string() })
+                        Ok(PreExpr::Panic { source_location: self.file_path.clone() })
                     }
                     "unreachable" => {
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::Unreachable { source_location: self.file_path.as_str().to_string() })
+                        Ok(PreExpr::Unreachable { source_location: self.file_path.clone() })
                     }
                     "import" => {
                         let path = match self.advance() {
@@ -290,14 +289,15 @@ impl Parser {
 }
 
 
-pub fn tokenize_and_parse(source: &str, file_path: Path) -> Result<PreExpr, ParseError> {
+pub fn tokenize_and_parse(source: &str, file_path: &str) -> Result<PreExpr, ParseError> {
     let tokens = tokenize(source)?;
-    let mut parser = Parser::new(tokens, file_path);
+    let mut parser = Parser::new(tokens, file_path.to_string());
     parser.parse_all()
 }
 
-pub async fn parse(_ctx: &ParseContext, id: ParseId) -> Result<PreExpr, ParseError> {
-    let my_source = tokio::fs::read_to_string(id.file_path.as_path()).await?;
+pub async fn parse(ctx: &ParseContext, id: ParseId) -> Result<PreExpr, ParseError> {
+    let path = id.file_path.resolve(ctx.interner());
+    let my_source = tokio::fs::read_to_string(path).await?;
     //TODO @mark: delegate to threadpool?
-    tokenize_and_parse(&my_source, id.file_path)
+    tokenize_and_parse(&my_source, path)
 }

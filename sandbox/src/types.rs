@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::common::{Name, Path, FQ};
+use crate::common::FQ;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -170,59 +170,59 @@ impl From<std::io::Error> for ParseError {
     }
 }
 
+/// Error payloads carry already-resolved strings (interned names/paths are
+/// resolved at the throw site), so `Display` needs no `Interner`.
 #[derive(Debug)]
 pub enum ResolveError {
-    UndefinedVariable(Name, String),
-    UndefinedFunction(Name, String),
-    InvalidImportPath(Name, String),
-    VariableAlreadyDefined(Name, String),
-    ArgOutsideFunction(Name),
-    InvalidArgNumber(Name, u8),
-    ImportNotAtTop(Name),
-    FunctionDefNotAfterImports(Name),
-    FunctionAlreadyDefined(Name, String),
-    FunctionOverload { loc: FQ, existing_arity: usize, new_arity: usize },
-    ArityMismatch { context: Name, func_name: String, expected: usize, got: usize },
-    ArityGap { context: Name, func_name: String, max_arg: usize },
-    UnreachableCode { context: Name, source_location: String },
-    CyclicDependency { cycle: Vec<FQ> },
-    IoError(Path, std::io::Error),
-    ParseError(Path, ParseError),
+    UndefinedVariable(String, String),
+    UndefinedFunction(String, String),
+    InvalidImportPath(String, String),
+    VariableAlreadyDefined(String, String),
+    ArgOutsideFunction(String),
+    InvalidArgNumber(String, u8),
+    ImportNotAtTop(String),
+    FunctionDefNotAfterImports(String),
+    FunctionAlreadyDefined(String, String),
+    FunctionOverload { loc: String, existing_arity: usize, new_arity: usize },
+    ArityMismatch { context: String, func_name: String, expected: usize, got: usize },
+    ArityGap { context: String, func_name: String, max_arg: usize },
+    UnreachableCode { context: String, source_location: String },
+    CyclicDependency { cycle: Vec<String> },
+    IoError(String, std::io::Error),
+    ParseError(String, ParseError),
     JoinError(String),
 }
 
 impl fmt::Display for ResolveError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ResolveError::UndefinedVariable(ctx, name) => write!(f, "Undefined variable in {:?}: {}", ctx, name),
-            ResolveError::UndefinedFunction(ctx, name) => write!(f, "Undefined function in {:?}: {}", ctx, name),
-            ResolveError::InvalidImportPath(ctx, name) => write!(f, "Invalid import in {:?}: {}", ctx, name),
-            ResolveError::VariableAlreadyDefined(ctx, name) => write!(f, "Variable already defined in {:?}: {}", ctx, name),
-            ResolveError::ArgOutsideFunction(ctx) => write!(f, "Arg used outside of function in {:?}", ctx),
-            ResolveError::InvalidArgNumber(ctx, n) => write!(f, "Invalid arg number in {:?}: {}", ctx, n),
-            ResolveError::ImportNotAtTop(ctx) => write!(f, "Import statements must be at the top of the file in {:?}", ctx),
-            ResolveError::FunctionDefNotAfterImports(ctx) => write!(f, "Function definitions must be after imports and before other code in {:?}", ctx),
-            ResolveError::FunctionAlreadyDefined(ctx, name) => write!(f, "Function already defined in {:?}: {}", ctx, name),
-            ResolveError::FunctionOverload { loc, existing_arity, new_arity } => write!(f, "Function overloading not allowed: {}::{} has arity {} but trying to define with arity {}", loc.as_str(), loc.name_str(), existing_arity, new_arity),
-            ResolveError::ArityMismatch { context, func_name, expected, got } => write!(f, "Function '{}' in {:?} expects {} arguments, but {} were provided", func_name, context, expected, got),
-            ResolveError::ArityGap { context, func_name, max_arg } => write!(f, "Function '{}' in {:?} has gaps in argument numbers (highest arg is {} but not all args 1..{} are used)", func_name, context, max_arg, max_arg),
-            ResolveError::UnreachableCode { context, source_location } => write!(f, "Unreachable code in {:?} at {}", context, source_location),
+            ResolveError::UndefinedVariable(ctx, name) => write!(f, "Undefined variable in {}: {}", ctx, name),
+            ResolveError::UndefinedFunction(ctx, name) => write!(f, "Undefined function in {}: {}", ctx, name),
+            ResolveError::InvalidImportPath(ctx, name) => write!(f, "Invalid import in {}: {}", ctx, name),
+            ResolveError::VariableAlreadyDefined(ctx, name) => write!(f, "Variable already defined in {}: {}", ctx, name),
+            ResolveError::ArgOutsideFunction(ctx) => write!(f, "Arg used outside of function in {}", ctx),
+            ResolveError::InvalidArgNumber(ctx, n) => write!(f, "Invalid arg number in {}: {}", ctx, n),
+            ResolveError::ImportNotAtTop(ctx) => write!(f, "Import statements must be at the top of the file in {}", ctx),
+            ResolveError::FunctionDefNotAfterImports(ctx) => write!(f, "Function definitions must be after imports and before other code in {}", ctx),
+            ResolveError::FunctionAlreadyDefined(ctx, name) => write!(f, "Function already defined in {}: {}", ctx, name),
+            ResolveError::FunctionOverload { loc, existing_arity, new_arity } => write!(f, "Function overloading not allowed: {} has arity {} but trying to define with arity {}", loc, existing_arity, new_arity),
+            ResolveError::ArityMismatch { context, func_name, expected, got } => write!(f, "Function '{}' in {} expects {} arguments, but {} were provided", func_name, context, expected, got),
+            ResolveError::ArityGap { context, func_name, max_arg } => write!(f, "Function '{}' in {} has gaps in argument numbers (highest arg is {} but not all args 1..{} are used)", func_name, context, max_arg, max_arg),
+            ResolveError::UnreachableCode { context, source_location } => write!(f, "Unreachable code in {} at {}", context, source_location),
             ResolveError::CyclicDependency { cycle } => {
                 writeln!(f, "Cyclic dependency detected\n")?;
                 writeln!(f, "Cycle:")?;
                 for (i, location) in cycle.iter().enumerate() {
                     if i == cycle.len() - 1 {
-                        writeln!(f, "  {}. {}::{} <- cycle completes here",
-                            i + 1, location.as_str(), location.name_str())?;
+                        writeln!(f, "  {}. {} <- cycle completes here", i + 1, location)?;
                     } else {
-                        writeln!(f, "  {}. {}::{}",
-                            i + 1, location.as_str(), location.name_str())?;
+                        writeln!(f, "  {}. {}", i + 1, location)?;
                     }
                 }
                 write!(f, "\nTo fix: Remove one of the import dependencies above.")
             }
-            ResolveError::IoError(path, e) => write!(f, "IO error in {:?}: {}", path, e),
-            ResolveError::ParseError(path, e) => write!(f, "Parse error in {:?}: {}", path, e),
+            ResolveError::IoError(path, e) => write!(f, "IO error in {}: {}", path, e),
+            ResolveError::ParseError(path, e) => write!(f, "Parse error in {}: {}", path, e),
             ResolveError::JoinError(msg) => write!(f, "Join error: {}", msg),
         }
     }

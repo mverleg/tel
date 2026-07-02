@@ -2,7 +2,7 @@ use crate::types::Expr;
 use crate::types::ExecuteError;
 use crate::types::BinOp;
 use crate::types::VarId;
-use crate::common::FQ;
+use crate::common::{Interner, FQ};
 use crate::Printer;
 use log::debug;
 use std::collections::HashMap;
@@ -20,15 +20,17 @@ struct Interpreter<'a> {
     values: HashMap<VarId, i64>,
     func_registry: &'a DashMap<FQ, FuncData>,
     printer: &'a dyn Printer,
+    interner: &'a Interner,
     args: Option<Vec<i64>>,
 }
 
 impl<'a> Interpreter<'a> {
-    fn new(func_registry: &'a DashMap<FQ, FuncData>, printer: &'a dyn Printer) -> Self {
+    fn new(func_registry: &'a DashMap<FQ, FuncData>, printer: &'a dyn Printer, interner: &'a Interner) -> Self {
         Interpreter {
             values: HashMap::new(),
             func_registry,
             printer,
+            interner,
             args: None,
         }
     }
@@ -103,7 +105,8 @@ impl<'a> Interpreter<'a> {
 
                 let func_data = self.func_registry.get(&func.0)
                     .ok_or_else(|| ExecuteError::Panic {
-                        source_location: format!("Function not found: {:?}", func.0)
+                        source_location: format!("Function not found: {}::{}",
+                            func.0.path_str(self.interner), func.0.name_str(self.interner))
                     })?;
                 let result = self.call_function(&func_data.ast, arg_vals)?;
                 Ok(EvalResult::Value(result))
@@ -161,7 +164,7 @@ pub async fn execute(ctx: &ExecContext, path: ExecId) -> Result<(), ExecuteError
     let (exprs, _my_symbols) = ctx.resolve_all(&[reesolve_id]).await?;
     let my_ast = exprs.into_iter().next().unwrap();
     debug!("execute: resolved, now evaluating");
-    let mut interpreter = Interpreter::new(ctx.func_registry(), ctx.printer());
+    let mut interpreter = Interpreter::new(ctx.func_registry(), ctx.printer(), ctx.interner());
     interpreter.eval(&my_ast)?;
     debug!("execute: completed successfully");
     Ok(())

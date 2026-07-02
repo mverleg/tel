@@ -1,4 +1,4 @@
-use crate::common::FQ;
+use crate::common::{Interner, FQ};
 use crate::graph::{ExecId, Graph, ParseId, ResolveId, StepId};
 use crate::types::{ExecuteError, Expr, FuncData, ParseError, PreExpr, ResolveError, SymbolTable};
 use crate::Printer;
@@ -17,6 +17,7 @@ pub enum ResolutionState {
 /// Not actually forced to be singleton, but it's leaked so singleton is encouraged.
 pub struct Global {
     graph: Graph,
+    interner: Interner,
     parse_cache: Cache<ParseId, PreExpr, ParseError>,
     func_registry: DashMap<FQ, FuncData>,
     resolution_states: DashMap<FQ, ResolutionState>,
@@ -27,6 +28,7 @@ impl Global {
     pub fn new(printer: &'static dyn Printer) -> Self {
         Global {
             graph: Graph::new(),
+            interner: Interner::new(),
             parse_cache: Cache::new(),
             func_registry: DashMap::new(),
             resolution_states: DashMap::new(),
@@ -148,6 +150,10 @@ impl RootContext {
         &self.core.graph
     }
 
+    pub fn interner(&self) -> &Interner {
+        &self.core.interner
+    }
+
     pub async fn execute(&self, id: ExecId) -> Result<(), ExecuteError> {
         self.core.execute_impl(StepId::Root, id).await
     }
@@ -162,6 +168,10 @@ impl ParseContext {
     pub fn graph(&self) -> &Graph {
         &self.core.graph
     }
+
+    pub fn interner(&self) -> &Interner {
+        &self.core.interner
+    }
 }
 
 pub struct ResolveContext {
@@ -172,6 +182,10 @@ pub struct ResolveContext {
 impl ResolveContext {
     pub fn graph(&self) -> &Graph {
         &self.core.graph
+    }
+
+    pub fn interner(&self) -> &Interner {
+        &self.core.interner
     }
 
     pub fn func_registry(&self) -> &DashMap<FQ, FuncData> {
@@ -209,6 +223,10 @@ pub struct ExecContext {
 impl ExecContext {
     pub fn graph(&self) -> &Graph {
         &self.core.graph
+    }
+
+    pub fn interner(&self) -> &Interner {
+        &self.core.interner
     }
 
     pub fn func_registry(&self) -> &DashMap<FQ, FuncData> {

@@ -1,26 +1,26 @@
-use crate::common::{Path, FQ};
+use crate::common::{Ctx, CtxDisplay, Interner, Path, FQ};
 use dashmap::DashMap;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ParseId {
     pub file_path: Path,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ResolveId {
     pub func_loc: FQ,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExecId {
     pub main_loc: FQ,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StepId {
     Root,
     Parse(ParseId),
@@ -28,13 +28,13 @@ pub enum StepId {
     Exec(ExecId),
 }
 
-impl fmt::Display for StepId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl CtxDisplay for StepId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, i: &Interner) -> fmt::Result {
         match self {
             StepId::Root => write!(f, "Root"),
-            StepId::Parse(id) => write!(f, "Parse({})", id.file_path.as_str()),
-            StepId::Resolve(id) => write!(f, "Resolve({}::{})", id.func_loc.as_str(), id.func_loc.name_str()),
-            StepId::Exec(id) => write!(f, "Exec({}::{})", id.main_loc.as_str(), id.main_loc.name_str()),
+            StepId::Parse(id) => write!(f, "Parse({})", Ctx(&id.file_path, i)),
+            StepId::Resolve(id) => write!(f, "Resolve({})", Ctx(&id.func_loc, i)),
+            StepId::Exec(id) => write!(f, "Exec({})", Ctx(&id.main_loc, i)),
         }
     }
 }
@@ -153,56 +153,59 @@ impl Graph {
 mod tests {
     use super::*;
 
-    fn parse(name: &str) -> StepId {
-        StepId::Parse(ParseId { file_path: Path::of(name) })
+    fn parse(i: &Interner, name: &str) -> StepId {
+        StepId::Parse(ParseId { file_path: Path::intern(i, name) })
     }
 
-    fn resolve(name: &str) -> StepId {
-        StepId::Resolve(ResolveId { func_loc: FQ::of(name, name) })
+    fn resolve(i: &Interner, name: &str) -> StepId {
+        StepId::Resolve(ResolveId { func_loc: FQ::intern(i, name, name) })
     }
 
-    fn exec(name: &str) -> StepId {
-        StepId::Exec(ExecId { main_loc: FQ::of(name, name) })
+    fn exec(i: &Interner, name: &str) -> StepId {
+        StepId::Exec(ExecId { main_loc: FQ::intern(i, name, name) })
     }
 
     #[test]
     fn transitive_dependents_walks_up_the_chain() {
         // Root -> Exec(main) -> Resolve(f) -> Parse(f.tel)
+        let i = &Interner::new();
         let g = Graph::new();
-        g.register_dependency(StepId::Root, exec("main"));
-        g.register_dependency(exec("main"), resolve("f"));
-        g.register_dependency(resolve("f"), parse("f.tel"));
+        g.register_dependency(StepId::Root, exec(i, "main"));
+        g.register_dependency(exec(i, "main"), resolve(i, "f"));
+        g.register_dependency(resolve(i, "f"), parse(i, "f.tel"));
 
-        let deps = g.transitive_dependents(&parse("f.tel"));
-        assert!(deps.contains(&resolve("f")));
-        assert!(deps.contains(&exec("main")));
+        let deps = g.transitive_dependents(&parse(i, "f.tel"));
+        assert!(deps.contains(&resolve(i, "f")));
+        assert!(deps.contains(&exec(i, "main")));
         assert!(deps.contains(&StepId::Root));
         // The leaf itself is not included.
-        assert!(!deps.contains(&parse("f.tel")));
+        assert!(!deps.contains(&parse(i, "f.tel")));
         assert_eq!(deps.len(), 3);
     }
 
     #[test]
     fn direct_dependents_are_one_hop() {
+        let i = &Interner::new();
         let g = Graph::new();
-        g.register_dependency(exec("a"), resolve("shared"));
-        g.register_dependency(exec("b"), resolve("shared"));
+        g.register_dependency(exec(i, "a"), resolve(i, "shared"));
+        g.register_dependency(exec(i, "b"), resolve(i, "shared"));
 
-        let direct = g.get_dependents(&resolve("shared")).unwrap();
+        let direct = g.get_dependents(&resolve(i, "shared")).unwrap();
         assert_eq!(direct.len(), 2);
-        assert!(direct.contains(&exec("a")));
-        assert!(direct.contains(&exec("b")));
+        assert!(direct.contains(&exec(i, "a")));
+        assert!(direct.contains(&exec(i, "b")));
     }
 
     #[test]
     fn transitive_dependents_is_cycle_safe() {
         // Malformed cyclic graph: a -> b -> a. Must terminate.
+        let i = &Interner::new();
         let g = Graph::new();
-        g.register_dependency(resolve("a"), resolve("b"));
-        g.register_dependency(resolve("b"), resolve("a"));
+        g.register_dependency(resolve(i, "a"), resolve(i, "b"));
+        g.register_dependency(resolve(i, "b"), resolve(i, "a"));
 
-        let deps = g.transitive_dependents(&resolve("a"));
-        assert!(deps.contains(&resolve("b")));
+        let deps = g.transitive_dependents(&resolve(i, "a"));
+        assert!(deps.contains(&resolve(i, "b")));
         // `a` is reachable from itself via the back-edge but is the query root,
         // so it may appear; the key property is that this call terminates.
     }

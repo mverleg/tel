@@ -49,7 +49,11 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn calculate_arity(expr: &PreExpr, func_name: &str, context: &Name) -> Result<usize, ResolveError> {
+    fn context_str(&self) -> String {
+        self.current_context.resolve(self.ctx.interner()).to_string()
+    }
+
+    fn calculate_arity(expr: &PreExpr, func_name: &str, context: &str) -> Result<usize, ResolveError> {
         let mut max_arg = 0u8;
         let mut arg_numbers = std::collections::HashSet::new();
 
@@ -62,7 +66,7 @@ impl<'a> Resolver<'a> {
         for i in 1..=max_arg {
             if !arg_numbers.contains(&i) {
                 return Err(ResolveError::ArityGap {
-                    context: context.clone(),
+                    context: context.to_string(),
                     func_name: func_name.to_string(),
                     max_arg: max_arg as usize,
                 });
@@ -133,7 +137,7 @@ impl<'a> Resolver<'a> {
 
     fn declare_var(&mut self, name: String) -> Result<VarId, ResolveError> {
         if self.resolve_var(&name).is_ok() {
-            return Err(ResolveError::VariableAlreadyDefined(self.current_context.clone(), name));
+            return Err(ResolveError::VariableAlreadyDefined(self.context_str(), name));
         }
         let var_id = self.symbol_table.add_var(name.clone(), self.current_scope);
         let scope = &mut self.scopes[self.current_scope.0];
@@ -152,7 +156,7 @@ impl<'a> Resolver<'a> {
             current = scope.parent;
         }
 
-        Err(ResolveError::UndefinedVariable(self.current_context.clone(), name.to_string()))
+        Err(ResolveError::UndefinedVariable(self.context_str(), name.to_string()))
     }
 
     fn resolve_expr(&mut self, pre_expr: PreExpr) -> Result<Expr, ResolveError> {
@@ -221,28 +225,28 @@ impl<'a> Resolver<'a> {
                 Ok(Expr::Panic { source_location })
             }
             PreExpr::Unreachable { source_location } => {
-                Err(ResolveError::UnreachableCode { context: self.current_context.clone(), source_location })
+                Err(ResolveError::UnreachableCode { context: self.context_str(), source_location })
             }
             PreExpr::Import(_) => {
-                Err(ResolveError::ImportNotAtTop(self.current_context.clone()))
+                Err(ResolveError::ImportNotAtTop(self.context_str()))
             }
             PreExpr::FunctionDef { .. } => {
-                Err(ResolveError::FunctionDefNotAfterImports(self.current_context.clone()))
+                Err(ResolveError::FunctionDefNotAfterImports(self.context_str()))
             }
             PreExpr::Call { func, args } => {
                 let func_id = self.funcs.get(&func)
                     .cloned()
-                    .ok_or_else(|| ResolveError::UndefinedFunction(self.current_context.clone(), func.clone()))?;
+                    .ok_or_else(|| ResolveError::UndefinedFunction(self.context_str(), func.clone()))?;
 
                 let expected_arity = self.ctx.func_registry()
                     .get(&func_id.0)
                     .map(|f| f.arity)
-                    .ok_or_else(|| ResolveError::UndefinedFunction(self.current_context.clone(), func.clone()))?;
+                    .ok_or_else(|| ResolveError::UndefinedFunction(self.context_str(), func.clone()))?;
                 let got_arity = args.len();
 
                 if expected_arity != got_arity {
                     return Err(ResolveError::ArityMismatch {
-                        context: self.current_context.clone(),
+                        context: self.context_str(),
                         func_name: func.clone(),
                         expected: expected_arity,
                         got: got_arity,
@@ -262,7 +266,7 @@ impl<'a> Resolver<'a> {
                 debug!("Processing Arg({}) in context {:?}, in_function={}", n, self.current_context, self.in_function);
                 if !self.in_function {
                     debug!("ERROR: Arg used outside function - in_function={}", self.in_function);
-                    return Err(ResolveError::ArgOutsideFunction(self.current_context.clone()));
+                    return Err(ResolveError::ArgOutsideFunction(self.context_str()));
                 }
                 debug!("Arg({}) resolved successfully", n);
                 Ok(Expr::Arg(n))
@@ -285,22 +289,20 @@ impl<'a> Resolver<'a> {
         for import_name in imports {
             debug!("Processing import: {}", import_name);
             if import_name.contains('.') {
-                return Err(ResolveError::InvalidImportPath(self.current_context.clone(), import_name.clone()));
+                return Err(ResolveError::InvalidImportPath(self.context_str(), import_name.clone()));
             }
             let full_path = self.base_dir.join(format!("{}.telsb", import_name));
+            let func_fq = FQ::intern(ctx.interner(), &full_path.to_string_lossy(), &import_name);
 
             // Call ctx.resolve_all() to properly register dependency
             // This will resolve the imported file and register all its functions in global registry
-            let resolve_id = ResolveId {
-                func_loc: FQ::of(&full_path, &import_name)
-            };
+            let resolve_id = ResolveId { func_loc: func_fq };
             debug!("Resolving imported file: {:?}", resolve_id);
             let (_exprs, _imported_symbols) = ctx.resolve_all(&[resolve_id]).await?;
             debug!("Import {} resolved", import_name);
 
             // Register only the file-function for name lookup (not local functions)
             // Functions are already in the global registry from the resolve_all call
-            let func_fq = FQ::of(&full_path, &import_name);
             let func_id = FuncId(func_fq);
 
             self.funcs.insert(import_name.clone(), func_id);
@@ -320,7 +322,7 @@ impl<'a> Resolver<'a> {
                     match expr {
                         PreExpr::Import(path) => {
                             if seen_non_import {
-                                return Err(ResolveError::ImportNotAtTop(self.current_context.clone()));
+                                return Err(ResolveError::ImportNotAtTop(self.context_str()));
                             }
                             imports.push(path.clone());
                         }
@@ -351,12 +353,12 @@ impl<'a> Resolver<'a> {
                     match expr {
                         PreExpr::Import(_) => {
                             if seen_function_def || seen_other {
-                                return Err(ResolveError::ImportNotAtTop(self.current_context.clone()));
+                                return Err(ResolveError::ImportNotAtTop(self.context_str()));
                             }
                         }
                         PreExpr::FunctionDef { name, body } => {
                             if seen_other {
-                                return Err(ResolveError::FunctionDefNotAfterImports(self.current_context.clone()));
+                                return Err(ResolveError::FunctionDefNotAfterImports(self.context_str()));
                             }
                             seen_function_def = true;
                             function_defs.push((name.clone(), (**body).clone()));
@@ -383,10 +385,10 @@ impl<'a> Resolver<'a> {
         for (func_name, func_body) in function_defs {
             debug!("Processing local function: {}", func_name);
             if self.funcs.contains_key(&func_name) {
-                return Err(ResolveError::FunctionAlreadyDefined(self.current_context.clone(), func_name));
+                return Err(ResolveError::FunctionAlreadyDefined(self.context_str(), func_name));
             }
 
-            let arity = Self::calculate_arity(&func_body, &func_name, &self.current_context)?;
+            let arity = Self::calculate_arity(&func_body, &func_name, &self.context_str())?;
             debug!("Function {} has arity {}", func_name, arity);
 
             let saved_in_function = self.in_function;
@@ -398,12 +400,12 @@ impl<'a> Resolver<'a> {
             self.in_function = saved_in_function;
             debug!("Restored in_function={} after local function {}", saved_in_function, func_name);
 
-            let func_loc = FQ::of(&self.current_file, &func_name);
-            let func_id = FuncId(func_loc.clone());
+            let func_loc = FQ::intern(self.ctx.interner(), &self.current_file.to_string_lossy(), &func_name);
+            let func_id = FuncId(func_loc);
 
             // Register in global registry
             use crate::types::FuncData;
-            self.ctx.func_registry().insert(func_loc.clone(), FuncData {
+            self.ctx.func_registry().insert(func_loc, FuncData {
                 loc: func_loc,
                 arity,
                 ast: resolved_body,
@@ -444,10 +446,11 @@ impl<'a> Resolver<'a> {
 
 pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: &PreExpr, base_path: &str, context: Name, is_function: bool) -> Result<(Expr, SymbolTable), ResolveError> {
     debug!("resolve_internal: starting for context {:?}, is_function={}", context, is_function);
+    let context_str = context.resolve(ctx.interner());
     let path = Path::new(base_path);
     let dir = path.parent().unwrap_or(Path::new("."));
 
-    let mut resolver = Resolver::new(ctx, path.to_path_buf(), dir.to_path_buf(), context.clone());
+    let mut resolver = Resolver::new(ctx, path.to_path_buf(), dir.to_path_buf(), context);
     debug!("resolve_internal: processing imports for {:?}", context);
     resolver.process_imports(ctx, pre_ast).await?;
     debug!("resolve_internal: processing local functions for {:?}", context);
@@ -461,20 +464,20 @@ pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: &PreExpr, base_path
 
         // Calculate arity and pre-register the function (with a placeholder AST)
         // so that recursive calls can find it during body resolution
-        let arity = Resolver::calculate_arity(pre_ast, context.as_str(), &context)?;
+        let arity = Resolver::calculate_arity(pre_ast, context_str, context_str)?;
         debug!("resolve_internal: pre-registering implicit function {:?} with arity {}", context, arity);
-        let func_loc = FQ::of(&resolver.current_file, context.as_str());
-        let func_id = FuncId(func_loc.clone());
+        let func_loc = FQ::intern(ctx.interner(), &resolver.current_file.to_string_lossy(), context_str);
+        let func_id = FuncId(func_loc);
 
         // Register in global registry with placeholder AST
         use crate::types::FuncData;
-        ctx.func_registry().insert(func_loc.clone(), FuncData {
+        ctx.func_registry().insert(func_loc, FuncData {
             loc: func_loc,
             arity,
             ast: Expr::Number(0),
         });
 
-        resolver.funcs.insert(context.as_str().to_string(), func_id);
+        resolver.funcs.insert(context_str.to_string(), func_id);
     }
 
     debug!("resolve_internal: resolving body for {:?} (in_function={})", context, resolver.in_function);
@@ -484,7 +487,7 @@ pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: &PreExpr, base_path
     if is_function {
         debug!("resolve_internal: updating implicit function {:?} with resolved AST", context);
         // Update the function info with the actual resolved AST
-        let func_id = resolver.funcs.get(context.as_str()).unwrap();
+        let func_id = resolver.funcs.get(context_str).unwrap();
         if let Some(mut func_data) = ctx.func_registry().get_mut(&func_id.0) {
             func_data.ast = ast.clone();
         }
@@ -498,9 +501,10 @@ fn detect_and_report_cycle(ctx: &ResolveContext, id: &ResolveId) -> Result<(Expr
     let cycle_path = ctx.graph().find_resolve_cycle(&id.func_loc)
         .ok_or_else(|| ResolveError::JoinError("Cycle suspected but not found in graph".to_string()))?;
 
-    Err(ResolveError::CyclicDependency {
-        cycle: cycle_path,
-    })
+    let cycle = cycle_path.iter()
+        .map(|fq| format!("{}::{}", fq.path_str(ctx.interner()), fq.name_str(ctx.interner())))
+        .collect();
+    Err(ResolveError::CyclicDependency { cycle })
 }
 
 pub async fn resolve(ctx: &ResolveContext, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
@@ -527,12 +531,12 @@ pub async fn resolve(ctx: &ResolveContext, id: ResolveId) -> Result<(Expr, Symbo
         ResolutionState::InProgress { started_at: Instant::now() }
     );
 
-    let my_pre_ast = ctx.parse(ParseId { file_path: fq.path().clone() }).await
-        .map_err(|e| ResolveError::ParseError(fq.path().clone(), e.clone()))?;
+    let my_pre_ast = ctx.parse(ParseId { file_path: fq.path() }).await
+        .map_err(|e| ResolveError::ParseError(fq.path_str(ctx.interner()).to_string(), e.clone()))?;
     debug!("resolve: parsed {:?}, calling resolve_internal as function", fq);
     // When resolving via ResolveId, we're always resolving a function (either imported or main)
     // The file body is treated as the function body, so Args are allowed
-    let result = resolve_internal(ctx, my_pre_ast, fq.as_str(), fq.name().clone(), true).await;
+    let result = resolve_internal(ctx, my_pre_ast, fq.path_str(ctx.interner()), fq.name(), true).await;
 
     // Mark as completed (whether success or failure)
     debug!("resolve: marking {:?} as completed", fq);

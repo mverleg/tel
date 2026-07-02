@@ -8,7 +8,7 @@ mod common;
 
 use std::fmt;
 use std::collections::HashSet;
-use crate::common::{Name, Path, FQ};
+use crate::common::{Ctx, FQ};
 use crate::context::{Global, RootContext};
 use crate::graph::{ExecId, StepId};
 
@@ -34,19 +34,19 @@ impl Printer for NoopPrinter {
 
 #[derive(Debug)]
 pub enum Error {
-    Io(Path, std::io::Error),
-    Parse(Path, types::ParseError),
-    Resolve(Name, types::ResolveError),
-    Execute(Name, types::ExecuteError),
+    Io(String, std::io::Error),
+    Parse(String, types::ParseError),
+    Resolve(String, types::ResolveError),
+    Execute(String, types::ExecuteError),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Error::Io(path, e) => write!(f, "IO error in {:?}: {}", path, e),
-            Error::Parse(path, e) => write!(f, "Parse error in {:?}: {}", path, e),
-            Error::Resolve(name, e) => write!(f, "Resolve error in {:?}: {}", name, e),
-            Error::Execute(name, e) => write!(f, "Execute error in {:?}: {}", name, e),
+            Error::Io(path, e) => write!(f, "IO error in {}: {}", path, e),
+            Error::Parse(path, e) => write!(f, "Parse error in {}: {}", path, e),
+            Error::Resolve(name, e) => write!(f, "Resolve error in {}: {}", name, e),
+            Error::Execute(name, e) => write!(f, "Execute error in {}: {}", name, e),
         }
     }
 }
@@ -55,7 +55,7 @@ impl std::error::Error for Error {}
 
 fn visualize_tree(ctx: &RootContext, step: &StepId, prefix: &str, is_last: bool, visited: &mut HashSet<StepId>, printer: &dyn Printer) {
     let connector = if is_last { "└── " } else { "├── " };
-    printer.print(&format!("{}{}{}", prefix, connector, step));
+    printer.print(&format!("{}{}{}", prefix, connector, Ctx(step, ctx.interner())));
 
     if visited.contains(step) {
         let extension = if is_last { "    " } else { "│   " };
@@ -86,10 +86,9 @@ pub async fn run_file_with_printer(path: &str, show_deps: bool, printer: &'stati
     //TODO @mark: get rid of leak if ever continuous process without shared cache
     let core = Box::leak(Box::new(Global::new(printer)));
     let ctx = RootContext::new(core);
-    let main = Name::of("main");
-    let exec_id = ExecId { main_loc: FQ::of(path, "main") };
+    let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
     ctx.execute(exec_id).await
-        .map_err(|e| Error::Execute(main, e))?;
+        .map_err(|e| Error::Execute("main".to_string(), e))?;
 
     if show_deps {
         printer.print("\nDependency tree:");
