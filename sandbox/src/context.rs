@@ -14,11 +14,37 @@ pub enum ResolutionState {
     Completed,
 }
 
+/// A content-addressed digest of a source file's bytes.
+///
+/// Parse results are cached under this digest instead of the file path, which
+/// is what makes the cache safe across source changes (see
+/// docs/cache-invalidation-problem.md):
+/// - file bytes change  -> different digest -> different key -> re-parse
+///   (no stale result served for the old key), and
+/// - file reverted to previously-seen bytes (edit-then-revert, git
+///   branch-switch) -> identical digest -> cache hit (Scenario A).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ContentDigest(u64);
+
+impl ContentDigest {
+    pub fn of(source: &str) -> ContentDigest {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        source.hash(&mut hasher);
+        ContentDigest(hasher.finish())
+    }
+}
+
 /// Not actually forced to be singleton, but it's leaked so singleton is encouraged.
 pub struct Global {
     graph: Graph,
     interner: Interner,
-    parse_cache: Cache<ParseId, PreExpr, ParseError>,
+    /// Content-addressed parse cache: `content digest -> parse result`.
+    ///
+    /// Append-only and immutable, so it is safe to keep across runs: a digest
+    /// always maps to the same result, or is absent (recompute). Invalidation
+    /// is implicit -- a changed file simply produces a new key.
+    content_store: Cache<ContentDigest, PreExpr, ParseError>,
     func_registry: DashMap<FQ, FuncData>,
     resolution_states: DashMap<FQ, ResolutionState>,
     printer: &'static dyn Printer,
@@ -29,11 +55,18 @@ impl Global {
         Global {
             graph: Graph::new(),
             interner: Interner::new(),
-            parse_cache: Cache::new(),
+            content_store: Cache::new(),
             func_registry: DashMap::new(),
             resolution_states: DashMap::new(),
             printer,
         }
+    }
+
+    /// Number of distinct source contents parsed and cached so far (by digest).
+    /// Lets callers observe cross-run cache reuse: an unchanged or reverted file
+    /// does not grow this count on a subsequent run.
+    pub fn cached_parse_count(&self) -> usize {
+        self.content_store.len()
     }
 }
 
@@ -41,22 +74,28 @@ impl Global {
     async fn parse_impl(&'static self, caller: StepId, id: ParseId) -> Result<&'static PreExpr, &'static ParseError> {
         debug!("CoreContext::parse_impl: {:?}", id);
 
-        // Always register dependency, regardless of cache hit/miss
-        self.graph.register_dependency(caller, StepId::Parse(id.clone()));
+        // Always register dependency, regardless of cache hit/miss. The graph
+        // node stays keyed on the file *position* (path); the content digest is
+        // an implementation detail of the parse cache below.
+        self.graph.register_dependency(caller, StepId::Parse(id));
 
-        // Clone once for closure (only used on cache miss)
-        let id_for_init = id.clone();
+        // Read+parse stay fused, but the read happens on every compile so we can
+        // compute a content digest and key the cache on it. This saves the parse
+        // *computation* (not the read) when the bytes are unchanged, and reuses
+        // the result across runs on revert / branch-switch.
+        let path = id.file_path.resolve(&self.interner);
+        let source = match tokio::fs::read_to_string(path).await {
+            Ok(source) => source,
+            // Without content there is no digest to key on, so IO errors are not
+            // stored in the content store. Leak a 'static error to satisfy the
+            // signature (the compiler already leaks its Global/interner).
+            Err(err) => return Err(Box::leak(Box::new(ParseError::from(err)))),
+        };
 
-        // Get or initialize the cached parse result
-        // On cache hit: id is borrowed (no clone), id_for_init is dropped
-        // On cache miss: id is consumed, id_for_init is used in closure
-        let result = self.parse_cache.get(id, move || async move {
-            debug!("CoreContext::parse_impl initializing: {:?}", id_for_init);
-            let ctx = ParseContext {
-                current: id_for_init.clone(),
-                core: self,
-            };
-            crate::parse::parse(&ctx, id_for_init).await
+        let digest = ContentDigest::of(&source);
+        let result = self.content_store.get(digest, move || async move {
+            debug!("CoreContext::parse_impl parsing {:?} (digest {:?})", path, digest);
+            crate::parse::tokenize_and_parse(&source, path)
         }).await;
 
         // Return borrowed reference to cached result
@@ -154,23 +193,12 @@ impl RootContext {
         &self.core.interner
     }
 
+    pub fn printer(&self) -> &dyn Printer {
+        self.core.printer
+    }
+
     pub async fn execute(&self, id: ExecId) -> Result<(), ExecuteError> {
         self.core.execute_impl(StepId::Root, id).await
-    }
-}
-
-pub struct ParseContext {
-    current: ParseId,
-    core: &'static Global,
-}
-
-impl ParseContext {
-    pub fn graph(&self) -> &Graph {
-        &self.core.graph
-    }
-
-    pub fn interner(&self) -> &Interner {
-        &self.core.interner
     }
 }
 
@@ -246,7 +274,6 @@ impl ExecContext {
 const _: fn() = || {
     fn assert_send<T: Send>() {}
     assert_send::<RootContext>();
-    assert_send::<ParseContext>();
     assert_send::<ResolveContext>();
     assert_send::<ExecContext>();
 };

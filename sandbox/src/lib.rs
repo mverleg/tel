@@ -77,33 +77,75 @@ fn visualize_tree(ctx: &RootContext, step: &StepId, prefix: &str, is_last: bool,
     }
 }
 
+fn print_dependency_tree(ctx: &RootContext) {
+    let printer = ctx.printer();
+    printer.print("\nDependency tree:");
+    let mut visited = HashSet::new();
+    visited.insert(StepId::Root);
+    if let Some(my_root_deps_ref) = ctx.graph().get_dependencies(&StepId::Root) {
+        let my_root_deps: Vec<_> = my_root_deps_ref.iter().collect();
+        let dep_count = my_root_deps.len();
+        for (idx, dep) in my_root_deps.iter().enumerate() {
+            let is_last = idx == dep_count - 1;
+            visualize_tree(ctx, dep, "", is_last, &mut visited, printer);
+        }
+    }
+}
+
+/// A reusable compiler whose caches persist across runs.
+///
+/// [`run_file`] builds a fresh `Global` on every call, so nothing is cached
+/// between compiles. A `Compiler` instead keeps one `Global` — and therefore
+/// its content-addressed parse cache — alive across every [`run`](Compiler::run)
+/// call. That is the cross-run cache from docs/cache-invalidation-problem.md: an
+/// unchanged or reverted source file is not re-parsed on a later run, while a
+/// changed file is re-parsed (never served stale) because its content digest
+/// differs.
+pub struct Compiler {
+    core: &'static Global,
+}
+
+impl Compiler {
+    /// Create a compiler with an empty, persistent cache.
+    ///
+    /// The `Global` is leaked to `'static`: a `Compiler` is meant to be
+    /// long-lived (e.g. a watch-mode session) and its caches live for the
+    /// process. Dropping the `Compiler` does not reclaim it.
+    pub fn new(printer: &'static dyn Printer) -> Compiler {
+        Compiler { core: Box::leak(Box::new(Global::new(printer))) }
+    }
+
+    /// Compile and execute `path`, reusing anything already cached from previous
+    /// runs of this `Compiler`.
+    pub async fn run(&self, path: &str, show_deps: bool) -> Result<(), Error> {
+        let ctx = RootContext::new(self.core);
+        let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
+        ctx.execute(exec_id).await
+            .map_err(|e| Error::Execute("main".to_string(), e))?;
+
+        if show_deps {
+            print_dependency_tree(&ctx);
+        }
+
+        Ok(())
+    }
+
+    /// Number of distinct source contents parsed and cached so far. Lets callers
+    /// observe cross-run reuse: an unchanged or reverted file leaves this
+    /// unchanged on the next [`run`](Compiler::run).
+    pub fn cached_parse_count(&self) -> usize {
+        self.core.cached_parse_count()
+    }
+}
+
 pub async fn run_file(path: &str, show_deps: bool) -> Result<(), Error> {
     let printer: &'static dyn Printer = Box::leak(Box::new(StdoutPrinter));
     run_file_with_printer(path, show_deps, printer).await
 }
 
 pub async fn run_file_with_printer(path: &str, show_deps: bool, printer: &'static dyn Printer) -> Result<(), Error> {
-    //TODO @mark: get rid of leak if ever continuous process without shared cache
-    let core = Box::leak(Box::new(Global::new(printer)));
-    let ctx = RootContext::new(core);
-    let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
-    ctx.execute(exec_id).await
-        .map_err(|e| Error::Execute("main".to_string(), e))?;
-
-    if show_deps {
-        printer.print("\nDependency tree:");
-        let mut visited = HashSet::new();
-        visited.insert(StepId::Root);
-        if let Some(my_root_deps_ref) = ctx.graph().get_dependencies(&StepId::Root) {
-            let my_root_deps: Vec<_> = my_root_deps_ref.iter().collect();
-            let dep_count = my_root_deps.len();
-            for (idx, dep) in my_root_deps.iter().enumerate() {
-                let is_last = idx == dep_count - 1;
-                visualize_tree(&ctx, dep, "", is_last, &mut visited, printer);
-            }
-        }
-    }
-
-    Ok(())
+    // Each call builds a fresh, single-shot compiler (no cross-run cache). Use
+    // `Compiler` directly to keep the cache alive across runs.
+    Compiler::new(printer).run(path, show_deps).await
 }
 
