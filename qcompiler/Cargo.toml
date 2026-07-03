@@ -19,6 +19,7 @@ path = "src/lib.rs"
 either = "1.12"
 # tokio = "1.43.0"
 serde = { version = "1.0.208", features = ["derive"] }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 [build-dependencies]
 
