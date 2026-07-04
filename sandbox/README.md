@@ -33,7 +33,7 @@ start with [plans/roadmap.md](plans/roadmap.md).
 - [ ] Cache computation steps (mono instances are content-cached; resolve/exec remain)
 - [ ] Cache IO steps
 - [ ] Store cache in LMDB (with postcard)
-- [ ] Include schema hash in file cache
+- [x] Include schema hash in file cache
 - [ ] Incremental compile starting from main
 - [ ] Incremental compile starting from leafs
 - [ ] Selective caching (e.g not file read)

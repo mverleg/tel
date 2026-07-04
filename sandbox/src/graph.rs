@@ -30,6 +30,14 @@ pub struct MonoId {
     pub ty: Ty,
 }
 
+/// The *logical id* of the keys model (docs/keys-and-invalidation.md): `(query
+/// kind, args)`. It names a query across time and edits — "parse file F" stays
+/// the same StepId when F's bytes change. Process-local by design (the args are
+/// interned `Sym` indices), so it may be hashed/compared cheaply but must never
+/// leak into a [`crate::keys::ContentKey`] or [`crate::keys::Fingerprint`]
+/// as-is; those go through `StableHash`, which resolves the strings.
+/// Session-scoped state (dependency edges — see [`Graph`] — and later dirty
+/// bits and key/fingerprint memos) hangs off this id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StepId {
     Root,

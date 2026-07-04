@@ -1,5 +1,6 @@
 use crate::common::{Interner, Path, FQ};
 use crate::graph::{ExecId, Graph, MonoId, ParseId, ResolveId, StepId};
+use crate::keys::{ContentDigest, ContentKey, QueryKind, StableCtx, StableHash};
 use crate::types::{ExecuteError, Expr, FuncData, MonoFuncData, ParseError, PreExpr, ResolveError, SymbolTable, Ty, TypeError};
 use crate::Printer;
 use async_lazy::Cache;
@@ -43,37 +44,20 @@ impl AncestorPath {
     }
 }
 
-/// A content-addressed digest of a source file's bytes.
-///
-/// Parse results are cached under this digest instead of the file path, which
-/// is what makes the cache safe across source changes (see
-/// docs/cache-invalidation-problem.md):
-/// - file bytes change  -> different digest -> different key -> re-parse
-///   (no stale result served for the old key), and
-/// - file reverted to previously-seen bytes (edit-then-revert, git
-///   branch-switch) -> identical digest -> cache hit (Scenario A).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ContentDigest(u64);
-
-impl ContentDigest {
-    pub fn of(source: &str) -> ContentDigest {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        source.hash(&mut hasher);
-        ContentDigest(hasher.finish())
-    }
-}
-
 /// Not actually forced to be singleton, but it's leaked so singleton is encouraged.
 pub struct Global {
     graph: Graph,
     interner: Interner,
-    /// Content-addressed parse cache: `content digest -> parse result`.
+    /// Content-addressed parse cache: `parse content key -> parse result`.
     ///
-    /// Append-only and immutable, so it is safe to keep across runs: a digest
-    /// always maps to the same result, or is absent (recompute). Invalidation
-    /// is implicit -- a changed file simply produces a new key.
-    content_store: Cache<ContentDigest, PreExpr, ParseError>,
+    /// The key is built from the source byte digest (parse is the leaf query —
+    /// read stays fused with parse — so its content key hashes the external
+    /// input itself, per docs/keys-and-invalidation.md; the file *path* is the
+    /// logical id and not a key ingredient). Append-only and immutable, so it
+    /// is safe to keep across runs: a key always maps to the same result, or
+    /// is absent (recompute). Invalidation is implicit -- a changed file
+    /// simply produces a new key.
+    content_store: Cache<ContentKey, PreExpr, ParseError>,
     func_registry: DashMap<FQ, FuncData>,
     /// Monomorphised instances of the *current* run, keyed by function +
     /// numeric type. This is the positional view the interpreter executes
@@ -88,27 +72,41 @@ pub struct Global {
     /// across runs, and per file: editing one file only invalidates the
     /// instances defined in it. Append-only and immutable, like the parse
     /// cache. Also stores the callee list so the worklist can keep walking on
-    /// a cache hit.
-    mono_store: DashMap<MonoCacheKey, (MonoFuncData, Vec<MonoId>)>,
+    /// a cache hit. Keyed by the [`ContentKey`] built from a [`MonoCacheKey`]
+    /// preimage.
+    mono_store: DashMap<ContentKey, (MonoFuncData, Vec<MonoId>)>,
     /// Content digest of each path as last parsed this run; lets the mono
     /// phase key its cache on the content that resolution actually consumed.
     path_digests: DashMap<Path, ContentDigest>,
     printer: &'static dyn Printer,
 }
 
-/// Cache key of one monomorphised instance: the instance identity plus the
-/// content digest of its defining source file.
+/// Content-key *preimage* of one monomorphised instance: the instance identity
+/// plus the content digest of its defining source file. Hashed (via
+/// `StableHash`, so the FQ enters as strings, not interner indices) into the
+/// [`ContentKey`] the mono store is keyed by.
 ///
-/// The FQ stays in the key (rather than digest alone) because the resolved
-/// and monomorphised ASTs embed path-based FQs — identical content at two
-/// different paths must not share an entry. `is_entry` participates because
-/// the entry point is checked with a relaxed return type.
+/// The FQ stays in the preimage (rather than digest alone) because the
+/// resolved and monomorphised ASTs embed path-based FQs — identical content at
+/// two different paths must not share an entry. `is_entry` participates
+/// because the entry point is checked with a relaxed return type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MonoCacheKey {
     digest: ContentDigest,
     func_loc: FQ,
     ty: Ty,
     is_entry: bool,
+}
+
+impl MonoCacheKey {
+    fn content_key(&self, ctx: &StableCtx<'_>) -> ContentKey {
+        ContentKey::build(QueryKind::Mono, |h| {
+            self.digest.stable_hash(ctx, h);
+            self.func_loc.stable_hash(ctx, h);
+            self.ty.stable_hash(ctx, h);
+            self.is_entry.stable_hash(ctx, h);
+        })
+    }
 }
 
 impl Global {
@@ -166,7 +164,13 @@ impl Global {
         // Record what content this path resolves against in the current run,
         // so later stages (mono) can chain their cache keys to it.
         self.path_digests.insert(id.file_path, digest);
-        let result = self.content_store.get(digest, move || async move {
+        // Parse is the leaf query, so its content key hashes the external
+        // input (the byte digest) — schema version and kind tag are folded in
+        // by construction.
+        let key = ContentKey::build(QueryKind::Parse, |h| {
+            digest.stable_hash(&StableCtx { interner: &self.interner }, h);
+        });
+        let result = self.content_store.get(key, move || async move {
             debug!("CoreContext::parse_impl parsing {:?} (digest {:?})", path, digest);
             crate::parse::tokenize_and_parse(&source, path)
         }).await;
@@ -277,7 +281,8 @@ impl Global {
             // earlier this run), so a changed file cannot be served stale.
             let digest = *self.path_digests.get(&key.func_loc.path())
                 .expect("resolution parsed this file earlier in the run");
-            let cache_key = MonoCacheKey { digest, func_loc: key.func_loc, ty: key.ty, is_entry };
+            let preimage = MonoCacheKey { digest, func_loc: key.func_loc, ty: key.ty, is_entry };
+            let cache_key = preimage.content_key(&StableCtx { interner: &self.interner });
 
             let (data, needed) = match self.mono_store.get(&cache_key).map(|hit| hit.clone()) {
                 Some(hit) => hit,

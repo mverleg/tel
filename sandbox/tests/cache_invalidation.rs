@@ -114,6 +114,35 @@ async fn mono_cache_follows_content_per_file() {
     );
 }
 
+/// Parse is the leaf query, so its content key hashes the bytes only — the
+/// file path is the *logical* id, not a key ingredient
+/// (docs/keys-and-invalidation.md). Byte-identical files at two paths
+/// therefore share one parse entry (sound: the parse output embeds no paths),
+/// while the mono cache, whose output embeds path-based FQs, keeps them apart.
+#[tokio::test]
+async fn identical_content_at_two_paths_shares_parse_but_not_mono() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    fs::write(&main, "(import dbl)\n(import dup)\n(print (+ (call dbl 10) (call dup 11)))\n").unwrap();
+    // dbl and dup are byte-identical but live at different paths.
+    fs::write(dir.path().join("dbl.telsb"), "(* (arg 1) 2)\n").unwrap();
+    fs::write(dir.path().join("dup.telsb"), "(* (arg 1) 2)\n").unwrap();
+
+    let (compiler, out) = recording_compiler();
+    compiler.run(main.to_str().unwrap(), false).await.unwrap();
+    assert_eq!(last_output(&out), "42");
+    assert_eq!(
+        compiler.cached_parse_count(),
+        2,
+        "identical bytes at two paths must share one parse entry (main + shared body)"
+    );
+    assert_eq!(
+        compiler.cached_mono_count(),
+        3,
+        "mono results embed path-based FQs, so the two instances must not share"
+    );
+}
+
 /// Re-running the same unchanged file reuses the cached parse rather than
 /// creating a second entry.
 #[tokio::test]
