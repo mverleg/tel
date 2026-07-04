@@ -291,6 +291,36 @@ comparing current leaf digests against recorded ones.
 * Watcher overflow (e.g. inotify `IN_Q_OVERFLOW`) is detectable and triggers the same
   reconciliation immediately.
 
+### Exact recovery mechanisms
+
+**Interrupted marking** needs no detector; the mechanism is that the trigger outlives the
+attempt. Events queue in memory, coalesced by path; the mutation phase pops an event only
+*after* its (post-order, resumable) marking walk completes. Panic mid-walk ⇒ event still
+queued ⇒ next mutation phase finishes the unmarked remainder. An event whose walk panics
+repeatedly triggers the fallback: discard the session memo (one cold pull). Process death
+kills memo and queue together — the cold start subsumes both.
+
+**Missed events** are handled by one primitive, `reconcile()`: for each known leaf, `stat`;
+mtime+size changed ⇒ re-digest; digest changed ⇒ synthesize a change event into the normal
+queue (reconciliation is just a slower event source, reusing the mutation-phase machinery).
+Mtime is itself only a hint (mtime-preserving tools, clock skew) — digest is truth; paranoid
+mode skips the stat fast-path and hashes everything.
+
+When `reconcile()` runs, by mode — the asymmetry is justified by consequences: IDE staleness
+self-heals at the next keystroke; batch staleness ships a wrong artifact:
+
+| Trigger | IDE / watch mode | Batch / CI |
+|---|---|---|
+| Session start | always (free: empty memo ⇒ cold pull) | always |
+| Watcher overflow / watch error | immediately | n/a — batch mode has no watcher |
+| Before each wave | no — trust the watcher, latency is king | always — never trust a watcher |
+| Window focus regained | optional cheap re-stat | n/a |
+
+Batch/CI mode does not run a watcher at all: it re-stats all leafs at wave start (what
+make/Bazel do every build; milliseconds for thousands of files). A fresh CI process has an
+empty memo and is maximally careful automatically; only a long-running build daemon needs the
+explicit per-wave reconcile.
+
 ## Invariants
 
 1. **Everything hashed into a content key or result fingerprint is deterministic** —
