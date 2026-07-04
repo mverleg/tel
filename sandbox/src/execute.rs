@@ -1,124 +1,151 @@
-use crate::types::Expr;
+use crate::types::MExpr;
+use crate::types::MonoFuncData;
 use crate::types::ExecuteError;
 use crate::types::BinOp;
+use crate::types::Ty;
+use crate::types::Value;
 use crate::types::VarId;
-use crate::common::{Interner, FQ};
+use crate::common::Interner;
 use crate::Printer;
 use log::debug;
 use std::collections::HashMap;
 use crate::context::ExecContext;
-use crate::graph::{ExecId, ResolveId};
+use crate::graph::{ExecId, MonoId, ResolveId};
 use dashmap::DashMap;
-use crate::types::FuncData;
 
 enum EvalResult {
-    Value(i64),
-    Return(i64),
+    Value(Value),
+    Return(Value),
+}
+
+/// Evaluate a binary op on two operands of the same numeric type.
+/// Comparison and logic results are 1/0 in the operand type.
+fn eval_binop<T>(op: BinOp, a: T, b: T) -> Result<T, ExecuteError>
+where
+    T: Copy
+        + PartialOrd
+        + Default
+        + From<bool>
+        + std::ops::Add<Output = T>
+        + std::ops::Sub<Output = T>
+        + std::ops::Mul<Output = T>
+        + std::ops::Div<Output = T>,
+{
+    let zero = T::default();
+    Ok(match op {
+        BinOp::Add => a + b,
+        BinOp::Sub => a - b,
+        BinOp::Mul => a * b,
+        BinOp::Div => {
+            if b == zero {
+                return Err(ExecuteError::DivisionByZero);
+            }
+            a / b
+        }
+        BinOp::Greater => T::from(a > b),
+        BinOp::Less => T::from(a < b),
+        BinOp::Equal => T::from(a == b),
+        BinOp::And => T::from(a != zero && b != zero),
+        BinOp::Or => T::from(a != zero || b != zero),
+    })
 }
 
 struct Interpreter<'a> {
-    values: HashMap<VarId, i64>,
-    func_registry: &'a DashMap<FQ, FuncData>,
+    values: HashMap<VarId, Value>,
+    mono_registry: &'a DashMap<MonoId, MonoFuncData>,
     printer: &'a dyn Printer,
     interner: &'a Interner,
-    args: Option<Vec<i64>>,
+    args: Option<Vec<Value>>,
 }
 
 impl<'a> Interpreter<'a> {
-    fn new(func_registry: &'a DashMap<FQ, FuncData>, printer: &'a dyn Printer, interner: &'a Interner) -> Self {
+    fn new(mono_registry: &'a DashMap<MonoId, MonoFuncData>, printer: &'a dyn Printer, interner: &'a Interner) -> Self {
         Interpreter {
             values: HashMap::new(),
-            func_registry,
+            mono_registry,
             printer,
             interner,
             args: None,
         }
     }
 
-    fn eval(&mut self, expr: &Expr) -> Result<EvalResult, ExecuteError> {
+    fn eval(&mut self, expr: &MExpr) -> Result<EvalResult, ExecuteError> {
         match expr {
-            Expr::Number(n) => Ok(EvalResult::Value(*n)),
-            Expr::VarRef(var_id) => {
-                Ok(EvalResult::Value(*self.values.get(var_id).unwrap_or(&0)))
+            MExpr::Number(v) => Ok(EvalResult::Value(*v)),
+            MExpr::VarRef(var_id) => {
+                let val = *self.values.get(var_id)
+                    .expect("resolver guarantees variables are assigned before use");
+                Ok(EvalResult::Value(val))
             }
-            Expr::BinaryOp { op, left, right } => {
+            MExpr::BinaryOp { op, left, right } => {
                 let left_val = self.eval_value(left)?;
                 let right_val = self.eval_value(right)?;
 
-                let result = match op {
-                    BinOp::Add => left_val + right_val,
-                    BinOp::Sub => left_val - right_val,
-                    BinOp::Mul => left_val * right_val,
-                    BinOp::Div => {
-                        if right_val == 0 {
-                            return Err(ExecuteError::DivisionByZero);
-                        }
-                        left_val / right_val
-                    }
-                    BinOp::Greater => if left_val > right_val { 1 } else { 0 },
-                    BinOp::Less => if left_val < right_val { 1 } else { 0 },
-                    BinOp::Equal => if left_val == right_val { 1 } else { 0 },
-                    BinOp::And => if left_val != 0 && right_val != 0 { 1 } else { 0 },
-                    BinOp::Or => if left_val != 0 || right_val != 0 { 1 } else { 0 },
+                let result = match (left_val, right_val) {
+                    (Value::I32(a), Value::I32(b)) => Value::I32(eval_binop(*op, a, b)?),
+                    (Value::I64(a), Value::I64(b)) => Value::I64(eval_binop(*op, a, b)?),
+                    _ => unreachable!("type checker guarantees binary op operands have the same type"),
                 };
                 Ok(EvalResult::Value(result))
             }
-            Expr::Let { var, value } => {
+            MExpr::Let { var, value } => {
                 let val = self.eval_value(value)?;
                 self.values.insert(*var, val);
                 Ok(EvalResult::Value(val))
             }
-            Expr::Set { var, value } => {
+            MExpr::Set { var, value } => {
                 let val = self.eval_value(value)?;
                 self.values.insert(*var, val);
                 Ok(EvalResult::Value(val))
             }
-            Expr::If {
+            MExpr::If {
                 cond,
                 then_branch,
                 else_branch,
             } => {
                 let cond_val = self.eval_value(cond)?;
-                if cond_val != 0 {
+                if cond_val.is_truthy() {
                     self.eval(then_branch)
                 } else {
                     self.eval(else_branch)
                 }
             }
-            Expr::Print(expr) => {
+            MExpr::Print(expr) => {
                 let val = self.eval_value(expr)?;
                 self.printer.print(&val.to_string());
                 Ok(EvalResult::Value(val))
             }
-            Expr::Return(expr) => {
+            MExpr::Return(expr) => {
                 let val = self.eval_value(expr)?;
                 Ok(EvalResult::Return(val))
             }
-            Expr::Panic { source_location } => {
+            MExpr::Panic { source_location } => {
                 Err(ExecuteError::Panic { source_location: source_location.clone() })
             }
-            Expr::Call { func, args } => {
+            MExpr::Call { func, args } => {
                 let mut arg_vals = Vec::new();
                 for arg in args {
                     arg_vals.push(self.eval_value(arg)?);
                 }
 
-                let func_data = self.func_registry.get(&func.0)
+                let func_data = self.mono_registry.get(func)
                     .ok_or_else(|| ExecuteError::Panic {
-                        source_location: format!("Function not found: {}::{}",
-                            func.0.path_str(self.interner), func.0.name_str(self.interner))
+                        source_location: format!("Monomorphised function not found: {}::{} @ {}",
+                            func.func_loc.path_str(self.interner), func.func_loc.name_str(self.interner), func.ty)
                     })?;
+                debug_assert_eq!(func_data.key, *func);
+                debug_assert_eq!(arg_vals.len(), func_data.arity, "resolver checked call arity");
                 let result = self.call_function(&func_data.ast, arg_vals)?;
                 Ok(EvalResult::Value(result))
             }
-            Expr::Arg(n) => {
+            MExpr::Arg(n) => {
                 let args = self.args.as_ref().ok_or(ExecuteError::ArgNotProvided(*n))?;
                 let index = (*n as usize) - 1;
                 let val = *args.get(index).ok_or(ExecuteError::ArgNotProvided(*n))?;
                 Ok(EvalResult::Value(val))
             }
-            Expr::Sequence(exprs) => {
-                let mut last_val = 0;
+            MExpr::Sequence(exprs) => {
+                let mut last_val = Value::I64(0);
                 for expr in exprs {
                     match self.eval(expr)? {
                         EvalResult::Value(v) => last_val = v,
@@ -130,14 +157,14 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn eval_value(&mut self, expr: &Expr) -> Result<i64, ExecuteError> {
+    fn eval_value(&mut self, expr: &MExpr) -> Result<Value, ExecuteError> {
         match self.eval(expr)? {
             EvalResult::Value(v) => Ok(v),
             EvalResult::Return(v) => Ok(v),
         }
     }
 
-    fn call_function(&mut self, func_ast: &Expr, args: Vec<i64>) -> Result<i64, ExecuteError> {
+    fn call_function(&mut self, func_ast: &MExpr, args: Vec<Value>) -> Result<Value, ExecuteError> {
         let saved_args = self.args.take();
         let saved_values = self.values.clone();
 
@@ -161,12 +188,18 @@ pub async fn execute(ctx: &ExecContext, path: ExecId) -> Result<(), ExecuteError
     let my_main_func = path.main_loc.clone();
     let reesolve_id = ResolveId { func_loc: my_main_func.clone() };
     debug!("execute: resolving {:?}", reesolve_id);
-    let (exprs, _my_symbols) = ctx.resolve_all(&[reesolve_id]).await?;
-    let my_ast = exprs.into_iter().next().unwrap();
-    debug!("execute: resolved, now evaluating");
-    let mut interpreter = Interpreter::new(ctx.func_registry(), ctx.printer(), ctx.interner());
+    ctx.resolve_all(&[reesolve_id]).await?;
+    debug!("execute: resolved, now type checking and monomorphising");
+    // The entry point is not called by anyone, so its type parameter is just
+    // the default numeric type.
+    let entry = MonoId { func_loc: my_main_func, ty: Ty::I64 };
+    ctx.mono(entry)?;
+    debug!("execute: monomorphised, now evaluating");
+    let my_ast = ctx.mono_registry().get(&entry)
+        .expect("entry instance was just monomorphised")
+        .ast.clone();
+    let mut interpreter = Interpreter::new(ctx.mono_registry(), ctx.printer(), ctx.interner());
     interpreter.eval(&my_ast)?;
     debug!("execute: completed successfully");
     Ok(())
 }
-

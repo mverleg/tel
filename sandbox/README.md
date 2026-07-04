@@ -12,8 +12,8 @@ The compiler processes programs in four phases:
 
 1. **Parse** - Tokenize source and build PreExpr AST with string names
 2. **Resolve** - Convert names to unique VarId/FuncId, handle imports, check scoping rules
-3. **Type Check** - (Future phase for static type checking)
-4. **Execute** - Interpret the resolved AST
+3. **Type Check + Monomorphise** - Infer numeric types (i32/i64, `Number` trait bound) and specialise each function per type it is called at
+4. **Execute** - Interpret the monomorphised AST
 
 ## Query engine features
 
@@ -30,7 +30,7 @@ start with [plans/roadmap.md](plans/roadmap.md).
 - [ ] Prevent ctx leak outside scope (just pure fn pointers?)
 - [ ] Lock-free (during compile)
 - [x] Write using async
-- [ ] Cache computation steps
+- [ ] Cache computation steps (mono instances are content-cached; resolve/exec remain)
 - [ ] Cache IO steps
 - [ ] Store cache in LMDB (with postcard)
 - [ ] Include schema hash in file cache

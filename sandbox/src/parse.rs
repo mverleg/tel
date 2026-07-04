@@ -1,11 +1,47 @@
-use crate::types::{BinOp, ParseError, PreExpr};
+use crate::types::{BinOp, ParseError, PreExpr, Ty};
 
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
     LParen,
     RParen,
     Ident(String),
-    Number(i64),
+    /// The `Ty` is `Some` only for suffixed literals like `42i32`.
+    Number(i64, Option<Ty>),
+}
+
+/// Consume an optional `i32`/`i64` suffix after the digits of `num_str` and
+/// produce the number token. Any other trailing ident characters make the
+/// literal invalid (so `12x` is an error rather than two tokens).
+fn finish_number(
+    chars: &mut std::iter::Peekable<std::str::Chars>,
+    num_str: String,
+) -> Result<Token, ParseError> {
+    let mut suffix = String::new();
+    while let Some(&next_ch) = chars.peek() {
+        if next_ch.is_alphanumeric() || next_ch == '_' {
+            suffix.push(chars.next().unwrap());
+        } else {
+            break;
+        }
+    }
+
+    let num = num_str
+        .parse::<i64>()
+        .map_err(|_| ParseError::InvalidNumber(num_str.clone()))?;
+
+    let ty = match suffix.as_str() {
+        "" => None,
+        "i64" => Some(Ty::I64),
+        "i32" => {
+            if i32::try_from(num).is_err() {
+                return Err(ParseError::InvalidNumber(format!("{}{} (out of range for i32)", num_str, suffix)));
+            }
+            Some(Ty::I32)
+        }
+        _ => return Err(ParseError::InvalidNumber(format!("{}{}", num_str, suffix))),
+    };
+
+    Ok(Token::Number(num, ty))
 }
 
 fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
@@ -45,10 +81,7 @@ fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
                             break;
                         }
                     }
-                        let num = num_str
-                            .parse::<i64>()
-                            .map_err(|_| ParseError::InvalidNumber(num_str.clone()))?;
-                        tokens.push(Token::Number(num));
+                        tokens.push(finish_number(&mut chars, num_str)?);
                     } else {
                         tokens.push(Token::Ident("-".to_string()));
                     }
@@ -68,10 +101,7 @@ fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
                     }
                 }
 
-                let num = num_str
-                    .parse::<i64>()
-                    .map_err(|_| ParseError::InvalidNumber(num_str.clone()))?;
-                tokens.push(Token::Number(num));
+                tokens.push(finish_number(&mut chars, num_str)?);
             }
             _ => {
                 let mut ident = String::new();
@@ -124,10 +154,10 @@ impl Parser {
 
     fn parse_expr(&mut self) -> Result<PreExpr, ParseError> {
         match self.peek() {
-            Some(Token::Number(n)) => {
-                let num = *n;
+            Some(Token::Number(n, ty)) => {
+                let (num, num_ty) = (*n, *ty);
                 self.advance();
-                Ok(PreExpr::Number(num))
+                Ok(PreExpr::Number { value: num, ty: num_ty })
             }
             Some(Token::Ident(s)) => {
                 let ident = s.clone();
@@ -255,8 +285,9 @@ impl Parser {
                     }
                     "arg" => {
                         let num = match self.advance() {
-                            Some(Token::Number(n)) if n > 0 => n as u8,
-                            Some(Token::Number(n)) => return Err(ParseError::UnexpectedToken(format!("arg number must be positive, got {}", n))),
+                            Some(Token::Number(n, None)) if n > 0 => n as u8,
+                            Some(Token::Number(n, None)) => return Err(ParseError::UnexpectedToken(format!("arg number must be positive, got {}", n))),
+                            Some(Token::Number(n, Some(_))) => return Err(ParseError::UnexpectedToken(format!("arg number must not have a type suffix, got {}", n))),
                             _ => return Err(ParseError::UnexpectedToken("expected positive arg number".to_string())),
                         };
                         self.expect(Token::RParen)?;

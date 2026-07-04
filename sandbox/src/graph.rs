@@ -1,4 +1,5 @@
 use crate::common::{Ctx, CtxDisplay, Interner, Path, FQ};
+use crate::types::Ty;
 use dashmap::DashMap;
 use serde::Deserialize;
 use serde::Serialize;
@@ -20,11 +21,21 @@ pub struct ExecId {
     pub main_loc: FQ,
 }
 
+/// One monomorphisation instance: a function specialised to one numeric type.
+/// A function has at most one instance per `Ty`, since all its numeric
+/// arguments and its return value share a single type parameter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MonoId {
+    pub func_loc: FQ,
+    pub ty: Ty,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StepId {
     Root,
     Parse(ParseId),
     Resolve(ResolveId),
+    Mono(MonoId),
     Exec(ExecId),
 }
 
@@ -34,6 +45,7 @@ impl CtxDisplay for StepId {
             StepId::Root => write!(f, "Root"),
             StepId::Parse(id) => write!(f, "Parse({})", Ctx(&id.file_path, i)),
             StepId::Resolve(id) => write!(f, "Resolve({})", Ctx(&id.func_loc, i)),
+            StepId::Mono(id) => write!(f, "Mono({} @ {})", Ctx(&id.func_loc, i), id.ty),
             StepId::Exec(id) => write!(f, "Exec({})", Ctx(&id.main_loc, i)),
         }
     }

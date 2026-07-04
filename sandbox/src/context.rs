@@ -1,6 +1,6 @@
-use crate::common::{Interner, FQ};
-use crate::graph::{ExecId, Graph, ParseId, ResolveId, StepId};
-use crate::types::{ExecuteError, Expr, FuncData, ParseError, PreExpr, ResolveError, SymbolTable};
+use crate::common::{Interner, Path, FQ};
+use crate::graph::{ExecId, Graph, MonoId, ParseId, ResolveId, StepId};
+use crate::types::{ExecuteError, Expr, FuncData, MonoFuncData, ParseError, PreExpr, ResolveError, SymbolTable, Ty, TypeError};
 use crate::Printer;
 use async_lazy::Cache;
 use dashmap::DashMap;
@@ -46,8 +46,41 @@ pub struct Global {
     /// is implicit -- a changed file simply produces a new key.
     content_store: Cache<ContentDigest, PreExpr, ParseError>,
     func_registry: DashMap<FQ, FuncData>,
+    /// Monomorphised instances of the *current* run, keyed by function +
+    /// numeric type. This is the positional view the interpreter executes
+    /// from; it is rebuilt per run (from `mono_store` hits where possible).
+    mono_registry: DashMap<MonoId, MonoFuncData>,
+    /// Content-addressed mono cache: `(source digest, instance) -> result`.
+    ///
+    /// The digest chains this cache to the earlier stages: an instance's
+    /// result is a pure function of its defining file's content (plus the
+    /// instance identity), so a changed file gets a new key (never served
+    /// stale) and unchanged/reverted content hits the old entry — including
+    /// across runs, and per file: editing one file only invalidates the
+    /// instances defined in it. Append-only and immutable, like the parse
+    /// cache. Also stores the callee list so the worklist can keep walking on
+    /// a cache hit.
+    mono_store: DashMap<MonoCacheKey, (MonoFuncData, Vec<MonoId>)>,
+    /// Content digest of each path as last parsed this run; lets the mono
+    /// phase key its cache on the content that resolution actually consumed.
+    path_digests: DashMap<Path, ContentDigest>,
     resolution_states: DashMap<FQ, ResolutionState>,
     printer: &'static dyn Printer,
+}
+
+/// Cache key of one monomorphised instance: the instance identity plus the
+/// content digest of its defining source file.
+///
+/// The FQ stays in the key (rather than digest alone) because the resolved
+/// and monomorphised ASTs embed path-based FQs — identical content at two
+/// different paths must not share an entry. `is_entry` participates because
+/// the entry point is checked with a relaxed return type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MonoCacheKey {
+    digest: ContentDigest,
+    func_loc: FQ,
+    ty: Ty,
+    is_entry: bool,
 }
 
 impl Global {
@@ -57,6 +90,9 @@ impl Global {
             interner: Interner::new(),
             content_store: Cache::new(),
             func_registry: DashMap::new(),
+            mono_registry: DashMap::new(),
+            mono_store: DashMap::new(),
+            path_digests: DashMap::new(),
             resolution_states: DashMap::new(),
             printer,
         }
@@ -67,6 +103,13 @@ impl Global {
     /// does not grow this count on a subsequent run.
     pub fn cached_parse_count(&self) -> usize {
         self.content_store.len()
+    }
+
+    /// Number of distinct monomorphised instances cached so far (by source
+    /// digest + instance). Grows only when an instance is checked against
+    /// content it has not seen before.
+    pub fn cached_mono_count(&self) -> usize {
+        self.mono_store.len()
     }
 }
 
@@ -93,6 +136,9 @@ impl Global {
         };
 
         let digest = ContentDigest::of(&source);
+        // Record what content this path resolves against in the current run,
+        // so later stages (mono) can chain their cache keys to it.
+        self.path_digests.insert(id.file_path, digest);
         let result = self.content_store.get(digest, move || async move {
             debug!("CoreContext::parse_impl parsing {:?} (digest {:?})", path, digest);
             crate::parse::tokenize_and_parse(&source, path)
@@ -165,9 +211,60 @@ impl Global {
         Ok((exprs, merged_table))
     }
 
+    /// Type check + monomorphise every instance reachable from `entry`.
+    ///
+    /// Since a call's result type equals its instantiation type, checking an
+    /// instance never needs its callees checked first, so this is a plain
+    /// memoized worklist rather than a recursive query: recursion (including
+    /// polymorphic recursion between the i32 and i64 instances of a function)
+    /// terminates because there are at most two instances per function.
+    fn mono_impl(&'static self, caller: StepId, entry: MonoId) -> Result<(), TypeError> {
+        debug!("CoreContext::mono_impl: entry {:?}", entry);
+        self.graph.register_dependency(caller, StepId::Mono(entry));
+
+        let mut queue = vec![(entry, true)];
+        while let Some((key, is_entry)) = queue.pop() {
+            if self.mono_registry.contains_key(&key) {
+                continue;
+            }
+            // Mono consumes the resolved AST that Resolve put in the registry.
+            self.graph.register_dependency(StepId::Mono(key), StepId::Resolve(ResolveId { func_loc: key.func_loc }));
+
+            // The cache key chains to the parse stage via the content digest
+            // of the instance's defining file (recorded when it was parsed
+            // earlier this run), so a changed file cannot be served stale.
+            let digest = *self.path_digests.get(&key.func_loc.path())
+                .expect("resolution parsed this file earlier in the run");
+            let cache_key = MonoCacheKey { digest, func_loc: key.func_loc, ty: key.ty, is_entry };
+
+            let (data, needed) = match self.mono_store.get(&cache_key).map(|hit| hit.clone()) {
+                Some(hit) => hit,
+                None => {
+                    debug!("CoreContext::mono_impl checking {:?} (digest {:?})", key, digest);
+                    let ctx = MonoContext { core: self };
+                    let computed = crate::typecheck::check_function(&ctx, key, is_entry)?;
+                    self.mono_store.insert(cache_key, computed.clone());
+                    computed
+                }
+            };
+            self.mono_registry.insert(key, data);
+
+            for callee in needed {
+                self.graph.register_dependency(StepId::Mono(key), StepId::Mono(callee));
+                queue.push((callee, false));
+            }
+        }
+        Ok(())
+    }
+
     async fn execute_impl(&'static self, caller: StepId, id: ExecId) -> Result<(), ExecuteError> {
         debug!("CoreContext::execute_impl: {:?}", id);
         self.graph.register_dependency(caller, StepId::Exec(id.clone()));
+        // The mono *registry* is the positional (FQ + type) view of the
+        // current program, so it must be rebuilt per run: a re-run may have
+        // re-resolved a changed file under the same FQ. Cross-run reuse
+        // happens in `mono_store`, whose keys are content-addressed.
+        self.mono_registry.clear();
         let ctx = ExecContext {
             current: id.clone(),
             core: self,
@@ -243,6 +340,23 @@ impl Clone for ResolveContext {
     }
 }
 
+/// Context handed to the type check / monomorphisation phase. It only reads
+/// the resolved function registry; dependency edges are registered by the
+/// worklist driver in `Global::mono_impl`.
+pub struct MonoContext {
+    core: &'static Global,
+}
+
+impl MonoContext {
+    pub fn interner(&self) -> &Interner {
+        &self.core.interner
+    }
+
+    pub fn func_registry(&self) -> &DashMap<FQ, FuncData> {
+        &self.core.func_registry
+    }
+}
+
 pub struct ExecContext {
     current: ExecId,
     core: &'static Global,
@@ -261,12 +375,20 @@ impl ExecContext {
         &self.core.func_registry
     }
 
+    pub fn mono_registry(&self) -> &DashMap<MonoId, MonoFuncData> {
+        &self.core.mono_registry
+    }
+
     pub fn printer(&self) -> &dyn Printer {
         self.core.printer
     }
 
     pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
         self.core.resolve_all_impl(StepId::Exec(self.current.clone()), ids).await
+    }
+
+    pub fn mono(&self, entry: MonoId) -> Result<(), TypeError> {
+        self.core.mono_impl(StepId::Exec(self.current.clone()), entry)
     }
 }
 
@@ -275,5 +397,6 @@ const _: fn() = || {
     fn assert_send<T: Send>() {}
     assert_send::<RootContext>();
     assert_send::<ResolveContext>();
+    assert_send::<MonoContext>();
     assert_send::<ExecContext>();
 };

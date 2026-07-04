@@ -1,6 +1,7 @@
 mod execute;
 mod parse;
 mod resolve;
+mod typecheck;
 mod types;
 mod graph;
 mod context;
@@ -135,6 +136,14 @@ impl Compiler {
     /// unchanged on the next [`run`](Compiler::run).
     pub fn cached_parse_count(&self) -> usize {
         self.core.cached_parse_count()
+    }
+
+    /// Number of distinct monomorphised instances cached so far, keyed by
+    /// source content + instance. Editing a file adds fresh entries only for
+    /// the instances defined in that file; unchanged or reverted files reuse
+    /// their entries on the next [`run`](Compiler::run).
+    pub fn cached_mono_count(&self) -> usize {
+        self.core.cached_mono_count()
     }
 }
 

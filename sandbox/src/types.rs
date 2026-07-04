@@ -1,6 +1,75 @@
 use std::fmt;
 use crate::common::FQ;
+use crate::graph::MonoId;
 use serde::{Deserialize, Serialize};
+
+/// A concrete numeric type. Every value in the language is one of these; there
+/// are no implicit conversions between them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Ty {
+    I32,
+    I64,
+}
+
+impl Ty {
+    pub fn implements(&self, tr: Trait) -> bool {
+        match tr {
+            Trait::Number => matches!(self, Ty::I32 | Ty::I64),
+        }
+    }
+}
+
+impl fmt::Display for Ty {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Ty::I32 => write!(f, "i32"),
+            Ty::I64 => write!(f, "i64"),
+        }
+    }
+}
+
+/// Built-in traits. `Number` is the implicit bound on every function's type
+/// parameter and on operands of binary operators. All current types implement
+/// it; a future non-numeric type (e.g. strings) would not, and would then be
+/// rejected wherever this bound is checked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Trait {
+    Number,
+}
+
+impl fmt::Display for Trait {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Trait::Number => write!(f, "Number"),
+        }
+    }
+}
+
+/// A runtime value. The variant is fixed at compile time by monomorphisation;
+/// binary operations only ever see two values of the same variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Value {
+    I32(i32),
+    I64(i64),
+}
+
+impl Value {
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            Value::I32(v) => *v != 0,
+            Value::I64(v) => *v != 0,
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Value::I32(v) => write!(f, "{}", v),
+            Value::I64(v) => write!(f, "{}", v),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BinOp {
@@ -17,7 +86,12 @@ pub enum BinOp {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PreExpr {
-    Number(i64),
+    /// `ty` is `Some` only for suffixed literals (`42i32`); unsuffixed
+    /// literals stay polymorphic until type inference.
+    Number {
+        value: i64,
+        ty: Option<Ty>,
+    },
     Ident(String),
     BinaryOp {
         op: BinOp,
@@ -72,7 +146,10 @@ pub struct ScopeId(pub usize);
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    Number(i64),
+    Number {
+        value: i64,
+        ty: Option<Ty>,
+    },
     VarRef(VarId),
     BinaryOp {
         op: BinOp,
@@ -101,6 +178,50 @@ pub enum Expr {
     },
     Arg(u8),
     Sequence(Vec<Expr>),
+}
+
+/// A monomorphised expression: literals carry concrete values and calls point
+/// at a concrete `(function, type)` instance. This is what the interpreter runs.
+#[derive(Debug, Clone)]
+pub enum MExpr {
+    Number(Value),
+    VarRef(VarId),
+    BinaryOp {
+        op: BinOp,
+        left: Box<MExpr>,
+        right: Box<MExpr>,
+    },
+    Let {
+        var: VarId,
+        value: Box<MExpr>,
+    },
+    Set {
+        var: VarId,
+        value: Box<MExpr>,
+    },
+    If {
+        cond: Box<MExpr>,
+        then_branch: Box<MExpr>,
+        else_branch: Box<MExpr>,
+    },
+    Print(Box<MExpr>),
+    Return(Box<MExpr>),
+    Panic { source_location: String },
+    Call {
+        func: MonoId,
+        args: Vec<Box<MExpr>>,
+    },
+    Arg(u8),
+    Sequence(Vec<MExpr>),
+}
+
+/// One monomorphised instance of a function: its body specialised to the
+/// instance's numeric type.
+#[derive(Debug, Clone)]
+pub struct MonoFuncData {
+    pub key: MonoId,
+    pub arity: usize,
+    pub ast: MExpr,
 }
 
 #[derive(Debug, Clone)]
@@ -230,12 +351,36 @@ impl fmt::Display for ResolveError {
 
 impl std::error::Error for ResolveError {}
 
+/// Errors from the type check / monomorphisation phase. Payloads carry
+/// already-resolved context strings, like `ResolveError`.
+#[derive(Debug, Clone)]
+pub enum TypeError {
+    Mismatch { context: String, expected: Ty, found: Ty },
+    TraitNotSatisfied { context: String, ty: Ty, tr: Trait },
+    LiteralOutOfRange { context: String, value: i64, ty: Ty },
+    FunctionNotResolved { context: String },
+}
+
+impl fmt::Display for TypeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TypeError::Mismatch { context, expected, found } => write!(f, "Type mismatch in {}: expected {}, found {} (no implicit conversions)", context, expected, found),
+            TypeError::TraitNotSatisfied { context, ty, tr } => write!(f, "Type {} does not implement {} in {}", ty, tr, context),
+            TypeError::LiteralOutOfRange { context, value, ty } => write!(f, "Literal {} does not fit in {} in {}", value, ty, context),
+            TypeError::FunctionNotResolved { context } => write!(f, "Function {} was not resolved before monomorphisation", context),
+        }
+    }
+}
+
+impl std::error::Error for TypeError {}
+
 #[derive(Debug)]
 pub enum ExecuteError {
     DivisionByZero,
     ArgNotProvided(u8),
     Panic { source_location: String },
     ResolveError(Box<ResolveError>),
+    Type(TypeError),
 }
 
 impl fmt::Display for ExecuteError {
@@ -245,6 +390,7 @@ impl fmt::Display for ExecuteError {
             ExecuteError::ArgNotProvided(n) => write!(f, "Argument {} not provided", n),
             ExecuteError::Panic { source_location } => write!(f, "panic at {}", source_location),
             ExecuteError::ResolveError(e) => write!(f, "{}", e),
+            ExecuteError::Type(e) => write!(f, "{}", e),
         }
     }
 }
@@ -254,5 +400,11 @@ impl std::error::Error for ExecuteError {}
 impl From<ResolveError> for ExecuteError {
     fn from(err: ResolveError) -> Self {
         ExecuteError::ResolveError(Box::new(err))
+    }
+}
+
+impl From<TypeError> for ExecuteError {
+    fn from(err: TypeError) -> Self {
+        ExecuteError::Type(err)
     }
 }

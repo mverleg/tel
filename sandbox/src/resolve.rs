@@ -110,7 +110,7 @@ impl<'a> Resolver<'a> {
                     Self::collect_arg_numbers(expr, arg_numbers, max_arg);
                 }
             }
-            PreExpr::Number(_) | PreExpr::Ident(_) | PreExpr::Import(_) | PreExpr::FunctionDef { .. } => {}
+            PreExpr::Number { .. } | PreExpr::Ident(_) | PreExpr::Import(_) | PreExpr::FunctionDef { .. } => {}
         }
     }
 
@@ -162,7 +162,7 @@ impl<'a> Resolver<'a> {
     fn resolve_expr(&mut self, pre_expr: PreExpr) -> Result<Expr, ResolveError> {
         debug!("resolve_expr: {:?} (in_function={})", pre_expr, self.in_function);
         match pre_expr {
-            PreExpr::Number(n) => Ok(Expr::Number(n)),
+            PreExpr::Number { value, ty } => Ok(Expr::Number { value, ty }),
             PreExpr::Ident(name) => {
                 let var_id = self.resolve_var(&name)?;
                 Ok(Expr::VarRef(var_id))
@@ -429,7 +429,7 @@ impl<'a> Resolver<'a> {
                     }
                 }
                 if resolved_exprs.is_empty() {
-                    Ok(Expr::Number(0))
+                    Ok(Expr::Number { value: 0, ty: None })
                 } else if resolved_exprs.len() == 1 {
                     Ok(resolved_exprs.into_iter().next().unwrap())
                 } else {
@@ -437,7 +437,7 @@ impl<'a> Resolver<'a> {
                 }
             }
             PreExpr::Import(_) | PreExpr::FunctionDef { .. } => {
-                Ok(Expr::Number(0))
+                Ok(Expr::Number { value: 0, ty: None })
             }
             other => self.resolve_expr(other.clone()),
         }
@@ -474,7 +474,7 @@ pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: &PreExpr, base_path
         ctx.func_registry().insert(func_loc, FuncData {
             loc: func_loc,
             arity,
-            ast: Expr::Number(0),
+            ast: Expr::Number { value: 0, ty: None },
         });
 
         resolver.funcs.insert(context_str.to_string(), func_id);

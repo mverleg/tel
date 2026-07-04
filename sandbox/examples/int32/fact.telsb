@@ -1,0 +1,6 @@
+# Recursive and generic: instantiated per numeric type at the call site.
+(let n (arg 1))
+
+(if (< n 2)
+  (return n)
+  (return (* n (call fact (- n 1)))))

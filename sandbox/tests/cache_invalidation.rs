@@ -72,6 +72,48 @@ async fn cross_run_cache_invalidates_and_reuses_by_content() {
     );
 }
 
+/// The mono cache is chained to the parse stage: its key contains the content
+/// digest of the instance's defining file. So editing a file recomputes (only)
+/// that file's instances, and reverting it hits the old entries again.
+#[tokio::test]
+async fn mono_cache_follows_content_per_file() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let dbl = dir.path().join("dbl.telsb");
+    let path = main.to_str().unwrap();
+
+    let (compiler, out) = recording_compiler();
+
+    // Run 1: two instances get checked and cached: main @ i64 and dbl @ i64.
+    fs::write(&main, "(import dbl)\n(print (call dbl 21))\n").unwrap();
+    fs::write(&dbl, "(* (arg 1) 2)\n").unwrap();
+    compiler.run(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "42");
+    assert_eq!(compiler.cached_mono_count(), 2);
+
+    // Run 2: dbl's content changed, so dbl @ i64 gets a fresh cache key and is
+    // re-checked (the NEW body must execute -- no staleness). main is
+    // unchanged, so its instance is reused: exactly one new entry.
+    fs::write(&dbl, "(* (arg 1) 3)\n").unwrap();
+    compiler.run(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "63", "changed content must not be served stale");
+    assert_eq!(
+        compiler.cached_mono_count(),
+        3,
+        "only the changed file's instance may produce a new cache entry"
+    );
+
+    // Run 3: revert dbl. Both instances hit the cache; no new entries.
+    fs::write(&dbl, "(* (arg 1) 2)\n").unwrap();
+    compiler.run(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "42");
+    assert_eq!(
+        compiler.cached_mono_count(),
+        3,
+        "reverting to previously-seen content must hit the mono cache"
+    );
+}
+
 /// Re-running the same unchanged file reuses the cached parse rather than
 /// creating a second entry.
 #[tokio::test]

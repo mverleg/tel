@@ -1,0 +1,21 @@
+# Numeric types demo: the same functions are monomorphised at i64 and i32.
+# Unsuffixed literals are inferred (defaulting to the enclosing instance's
+# type); suffixed literals like 21i32 pin a type. No implicit conversions.
+(import double)
+(import fact)
+
+(function add1 (+ (arg 1) 1))
+
+# i64 instances (the default)
+(print (call double 21))      # 42
+(print (call fact 5))         # 120
+(print (call add1 9))         # 10
+
+# i32 instances of the very same functions
+(print (call double 21i32))   # 42
+(print (call fact 5i32))      # 120
+(print (call add1 9i32))      # 10
+
+# a value that only fits in i64
+(let big 1000000000000i64)
+(print (/ big 1000000))       # 1000000

@@ -1,0 +1,2 @@
+# Generic over T: Number — the literal 2 adopts the instance's type.
+(* (arg 1) 2)
