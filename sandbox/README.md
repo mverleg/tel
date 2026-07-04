@@ -17,6 +17,10 @@ The compiler processes programs in four phases:
 
 ## Query engine features
 
+Status list below; for the *ordered* execution plan (with rationale, the
+caching design, and gaps vs `qcompiler`), see [plans/](plans/) —
+start with [plans/roadmap.md](plans/roadmap.md).
+
 - [x] Build dependency graph
 - [x] Force always going through context
 - [x] Process imports in parallel
