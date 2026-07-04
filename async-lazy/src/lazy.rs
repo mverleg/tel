@@ -62,73 +62,83 @@ impl<T, E> ALazy<T, E> {
     /// If another task is initializing, waits for completion.
     /// If not initialized, calls the provided function to initialize.
     ///
-    /// The initialization function is only called once across all tasks.
+    /// A returned `Err` is terminal and cached like a success. Cancellation (the returned
+    /// future being dropped mid-init) or a panic in `init` is *not* terminal: the claim
+    /// reverts to empty and a waiting task takes over with its own `init`, so `init` may
+    /// run more than once across tasks in those cases.
     pub async fn get_or_init<F, Fut>(&self, init: F) -> &Result<T, E>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<T, E>>,
     {
-        // Fast path: already initialized (success or failure)
-        match self.state.load(Ordering::Acquire) {
-            FILLED | FAILED => {
-                // SAFETY: State is terminal, value is set and will never change
-                return unsafe { (*self.value.get()).as_ref().unwrap() };
-            }
-            _ => {}
-        }
-
-        // Try to claim initialization
-        match self
-            .state
-            .compare_exchange(EMPTY, INITIALIZING, Ordering::Acquire, Ordering::Acquire)
-        {
-            Ok(_) => {
-                // We claimed it - do the initialization
-                let result = init().await;
-                let final_state = match &result {
-                    Ok(_) => FILLED,
-                    Err(_) => FAILED,
-                };
-
-                unsafe {
-                    *self.value.get() = Some(result);
+        let mut init = Some(init);
+        loop {
+            // Fast path: already initialized (success or failure)
+            match self.state.load(Ordering::Acquire) {
+                FILLED | FAILED => {
+                    // SAFETY: State is terminal, value is set and will never change
+                    return unsafe { (*self.value.get()).as_ref().unwrap() };
                 }
-
-                self.state.store(final_state, Ordering::Release);
-                self.notify.notify_waiters();
-
-                // SAFETY: We just filled it
-                unsafe { (*self.value.get()).as_ref().unwrap() }
+                _ => {}
             }
-            Err(_) => {
-                // Someone else is initializing or it got initialized - wait for completion
-                self.wait().await
+
+            // Try to claim initialization
+            match self
+                .state
+                .compare_exchange(EMPTY, INITIALIZING, Ordering::Acquire, Ordering::Acquire)
+            {
+                Ok(_) => {
+                    // If we are cancelled (dropped at the await below) or `init` panics,
+                    // the claim must not stay INITIALIZING forever: the guard reverts it
+                    // to EMPTY and wakes waiters so one of them can take over.
+                    let guard = RevertClaimOnDrop { lazy: self };
+                    let result = (init.take().expect("claim happens at most once"))().await;
+                    std::mem::forget(guard);
+
+                    let final_state = match &result {
+                        Ok(_) => FILLED,
+                        Err(_) => FAILED,
+                    };
+                    unsafe {
+                        *self.value.get() = Some(result);
+                    }
+                    self.state.store(final_state, Ordering::Release);
+                    self.notify.notify_waiters();
+
+                    // SAFETY: We just filled it
+                    return unsafe { (*self.value.get()).as_ref().unwrap() };
+                }
+                Err(_) => {
+                    // Someone else is initializing (or it just became terminal). Register
+                    // for notification *before* re-checking state: notify_waiters() only
+                    // wakes already-registered waiters, so checking first could miss a
+                    // notification sent in between and hang.
+                    let notified = self.notify.notified();
+                    tokio::pin!(notified);
+                    notified.as_mut().enable();
+                    match self.state.load(Ordering::Acquire) {
+                        INITIALIZING => notified.await,
+                        // Terminal, or reverted to EMPTY by a cancelled/panicked
+                        // initializer: retry immediately (possibly claiming it ourselves).
+                        _ => {}
+                    }
+                }
             }
         }
     }
+}
 
-    /// Wait for initialization to complete, then return the value.
-    /// Returns the value once initialization succeeds or fails.
-    async fn wait(&self) -> &Result<T, E> {
-        loop {
-            match self.state.load(Ordering::Acquire) {
-                FILLED | FAILED => {
-                    // SAFETY: State is terminal, value is set
-                    return unsafe { (*self.value.get()).as_ref().unwrap() };
-                }
-                INITIALIZING => {
-                    // Wait for notification
-                    self.notify.notified().await;
-                    // Loop to check state again after waking
-                }
-                EMPTY => {
-                    // Initialization was never started or was reset - this shouldn't happen
-                    // in normal usage but we handle it by waiting
-                    self.notify.notified().await;
-                }
-                _ => unreachable!("Invalid state"),
-            }
-        }
+/// Reverts an `INITIALIZING` claim back to `EMPTY` and wakes waiters, unless defused
+/// with `mem::forget` after successful initialization. Runs when the claiming task is
+/// cancelled or its init future panics.
+struct RevertClaimOnDrop<'a, T, E> {
+    lazy: &'a ALazy<T, E>,
+}
+
+impl<T, E> Drop for RevertClaimOnDrop<'_, T, E> {
+    fn drop(&mut self) {
+        self.lazy.state.store(EMPTY, Ordering::Release);
+        self.lazy.notify.notify_waiters();
     }
 }
 
@@ -210,6 +220,85 @@ mod tests {
 
         // Fast path should work
         assert_eq!(*lazy.get().unwrap(), Ok(42));
+    }
+
+    #[tokio::test]
+    async fn test_cancelled_initializer_releases_claim() {
+        let lazy = Arc::new(ALazy::<i32, ()>::new());
+        let lazy_clone = lazy.clone();
+        let leader = tokio::spawn(async move {
+            lazy_clone
+                .get_or_init(|| async {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
+                    Ok(1)
+                })
+                .await;
+        });
+        tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+        assert!(lazy.is_initializing());
+
+        leader.abort();
+        let _ = leader.await;
+
+        // The claim must have been released; a new caller must complete, not hang.
+        let result = tokio::time::timeout(
+            tokio::time::Duration::from_secs(1),
+            lazy.get_or_init(|| async { Ok::<_, ()>(2) }),
+        )
+        .await
+        .expect("get_or_init hung after initializer was cancelled");
+        assert_eq!(*result, Ok(2));
+    }
+
+    #[tokio::test]
+    async fn test_waiter_takes_over_after_cancelled_initializer() {
+        let lazy = Arc::new(ALazy::<i32, ()>::new());
+        let lazy_clone = lazy.clone();
+        let leader = tokio::spawn(async move {
+            lazy_clone
+                .get_or_init(|| async {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
+                    Ok(1)
+                })
+                .await;
+        });
+        tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+
+        // Park a waiter while the leader holds the claim.
+        let lazy_clone = lazy.clone();
+        let waiter = tokio::spawn(async move {
+            *lazy_clone.get_or_init(|| async { Ok::<_, ()>(2) }).await
+        });
+        tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+
+        leader.abort();
+        let _ = leader.await;
+
+        let result = tokio::time::timeout(tokio::time::Duration::from_secs(1), waiter)
+            .await
+            .expect("waiter hung after initializer was cancelled")
+            .unwrap();
+        assert_eq!(result, Ok(2));
+    }
+
+    #[tokio::test]
+    async fn test_panicking_initializer_releases_claim() {
+        let lazy = Arc::new(ALazy::<i32, ()>::new());
+        let lazy_clone = lazy.clone();
+        let leader = tokio::spawn(async move {
+            lazy_clone
+                .get_or_init(|| async { panic!("init panicked") })
+                .await;
+        });
+        assert!(leader.await.is_err());
+
+        let result = tokio::time::timeout(
+            tokio::time::Duration::from_secs(1),
+            lazy.get_or_init(|| async { Ok::<_, ()>(7) }),
+        )
+        .await
+        .expect("get_or_init hung after initializer panicked");
+        assert_eq!(*result, Ok(7));
     }
 
     #[tokio::test]
