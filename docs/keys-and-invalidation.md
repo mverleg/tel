@@ -207,6 +207,16 @@ yield points already exist). Granularity is one query step: a long CPU-bound ker
 awaits cannot be interrupted until it finishes or explicitly checks the token every N
 iterations — steps are small by design, so wave cancellation lands within milliseconds.
 
+**Cancellation scope and resumption.** A cancel takes down the *entire query phase* — every
+in-flight target, including ones the pending change does not touch — because the mutation
+phase requires exclusivity. This is cheap to undo: unfinished root requests are simply
+re-queued, and there is no suspend/resume machinery — "resume" is "re-request, and the memo
+makes it cheap." Every query completed before the cancel is `Verified` in the memo (and
+persisted), so after the mutation phase, targets whose cones were untouched re-pull through
+green nodes at memo-hit speed, and an affected target restarts from exactly the queries that
+had not finished. Resumption granularity is one query step; work is never lost at any coarser
+grain.
+
 ### Cycle detection
 
 The kind-ordering rule eliminates cross-kind wait cycles, but sideways (same-kind) calls can
