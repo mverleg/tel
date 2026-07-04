@@ -81,7 +81,7 @@ collision hygiene this enables:
 
 | Layer | Keyed by | Contains | Lifetime |
 |---|---|---|---|
-| **Session memo** (in-memory) | logical id | last content key, last result fingerprint, forward + reverse dep edges, node state (`Unknown / MaybeDirty / Pending / Verified`) | one process; rebuilt on start |
+| **Session memo** (in-memory) | logical id | last content key, last result fingerprint, forward + reverse dep edges, node state (`Unknown / Dirty / Pending / Verified`) | one process; rebuilt on start |
 | **Persistent cache** (disk / shared) | content key | result value + its result fingerprint | across runs and machines; append + GC only |
 
 The persistent cache is **never invalidated**. An entry under a content key is valid forever
@@ -113,7 +113,12 @@ know the root's key without the leafs). Acceptable for batch compiles; too slow 
 With a file watcher and the reverse edges:
 
 1. A leaf changes → mark its logical id and (transitively, via reverse edges) its dependents
-   as *maybe dirty*. Marking is conservative and cheap; do no hashing here.
+   as *dirty* (conservative: it may verify unchanged later). Marking is cheap; do no hashing
+   here. The walk stops at nodes that are already dirty — sound because of the marking
+   invariant below, and it makes the very common IDE case free: a file that changes *again*
+   before any compile ran is already dirty, so re-marking is O(1) (nothing to do beyond
+   coalescing the event by path; the new content is picked up when the next wave reads the
+   leaf digest).
 2. Queries **not** marked reuse their memoized content key and fingerprint with zero
    recursion — this is the entire payoff: untouched subgraphs cost nothing.
 3. To clean a marked query: refresh its deps (recursively, same rules), rebuild its content
@@ -127,6 +132,25 @@ This is rustc's red-green algorithm transplanted onto content-addressed keys: gr
 memoized key still derivable, red = key changed. The difference from rustc is that the
 backing store is a pure content-addressed map, so it needs no revision counters and can be
 shared across machines.
+
+**Marking invariant and resumability.** Stopping the walk at already-dirty nodes is only
+sound if *dirty implies all transitive dependents are dirty*. A marking walk that dies
+halfway (panic in the mutation phase, in a process that survives) would break that invariant
+— nodes marked, their dependents not — and the retry would stop early at the half-marked
+frontier, leaving green nodes wrongly trusted. Two rules keep marking safe without requiring
+panics to be fatal:
+
+* **Flip post-order:** mark a node only after all its dependents are marked (recurse up the
+  reverse edges first, flip on the way back; the leaf flips last). Then the invariant holds
+  at every intermediate state, and an interrupted walk is resumable: re-walking from the
+  still-unflipped leaf revisits and finishes exactly the unmarked remainder.
+* **Consume the change event only after the walk completes.** A panic mid-walk leaves the
+  event queued; the next mutation phase retries.
+
+Belt-and-braces fallback: any unexpected panic in the mutation phase may simply discard the
+entire session memo (never the persistent cache) — the next wave does one full pull-from-root,
+which is always correct. Query-phase panics need none of this: dirty bits are untouched by
+cleaning failures (invariant 8), so a half-cleaned wave is already a correct restart state.
 
 **Why marking never cleans eagerly.** Eager bottom-up propagation ("recompute upward from
 the changed leaf, stop where the fingerprint stops changing") degenerates into pulls anyway —
@@ -149,9 +173,9 @@ fingerprints to have changed — a path the old edges cover. Marking is thus con
 Multiple end-targets can be pulled concurrently in one process; overlap coordinates through
 per-query single-flight.
 
-* Memo nodes move through `Unknown / MaybeDirty / Pending(owner, wakers) / Verified(key, fp)`.
+* Memo nodes move through `Unknown / Dirty / Pending(owner, wakers) / Verified(key, fp)`.
   The first task to need a query claims it (atomic transition to `Pending`) and computes;
-  later arrivals await the waker. Cleaning a `MaybeDirty` node happens under the same claim,
+  later arrivals await the waker. Cleaning a `Dirty` node happens under the same claim,
   so overlapping targets coordinate identically whether a node is fresh or dirty — leaf-driven
   mode is not a separate build mode, just pull over a memo that carries dirty flags.
 * Determinism makes lost races benign: if two tasks ever do compute the same query, they
@@ -172,6 +196,16 @@ persisted, so the restarted pull is mostly hits and cancelled work is never wast
 keeps per-node transitions simple (marker runs only in mutation phase, cleaner only in query
 phase). Multi-version snapshots (queries and mutations overlapping) were considered and
 rejected: large complexity, small win for a compiler.
+
+**Interruption mechanics.** No JVM-style safepoint machinery is needed: in async Rust every
+`.await` is a natural safepoint. Cancellation is cooperative — abort the wave's task group
+(futures dropped at their next await; drop guards such as the `Pending` claim revert restore
+state) or signal a `CancellationToken` that tasks check at query boundaries. Cost during
+normal execution is zero for drop-based cancellation and one atomic load per check for
+token-based (the JVM pays <1% for safepoint polls in arbitrary code; we need less, since
+yield points already exist). Granularity is one query step: a long CPU-bound kernel between
+awaits cannot be interrupted until it finishes or explicitly checks the token every N
+iterations — steps are small by design, so wave cancellation lands within milliseconds.
 
 ### Cycle detection
 
