@@ -7,6 +7,7 @@ mod graph;
 mod context;
 mod common;
 mod keys;
+mod store;
 
 use std::fmt;
 use std::collections::HashSet;
@@ -153,6 +154,19 @@ impl Compiler {
     /// their entries on the next [`run`](Compiler::run).
     pub fn cached_mono_count(&self) -> usize {
         self.core.cached_mono_count()
+    }
+
+    /// Number of parse computations actually executed. Unlike
+    /// [`cached_parse_count`](Compiler::cached_parse_count) this counts work
+    /// done rather than entries stored: a cache hit — including a cached
+    /// *error* — does not grow it.
+    pub fn computed_parse_count(&self) -> usize {
+        self.core.computed_parse_count()
+    }
+
+    /// Number of mono checks actually executed (cache hits excluded).
+    pub fn computed_mono_count(&self) -> usize {
+        self.core.computed_mono_count()
     }
 }
 

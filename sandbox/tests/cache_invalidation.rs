@@ -143,6 +143,72 @@ async fn identical_content_at_two_paths_shares_parse_but_not_mono() {
     );
 }
 
+/// Deterministic errors are terminal answers (docs/keys-and-invalidation.md
+/// invariant 6): a file that fails to parse is not re-parsed on the next run —
+/// the cached error is served from the content store.
+#[tokio::test]
+async fn parse_errors_are_cached_answers() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let path = main.to_str().unwrap();
+    fs::write(&main, "(print 42").unwrap(); // missing closing paren
+
+    let (compiler, _out) = recording_compiler();
+
+    assert!(compiler.run(path, false).await.is_err());
+    assert!(compiler.run(path, false).await.is_err(), "the same error must be reported again");
+    assert_eq!(
+        compiler.computed_parse_count(),
+        1,
+        "the second run must hit the cached error, not re-parse"
+    );
+}
+
+/// Same for the type check + mono phase: a deterministic `TypeError` is
+/// stored under the instance's content key like a success, so re-running
+/// unchanged bad content reports the same error without re-checking.
+#[tokio::test]
+async fn type_errors_are_cached_answers() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let path = main.to_str().unwrap();
+    fs::write(&main, "(print (+ 1i32 2i64))\n").unwrap(); // type mismatch
+
+    let (compiler, _out) = recording_compiler();
+
+    assert!(compiler.run(path, false).await.is_err());
+    let after_first = compiler.computed_mono_count();
+    assert!(compiler.run(path, false).await.is_err(), "the same error must be reported again");
+    assert_eq!(
+        compiler.computed_mono_count(),
+        after_first,
+        "the second run must hit the cached type error, not re-check"
+    );
+}
+
+/// Recompiling a byte-identical project computes nothing new in the cached
+/// phases: parse and mono are pure content-store hits.
+#[tokio::test]
+async fn unchanged_recompile_recomputes_no_cached_phase() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let dbl = dir.path().join("dbl.telsb");
+    let path = main.to_str().unwrap();
+    fs::write(&main, "(import dbl)\n(print (call dbl 21))\n").unwrap();
+    fs::write(&dbl, "(* (arg 1) 2)\n").unwrap();
+
+    let (compiler, out) = recording_compiler();
+
+    compiler.run(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "42");
+    let (parses, monos) = (compiler.computed_parse_count(), compiler.computed_mono_count());
+
+    compiler.run(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "42");
+    assert_eq!(compiler.computed_parse_count(), parses, "unchanged files must not re-parse");
+    assert_eq!(compiler.computed_mono_count(), monos, "unchanged instances must not re-check");
+}
+
 /// Re-running the same unchanged file reuses the cached parse rather than
 /// creating a second entry.
 #[tokio::test]

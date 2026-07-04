@@ -281,6 +281,15 @@ impl<T: StableHash> StableHash for Vec<T> {
     }
 }
 
+/// Tuples hash field by field, like structs; fixed arity needs no length
+/// prefix.
+impl<A: StableHash, B: StableHash> StableHash for (A, B) {
+    fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
+        self.0.stable_hash(ctx, out);
+        self.1.stable_hash(ctx, out);
+    }
+}
+
 impl<T: StableHash> StableHash for Option<T> {
     fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
         match self {

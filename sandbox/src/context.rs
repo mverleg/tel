@@ -1,11 +1,12 @@
-use crate::common::{Interner, Path, FQ};
+use crate::common::{Interner, FQ};
 use crate::graph::{ExecId, Graph, MonoId, ParseId, ResolveId, StepId};
-use crate::keys::{ContentDigest, ContentKey, QueryKind, StableCtx, StableHash};
+use crate::keys::{ContentDigest, ContentKey, Fingerprint, QueryKind, StableCtx, StableHash};
+use crate::store::{BindingLayer, BindingRecord, ContentStore, MonoAnswer};
 use crate::types::{ExecuteError, Expr, FuncData, MonoFuncData, ParseError, PreExpr, ResolveError, SymbolTable, Ty, TypeError};
 use crate::Printer;
-use async_lazy::Cache;
 use dashmap::DashMap;
 use log::debug;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 /// Immutable chain of resolutions in progress on this task's path, root-most
@@ -48,36 +49,29 @@ impl AncestorPath {
 pub struct Global {
     graph: Graph,
     interner: Interner,
-    /// Content-addressed parse cache: `parse content key -> parse result`.
-    ///
-    /// The key is built from the source byte digest (parse is the leaf query —
-    /// read stays fused with parse — so its content key hashes the external
-    /// input itself, per docs/keys-and-invalidation.md; the file *path* is the
-    /// logical id and not a key ingredient). Append-only and immutable, so it
-    /// is safe to keep across runs: a key always maps to the same result, or
-    /// is absent (recompute). Invalidation is implicit -- a changed file
-    /// simply produces a new key.
-    content_store: Cache<ContentKey, PreExpr, ParseError>,
+    /// The immutable content-addressed layer (docs/keys-and-invalidation.md):
+    /// append-only `content key -> answer` tables for parse and mono. A key
+    /// always maps to the same answer, or is absent (recompute); invalidation
+    /// is implicit — changed input, different key. Parse keys hash the source
+    /// byte digest (parse is the leaf query — read stays fused with parse —
+    /// so the file *path* is the logical id, not a key ingredient); mono keys
+    /// chain to the parse stage via the defining file's digest, so editing a
+    /// file only misses the instances defined in it.
+    store: ContentStore,
+    /// The mutable session memo (`logical id -> current binding`): which
+    /// content key each step position currently resolves to, its last output
+    /// fingerprint, and the recorded leaf digests the mono phase chains its
+    /// keys to. The only cache state that is ever rebound.
+    bindings: BindingLayer,
     func_registry: DashMap<FQ, FuncData>,
     /// Monomorphised instances of the *current* run, keyed by function +
     /// numeric type. This is the positional view the interpreter executes
-    /// from; it is rebuilt per run (from `mono_store` hits where possible).
+    /// from; it is rebuilt per run (from content-store hits where possible).
     mono_registry: DashMap<MonoId, MonoFuncData>,
-    /// Content-addressed mono cache: `(source digest, instance) -> result`.
-    ///
-    /// The digest chains this cache to the earlier stages: an instance's
-    /// result is a pure function of its defining file's content (plus the
-    /// instance identity), so a changed file gets a new key (never served
-    /// stale) and unchanged/reverted content hits the old entry — including
-    /// across runs, and per file: editing one file only invalidates the
-    /// instances defined in it. Append-only and immutable, like the parse
-    /// cache. Also stores the callee list so the worklist can keep walking on
-    /// a cache hit. Keyed by the [`ContentKey`] built from a [`MonoCacheKey`]
-    /// preimage.
-    mono_store: DashMap<ContentKey, (MonoFuncData, Vec<MonoId>)>,
-    /// Content digest of each path as last parsed this run; lets the mono
-    /// phase key its cache on the content that resolution actually consumed.
-    path_digests: DashMap<Path, ContentDigest>,
+    /// Parse computations actually executed (content-store misses).
+    computed_parses: AtomicUsize,
+    /// Mono checks actually executed (content-store misses).
+    computed_monos: AtomicUsize,
     printer: &'static dyn Printer,
 }
 
@@ -114,11 +108,12 @@ impl Global {
         Global {
             graph: Graph::new(),
             interner: Interner::new(),
-            content_store: Cache::new(),
+            store: ContentStore::new(),
+            bindings: BindingLayer::new(),
             func_registry: DashMap::new(),
             mono_registry: DashMap::new(),
-            mono_store: DashMap::new(),
-            path_digests: DashMap::new(),
+            computed_parses: AtomicUsize::new(0),
+            computed_monos: AtomicUsize::new(0),
             printer,
         }
     }
@@ -127,14 +122,43 @@ impl Global {
     /// Lets callers observe cross-run cache reuse: an unchanged or reverted file
     /// does not grow this count on a subsequent run.
     pub fn cached_parse_count(&self) -> usize {
-        self.content_store.len()
+        self.store.parse_len()
     }
 
     /// Number of distinct monomorphised instances cached so far (by source
     /// digest + instance). Grows only when an instance is checked against
     /// content it has not seen before.
     pub fn cached_mono_count(&self) -> usize {
-        self.mono_store.len()
+        self.store.mono_len()
+    }
+
+    /// Number of parse computations actually executed so far — unlike
+    /// [`cached_parse_count`](Global::cached_parse_count) this counts work
+    /// done, not entries: a cache hit (including a cached *error*) does not
+    /// grow it.
+    pub fn computed_parse_count(&self) -> usize {
+        self.computed_parses.load(Ordering::Relaxed)
+    }
+
+    /// Number of mono checks actually executed so far (cache hits excluded).
+    pub fn computed_mono_count(&self) -> usize {
+        self.computed_monos.load(Ordering::Relaxed)
+    }
+
+    /// Record the output fingerprint of a completed resolve step in the
+    /// binding layer. Resolve has no content key yet (its key will be built
+    /// from dep fingerprints once derived-step caching lands); the
+    /// fingerprint is recorded now so dependents can key on the *output* of
+    /// resolution rather than its source bytes.
+    fn record_resolve_output(&self, id: &ResolveId, expr: &Expr, table: &SymbolTable) {
+        let ctx = StableCtx { interner: &self.interner };
+        let fingerprint = Fingerprint::of(&(expr, table), &ctx);
+        self.bindings.record(StepId::Resolve(*id), BindingRecord {
+            content_key: None,
+            fingerprint: Some(fingerprint),
+            input_digest: None,
+            dirty: false,
+        });
     }
 }
 
@@ -154,26 +178,45 @@ impl Global {
         let path = id.file_path.resolve(&self.interner);
         let source = match tokio::fs::read_to_string(path).await {
             Ok(source) => source,
-            // Without content there is no digest to key on, so IO errors are not
-            // stored in the content store. Leak a 'static error to satisfy the
+            // An IO failure is transient, not a deterministic answer
+            // (invariant 6 of docs/keys-and-invalidation.md): without content
+            // there is no digest to key on, so nothing enters the content
+            // store or the binding layer. Leak a 'static error to satisfy the
             // signature (the compiler already leaks its Global/interner).
             Err(err) => return Err(Box::leak(Box::new(ParseError::from(err)))),
         };
 
         let digest = ContentDigest::of(&source);
-        // Record what content this path resolves against in the current run,
-        // so later stages (mono) can chain their cache keys to it.
-        self.path_digests.insert(id.file_path, digest);
         // Parse is the leaf query, so its content key hashes the external
         // input (the byte digest) — schema version and kind tag are folded in
         // by construction.
         let key = ContentKey::build(QueryKind::Parse, |h| {
             digest.stable_hash(&StableCtx { interner: &self.interner }, h);
         });
-        let result = self.content_store.get(key, move || async move {
+        let result = self.store.parse_get(key, move || async move {
             debug!("CoreContext::parse_impl parsing {:?} (digest {:?})", path, digest);
+            self.computed_parses.fetch_add(1, Ordering::Relaxed);
             crate::parse::tokenize_and_parse(&source, path)
         }).await;
+
+        // Rebind this position to what its content resolves to now: content
+        // key, output fingerprint, and the leaf digest later stages chain
+        // their keys to. One whole-record insert (memo updates are atomic per
+        // query); skipped when the binding is already current, so an
+        // unchanged re-demand does not re-fingerprint the AST.
+        let step = StepId::Parse(id);
+        if !self.bindings.is_current(&step, key) {
+            let ctx = StableCtx { interner: &self.interner };
+            self.bindings.record(step, BindingRecord {
+                content_key: Some(key),
+                // A deterministic parse error is a terminal answer and is
+                // cached above, but carries no output fingerprint yet (error
+                // fingerprints arrive with early cutoff).
+                fingerprint: result.as_ref().ok().map(|pre| Fingerprint::of(pre, &ctx)),
+                input_digest: Some(digest),
+                dirty: false,
+            });
+        }
 
         // Return borrowed reference to cached result
         result.as_ref()
@@ -207,7 +250,8 @@ impl Global {
                 core: self,
                 ancestors,
             };
-            let (expr, table) = crate::resolve::resolve(&ctx, id).await?;
+            let (expr, table) = crate::resolve::resolve(&ctx, id.clone()).await?;
+            self.record_resolve_output(&id, &expr, &table);
             return Ok((vec![expr], table));
         }
 
@@ -220,7 +264,11 @@ impl Global {
             let handle = tokio::spawn(async move {
                 core.graph.register_dependency(StepId::Root, StepId::Resolve(id.clone()));
                 let ctx = ResolveContext { current: id.clone(), core, ancestors };
-                crate::resolve::resolve(&ctx, id).await
+                let result = crate::resolve::resolve(&ctx, id.clone()).await;
+                if let Ok((expr, table)) = &result {
+                    core.record_resolve_output(&id, expr, table);
+                }
+                result
             });
             handles.push(handle);
         }
@@ -233,7 +281,8 @@ impl Global {
             core: self,
             ancestors,
         };
-        let last_result = crate::resolve::resolve(&ctx, last_id).await?;
+        let last_result = crate::resolve::resolve(&ctx, last_id.clone()).await?;
+        self.record_resolve_output(&last_id, &last_result.0, &last_result.1);
 
         // Wait for all spawned tasks
         let mut all_results = Vec::with_capacity(n);
@@ -277,23 +326,40 @@ impl Global {
             self.graph.register_dependency(StepId::Mono(key), StepId::Resolve(ResolveId { func_loc: key.func_loc }));
 
             // The cache key chains to the parse stage via the content digest
-            // of the instance's defining file (recorded when it was parsed
+            // of the instance's defining file (bound when it was parsed
             // earlier this run), so a changed file cannot be served stale.
-            let digest = *self.path_digests.get(&key.func_loc.path())
+            let parse_step = StepId::Parse(ParseId { file_path: key.func_loc.path() });
+            let digest = self.bindings.leaf_digest(&parse_step)
                 .expect("resolution parsed this file earlier in the run");
             let preimage = MonoCacheKey { digest, func_loc: key.func_loc, ty: key.ty, is_entry };
             let cache_key = preimage.content_key(&StableCtx { interner: &self.interner });
 
-            let (data, needed) = match self.mono_store.get(&cache_key).map(|hit| hit.clone()) {
+            let answer: MonoAnswer = match self.store.mono_get(&cache_key) {
                 Some(hit) => hit,
                 None => {
                     debug!("CoreContext::mono_impl checking {:?} (digest {:?})", key, digest);
+                    self.computed_monos.fetch_add(1, Ordering::Relaxed);
                     let ctx = MonoContext { core: self };
-                    let computed = crate::typecheck::check_function(&ctx, key, is_entry)?;
-                    self.mono_store.insert(cache_key, computed.clone());
-                    computed
+                    // A deterministic `TypeError` is a terminal answer: it is
+                    // stored like a success, so re-demanding the same content
+                    // reports the same error without re-checking.
+                    let computed = crate::typecheck::check_function(&ctx, key, is_entry);
+                    self.store.mono_insert(cache_key, computed)
                 }
             };
+
+            let step = StepId::Mono(key);
+            if !self.bindings.is_current(&step, cache_key) {
+                let sctx = StableCtx { interner: &self.interner };
+                self.bindings.record(step, BindingRecord {
+                    content_key: Some(cache_key),
+                    fingerprint: answer.as_ref().ok().map(|pair| Fingerprint::of(pair, &sctx)),
+                    input_digest: None,
+                    dirty: false,
+                });
+            }
+
+            let (data, needed) = answer?;
             self.mono_registry.insert(key, data);
 
             for callee in needed {
@@ -449,3 +515,70 @@ const _: fn() = || {
     assert_send::<MonoContext>();
     assert_send::<ExecContext>();
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::Path;
+    use crate::NoopPrinter;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn global() -> &'static Global {
+        Box::leak(Box::new(Global::new(&NoopPrinter)))
+    }
+
+    /// After a parse completes, its logical id is bound — atomically, as one
+    /// record — to the content key, output fingerprint, and leaf digest; the
+    /// binding follows the content when it changes.
+    #[tokio::test]
+    async fn parse_binds_key_digest_and_fingerprint() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("main.telsb");
+        fs::write(&file, "(print 42)\n").unwrap();
+
+        let g = global();
+        let id = ParseId { file_path: Path::intern(&g.interner, file.to_str().unwrap()) };
+        g.parse_impl(StepId::Root, id).await.unwrap();
+
+        let record = g.bindings.get(&StepId::Parse(id)).expect("parse step is bound");
+        let key = record.content_key.expect("leaf content key is bound");
+        let fingerprint = record.fingerprint.expect("output fingerprint is bound");
+        assert_eq!(record.input_digest, Some(ContentDigest::of("(print 42)\n")));
+        assert!(!record.dirty);
+
+        // Unchanged re-demand: the binding stays current.
+        g.parse_impl(StepId::Root, id).await.unwrap();
+        let again = g.bindings.get(&StepId::Parse(id)).unwrap();
+        assert_eq!(again.content_key, Some(key));
+        assert_eq!(again.fingerprint, Some(fingerprint));
+
+        // Changed content rebinds the same logical id to a new key (and here
+        // a new fingerprint — the AST changed too).
+        fs::write(&file, "(print 43)\n").unwrap();
+        g.parse_impl(StepId::Root, id).await.unwrap();
+        let rebound = g.bindings.get(&StepId::Parse(id)).unwrap();
+        assert_ne!(rebound.content_key, Some(key));
+        assert_ne!(rebound.fingerprint, Some(fingerprint));
+    }
+
+    /// A deterministic parse error is a terminal answer: it is stored in the
+    /// content store (no recompute on re-demand) and bound in the memo, just
+    /// without an output fingerprint.
+    #[tokio::test]
+    async fn parse_error_is_a_cached_answer() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("broken.telsb");
+        fs::write(&file, "(print 42").unwrap();
+
+        let g = global();
+        let id = ParseId { file_path: Path::intern(&g.interner, file.to_str().unwrap()) };
+        assert!(g.parse_impl(StepId::Root, id).await.is_err());
+        assert!(g.parse_impl(StepId::Root, id).await.is_err());
+
+        assert_eq!(g.computed_parse_count(), 1, "the cached error must be served, not re-parsed");
+        let record = g.bindings.get(&StepId::Parse(id)).expect("errored parse is still bound");
+        assert!(record.content_key.is_some());
+        assert!(record.fingerprint.is_none());
+    }
+}
