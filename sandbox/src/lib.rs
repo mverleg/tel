@@ -124,6 +124,14 @@ impl Compiler {
         ctx.execute(exec_id).await
             .map_err(|e| Error::Execute("main".to_string(), e))?;
 
+        // The ancestor-path check makes a cyclic import fail resolution, so a
+        // compile that got this far must have an acyclic resolve graph; the
+        // post-hoc DFS stays as a debug-only verification of that invariant.
+        debug_assert!(
+            ctx.graph().find_resolve_cycle(&exec_id.main_loc).is_none(),
+            "compile succeeded but the resolve graph contains a cycle"
+        );
+
         if show_deps {
             print_dependency_tree(&ctx);
         }

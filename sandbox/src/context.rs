@@ -5,13 +5,42 @@ use crate::Printer;
 use async_lazy::Cache;
 use dashmap::DashMap;
 use log::debug;
-use std::time::Instant;
+use std::sync::Arc;
 
-/// State of a resolution process, used for cycle detection
+/// Immutable chain of resolutions in progress on this task's path, root-most
+/// first (docs/cycle-detection.md). Each child resolution extends the chain by
+/// one; the `Arc` shares the prefix, so extending is cheap and parallel
+/// branches never see each other's chain — which is what keeps a diamond
+/// (shared dependency, different chains) from false-positiving as a cycle.
 #[derive(Clone)]
-pub enum ResolutionState {
-    InProgress { started_at: Instant },
-    Completed,
+pub struct AncestorPath(Arc<Vec<FQ>>);
+
+impl AncestorPath {
+    pub fn empty() -> AncestorPath {
+        AncestorPath(Arc::new(Vec::new()))
+    }
+
+    pub fn contains(&self, fq: FQ) -> bool {
+        self.0.contains(&fq)
+    }
+
+    /// New path with `fq` appended; the receiver is unchanged.
+    pub fn extended(&self, fq: FQ) -> AncestorPath {
+        let mut chain = Vec::with_capacity(self.0.len() + 1);
+        chain.extend_from_slice(&self.0);
+        chain.push(fq);
+        AncestorPath(Arc::new(chain))
+    }
+
+    /// The offending chain as human-readable `path::name` strings: from the
+    /// first occurrence of `repeat`, through the tail, closed by `repeat`.
+    pub fn cycle_strings(&self, repeat: FQ, interner: &Interner) -> Vec<String> {
+        let fq_str = |fq: &FQ| format!("{}::{}", fq.path_str(interner), fq.name_str(interner));
+        let start = self.0.iter().position(|fq| *fq == repeat).unwrap_or(0);
+        let mut cycle: Vec<String> = self.0[start..].iter().map(fq_str).collect();
+        cycle.push(fq_str(&repeat));
+        cycle
+    }
 }
 
 /// A content-addressed digest of a source file's bytes.
@@ -64,7 +93,6 @@ pub struct Global {
     /// Content digest of each path as last parsed this run; lets the mono
     /// phase key its cache on the content that resolution actually consumed.
     path_digests: DashMap<Path, ContentDigest>,
-    resolution_states: DashMap<FQ, ResolutionState>,
     printer: &'static dyn Printer,
 }
 
@@ -93,7 +121,6 @@ impl Global {
             mono_registry: DashMap::new(),
             mono_store: DashMap::new(),
             path_digests: DashMap::new(),
-            resolution_states: DashMap::new(),
             printer,
         }
     }
@@ -148,8 +175,20 @@ impl Global {
         result.as_ref()
     }
 
-    async fn resolve_all_impl(&'static self, caller: StepId, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
+    async fn resolve_all_impl(&'static self, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
         debug!("CoreContext::resolve_all_impl x{}: {:?}", ids.len(), ids);
+
+        // Deadlock-safe cycle detection (docs/cycle-detection.md): a requested
+        // resolution that is already on this task's in-progress ancestor chain
+        // closes an import cycle. Checked before any await/spawn, so the
+        // wait-for cycle — two parked tasks awaiting each other — never forms.
+        for id in ids {
+            if ancestors.contains(id.func_loc) {
+                return Err(ResolveError::CyclicDependency {
+                    cycle: ancestors.cycle_strings(id.func_loc, &self.interner),
+                });
+            }
+        }
 
         if ids.is_empty() {
             return Ok((Vec::new(), SymbolTable::new()));
@@ -162,6 +201,7 @@ impl Global {
             let ctx = ResolveContext {
                 current: id.clone(),
                 core: self,
+                ancestors,
             };
             let (expr, table) = crate::resolve::resolve(&ctx, id).await?;
             return Ok((vec![expr], table));
@@ -172,9 +212,10 @@ impl Global {
         let core = self;
         for i in 0..n-1 {
             let id = ids[i].clone();
+            let ancestors = ancestors.clone();
             let handle = tokio::spawn(async move {
                 core.graph.register_dependency(StepId::Root, StepId::Resolve(id.clone()));
-                let ctx = ResolveContext { current: id.clone(), core };
+                let ctx = ResolveContext { current: id.clone(), core, ancestors };
                 crate::resolve::resolve(&ctx, id).await
             });
             handles.push(handle);
@@ -186,6 +227,7 @@ impl Global {
         let ctx = ResolveContext {
             current: last_id.clone(),
             core: self,
+            ancestors,
         };
         let last_result = crate::resolve::resolve(&ctx, last_id).await?;
 
@@ -302,6 +344,8 @@ impl RootContext {
 pub struct ResolveContext {
     current: ResolveId,
     core: &'static Global,
+    /// In-progress resolutions leading here, `current` implied at the tail.
+    ancestors: AncestorPath,
 }
 
 impl ResolveContext {
@@ -317,17 +361,15 @@ impl ResolveContext {
         &self.core.func_registry
     }
 
-    //TODO @mark: not pub?
-    pub fn resolution_states(&self) -> &DashMap<FQ, ResolutionState> {
-        &self.core.resolution_states
-    }
-
     pub async fn parse(&self, id: ParseId) -> Result<&'static PreExpr, &'static ParseError> {
         self.core.parse_impl(StepId::Resolve(self.current.clone()), id).await
     }
 
     pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
-        self.core.resolve_all_impl(StepId::Resolve(self.current.clone()), ids).await
+        // Children see the chain including `current`, so re-requesting any
+        // resolution on this task's path (self-import included) is caught.
+        let chain = self.ancestors.extended(self.current.func_loc);
+        self.core.resolve_all_impl(StepId::Resolve(self.current.clone()), chain, ids).await
     }
 }
 
@@ -336,6 +378,7 @@ impl Clone for ResolveContext {
         ResolveContext {
             current: self.current.clone(),
             core: self.core,
+            ancestors: self.ancestors.clone(),
         }
     }
 }
@@ -384,7 +427,8 @@ impl ExecContext {
     }
 
     pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
-        self.core.resolve_all_impl(StepId::Exec(self.current.clone()), ids).await
+        // Exec is the root of a resolve tree: no resolutions are in progress yet.
+        self.core.resolve_all_impl(StepId::Exec(self.current.clone()), AncestorPath::empty(), ids).await
     }
 
     pub fn mono(&self, entry: MonoId) -> Result<(), TypeError> {

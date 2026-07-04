@@ -37,7 +37,7 @@ start with [plans/roadmap.md](plans/roadmap.md).
 - [ ] Incremental compile starting from main
 - [ ] Incremental compile starting from leafs
 - [ ] Selective caching (e.g not file read)
-- [ ] Cycle detection
+- [x] Cycle detection
 
 ## Running Programs
 

@@ -104,6 +104,12 @@ impl Graph {
 
     /// Find a cycle containing the given FQ in Resolve dependencies.
     /// Returns the cycle as a vector of FQs, starting from the target and ending at the target.
+    ///
+    /// Diagnostic only (docs/cycle-detection.md): the *primary* cycle detector
+    /// is the ancestor-path check in `resolve_all_impl`, which fires before a
+    /// cyclic import can deadlock the parallel resolver. This post-hoc DFS
+    /// exists to verify, on a finished graph, that the invariant held (see the
+    /// debug assertion in `Compiler::run`).
     pub fn find_resolve_cycle(&self, target: &FQ) -> Option<Vec<FQ>> {
         let target_id = StepId::Resolve(ResolveId { func_loc: target.clone() });
 

@@ -1,5 +1,5 @@
 use crate::common::{Name, FQ};
-use crate::context::{ResolveContext, ResolutionState};
+use crate::context::ResolveContext;
 use crate::graph::{ParseId, ResolveId};
 use crate::types::{Expr, FuncId, PreExpr, ResolveError, ScopeId, SymbolTable, VarId};
 use log::debug;
@@ -8,7 +8,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::future::Future;
-use std::time::Instant;
 
 struct Resolver<'a> {
     ctx: &'a ResolveContext,
@@ -497,54 +496,19 @@ pub async fn resolve_internal(ctx: &ResolveContext, pre_ast: &PreExpr, base_path
     Ok((ast, resolver.symbol_table))
 }
 
-fn detect_and_report_cycle(ctx: &ResolveContext, id: &ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
-    let cycle_path = ctx.graph().find_resolve_cycle(&id.func_loc)
-        .ok_or_else(|| ResolveError::JoinError("Cycle suspected but not found in graph".to_string()))?;
-
-    let cycle = cycle_path.iter()
-        .map(|fq| format!("{}::{}", fq.path_str(ctx.interner()), fq.name_str(ctx.interner())))
-        .collect();
-    Err(ResolveError::CyclicDependency { cycle })
-}
-
 pub async fn resolve(ctx: &ResolveContext, id: ResolveId) -> Result<(Expr, SymbolTable), ResolveError> {
     let ResolveId { func_loc: fq } = id;
     debug!("resolve: starting for {:?}", fq);
 
-    // Cycle detection: Check if already in progress
-    // Must read and drop the guard before any other operations
-    let is_in_progress = ctx.resolution_states()
-        .get(&fq)
-        .map(|ref_guard| matches!(*ref_guard, ResolutionState::InProgress { .. }))
-        .unwrap_or(false);
-    // Guard is dropped here
-
-    if is_in_progress {
-        debug!("resolve: cycle detected for {:?}", fq);
-        return detect_and_report_cycle(ctx, &ResolveId { func_loc: fq });
-    }
-
-    // Mark as in progress
-    debug!("resolve: marking {:?} as in progress", fq);
-    ctx.resolution_states().insert(
-        fq.clone(),
-        ResolutionState::InProgress { started_at: Instant::now() }
-    );
-
+    // Import cycles are caught in `resolve_all_impl` *before* this resolution
+    // is spawned or awaited, via the context's in-progress ancestor chain
+    // (docs/cycle-detection.md) -- so by the time we are here, this resolution
+    // is known not to close a cycle.
     let my_pre_ast = ctx.parse(ParseId { file_path: fq.path() }).await
         .map_err(|e| ResolveError::ParseError(fq.path_str(ctx.interner()).to_string(), e.clone()))?;
     debug!("resolve: parsed {:?}, calling resolve_internal as function", fq);
     // When resolving via ResolveId, we're always resolving a function (either imported or main)
     // The file body is treated as the function body, so Args are allowed
-    let result = resolve_internal(ctx, my_pre_ast, fq.path_str(ctx.interner()), fq.name(), true).await;
-
-    // Mark as completed (whether success or failure)
-    debug!("resolve: marking {:?} as completed", fq);
-    ctx.resolution_states().insert(
-        fq,
-        ResolutionState::Completed
-    );
-
-    result
+    resolve_internal(ctx, my_pre_ast, fq.path_str(ctx.interner()), fq.name(), true).await
 }
 
