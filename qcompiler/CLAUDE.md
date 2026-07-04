@@ -2,7 +2,7 @@
 
 This is a query-based incremental compiler for the Tel language, intended to replace the existing compiler. Similar to Rust projects like Salsa and Rock, but with custom requirements around IO and immutability.
 
-The caching model (three identifiers per query, content-addressed persistent cache, leaf-driven dirty marking) is specified in `docs/keys-and-invalidation.md` — read that before touching keys, fingerprints, or invalidation.
+The caching model (three identifiers per query, content-addressed persistent cache, leaf-driven dirty marking) is specified in `docs/keys-and-invalidation.md`; the runtime model (concurrency, cancellation, cycle detection, failure recovery) in `docs/execution-and-recovery.md`. Read those before touching keys, fingerprints, invalidation, or the engine.
 
 ## Core Architecture
 
