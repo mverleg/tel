@@ -31,6 +31,9 @@ tel-parser = { path = "./parser", version = "=0.1.0" }
 tel-lang = { path = "./compiler", version = "=0.1.0" }
 
 # External dependencies
+# Fast hasher for in-memory maps only (collisions are caught by Eq there);
+# 64-bit and not stable across runs/versions, so never for stored fingerprints.
+# See docs/hashing.md
 ahash = "0.8.12"
 clap = { version = "4.5.54", default-features = true, features = ["std", "derive", "unicode"] }
 dashmap = "6.1.0"

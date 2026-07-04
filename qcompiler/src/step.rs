@@ -18,9 +18,9 @@ trait Query: fmt::Debug + PartialEq + Eq + hash::Hash {}
 /// If an answer is the same as given a previous time, then subsequent
 /// steps will reuse their cache. So equality & hash should cover everything.
 trait Answer: fmt::Debug + PartialEq + Eq {}
-// Answers are compared by xxh3-128 hash instead of full equality; at 128 bits collisions
-// stay negligible even if hashes are later used as identity across values (dedup,
-// content-addressed cache keys), unlike 64-bit where birthday odds grow with n^2 / 2^65.
+// Answers are compared by result fingerprint (xxh3-64) instead of full equality; content
+// keys for cache lookup are xxh3-128. Result fingerprints must never be used as storage or
+// lookup keys themselves — see docs/keys-and-invalidation.md and docs/hashing.md.
 
 //TODO @mark: if a query was re-run and provided the same answer, is the answer saved once or twice?
 
