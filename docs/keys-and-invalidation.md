@@ -133,6 +133,13 @@ memoized key still derivable, red = key changed. The difference from rustc is th
 backing store is a pure content-addressed map, so it needs no revision counters and can be
 shared across machines.
 
+Rejected alternative: pure *verifying traces* (rustc/salsa — in "Build Systems à la Carte"
+terms; ours is the *constructive* variant): look up by logical key, store the previous dep
+list with fingerprints, revalidate on each run. Cheaper bookkeeping single-machine, but its
+cache entries are only meaningful relative to one machine's revision history — it cannot be
+shared across runs and machines, which content-addressed keys give us for free. We keep the
+verifying idea only as the session-memo optimization described above.
+
 **Marking invariant and resumability.** Stopping the walk at already-dirty nodes is only
 sound if *dirty implies all transitive dependents are dirty*. A marking walk that dies
 halfway (panic in the mutation phase, in a process that survives) would break that invariant

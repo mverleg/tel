@@ -31,6 +31,11 @@ skipping a rebuild, and shipping stale output with no error anywhere.
 The same applies to content-addressed cache keys (`telc-cache`, parse cache): the hash *is*
 the identity of the content.
 
+Rejected alternative: salsa (rust-analyzer) keeps the full previous value and compares real
+`Eq`, using hashes only for map lookup — zero false positives, at the cost of holding every
+answer in memory. For our step cache, where answers can be large and the cache is shared on
+disk, the fingerprint approach is the better trade.
+
 ## Why 128 Bits
 
 The failure modes are asymmetric:
