@@ -1,11 +1,13 @@
 use crate::common::{Interner, FQ};
 use crate::graph::{ExecId, Graph, MonoId, ParseId, ResolveId, StepId};
 use crate::keys::{ContentDigest, ContentKey, Fingerprint, QueryKind, StableCtx, StableHash};
-use crate::store::{BindingLayer, BindingRecord, ContentStore, MonoAnswer};
-use crate::types::{ExecuteError, Expr, FuncData, MonoFuncData, ParseError, PreExpr, ResolveError, SymbolTable, Ty, TypeError};
+use crate::store::{BindingLayer, BindingRecord, ContentStore, MonoAnswer, ResolveAnswer, ResolveEntry};
+use crate::types::{ExecuteError, Expr, FuncData, FuncId, MonoFuncData, ParseError, PreExpr, ResolveError, SymbolTable, Ty, TypeError};
 use crate::Printer;
 use dashmap::DashMap;
 use log::debug;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -50,13 +52,15 @@ pub struct Global {
     graph: Graph,
     interner: Interner,
     /// The immutable content-addressed layer (docs/keys-and-invalidation.md):
-    /// append-only `content key -> answer` tables for parse and mono. A key
-    /// always maps to the same answer, or is absent (recompute); invalidation
-    /// is implicit — changed input, different key. Parse keys hash the source
-    /// byte digest (parse is the leaf query — read stays fused with parse —
-    /// so the file *path* is the logical id, not a key ingredient); mono keys
-    /// chain to the parse stage via the defining file's digest, so editing a
-    /// file only misses the instances defined in it.
+    /// append-only `content key -> answer` tables for parse, resolve, and
+    /// mono. A key always maps to the same answer, or is absent (recompute);
+    /// invalidation is implicit — changed input, different key. Parse keys
+    /// hash the source byte digest (parse is the leaf query — read stays
+    /// fused with parse — so the file *path* is the logical id, not a key
+    /// ingredient); resolve and mono keys chain to their upstream steps via
+    /// the *answer fingerprints* of their direct dependencies, one hop at a
+    /// time — a Merkle DAG over answers, which is what makes a hit
+    /// transitively valid by construction.
     store: ContentStore,
     /// The mutable session memo (`logical id -> current binding`): which
     /// content key each step position currently resolves to, its last output
@@ -70,23 +74,29 @@ pub struct Global {
     mono_registry: DashMap<MonoId, MonoFuncData>,
     /// Parse computations actually executed (content-store misses).
     computed_parses: AtomicUsize,
+    /// Resolve computations actually executed (content-store misses).
+    computed_resolves: AtomicUsize,
     /// Mono checks actually executed (content-store misses).
     computed_monos: AtomicUsize,
     printer: &'static dyn Printer,
 }
 
 /// Content-key *preimage* of one monomorphised instance: the instance identity
-/// plus the content digest of its defining source file. Hashed (via
-/// `StableHash`, so the FQ enters as strings, not interner indices) into the
-/// [`ContentKey`] the mono store is keyed by.
+/// plus the fingerprint of the one thing `check_function` consumes — the
+/// resolved [`FuncData`] of the instance's function. Hashed (via `StableHash`,
+/// so the FQ enters as strings, not interner indices) into the [`ContentKey`]
+/// the mono store is keyed by.
 ///
-/// The FQ stays in the preimage (rather than digest alone) because the
-/// resolved and monomorphised ASTs embed path-based FQs — identical content at
-/// two different paths must not share an entry. `is_entry` participates
-/// because the entry point is checked with a relaxed return type.
+/// Chaining to the *function's* resolved data (rather than the file's source
+/// digest) buys function-level cutoff: an edit that leaves this function's
+/// resolved AST unchanged — whitespace anywhere, or a change to a *different*
+/// function in the same file — leaves this instance's key unchanged, so it is
+/// a pure hit. The FQ stays in the preimage because the monomorphised AST
+/// embeds path-based FQs; `is_entry` participates because the entry point is
+/// checked with a relaxed return type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MonoCacheKey {
-    digest: ContentDigest,
+    func_fp: Fingerprint,
     func_loc: FQ,
     ty: Ty,
     is_entry: bool,
@@ -95,7 +105,7 @@ pub struct MonoCacheKey {
 impl MonoCacheKey {
     fn content_key(&self, ctx: &StableCtx<'_>) -> ContentKey {
         ContentKey::build(QueryKind::Mono, |h| {
-            self.digest.stable_hash(ctx, h);
+            self.func_fp.stable_hash(ctx, h);
             self.func_loc.stable_hash(ctx, h);
             self.ty.stable_hash(ctx, h);
             self.is_entry.stable_hash(ctx, h);
@@ -113,6 +123,7 @@ impl Global {
             func_registry: DashMap::new(),
             mono_registry: DashMap::new(),
             computed_parses: AtomicUsize::new(0),
+            computed_resolves: AtomicUsize::new(0),
             computed_monos: AtomicUsize::new(0),
             printer,
         }
@@ -125,11 +136,16 @@ impl Global {
         self.store.parse_len()
     }
 
-    /// Number of distinct monomorphised instances cached so far (by source
-    /// digest + instance). Grows only when an instance is checked against
-    /// content it has not seen before.
+    /// Number of distinct monomorphised instances cached so far (by resolved
+    /// function fingerprint + instance). Grows only when an instance is
+    /// checked against resolved content it has not seen before.
     pub fn cached_mono_count(&self) -> usize {
         self.store.mono_len()
+    }
+
+    /// Number of distinct resolve answers cached so far (by content key).
+    pub fn cached_resolve_count(&self) -> usize {
+        self.store.resolve_len()
     }
 
     /// Number of parse computations actually executed so far — unlike
@@ -140,25 +156,15 @@ impl Global {
         self.computed_parses.load(Ordering::Relaxed)
     }
 
+    /// Number of resolve computations actually executed so far (cache hits —
+    /// including cached *errors* — excluded).
+    pub fn computed_resolve_count(&self) -> usize {
+        self.computed_resolves.load(Ordering::Relaxed)
+    }
+
     /// Number of mono checks actually executed so far (cache hits excluded).
     pub fn computed_mono_count(&self) -> usize {
         self.computed_monos.load(Ordering::Relaxed)
-    }
-
-    /// Record the output fingerprint of a completed resolve step in the
-    /// binding layer. Resolve has no content key yet (its key will be built
-    /// from dep fingerprints once derived-step caching lands); the
-    /// fingerprint is recorded now so dependents can key on the *output* of
-    /// resolution rather than its source bytes.
-    fn record_resolve_output(&self, id: &ResolveId, expr: &Expr, table: &SymbolTable) {
-        let ctx = StableCtx { interner: &self.interner };
-        let fingerprint = Fingerprint::of(&(expr, table), &ctx);
-        self.bindings.record(StepId::Resolve(*id), BindingRecord {
-            content_key: None,
-            fingerprint: Some(fingerprint),
-            input_digest: None,
-            dirty: false,
-        });
     }
 }
 
@@ -223,7 +229,15 @@ impl Global {
     }
 
     async fn resolve_all_impl(&'static self, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
-        debug!("CoreContext::resolve_all_impl x{}: {:?}", ids.len(), ids);
+        let (results, table) = self.resolve_all_fp(caller, ancestors, ids).await?;
+        Ok((results.into_iter().map(|(expr, _fp)| expr).collect(), table))
+    }
+
+    /// Resolve every id (concurrently for more than one), returning each
+    /// answer *with its result fingerprint* — the ingredient a dependent needs
+    /// to build its own content key.
+    async fn resolve_all_fp(&'static self, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId]) -> Result<(Vec<(Expr, Fingerprint)>, SymbolTable), ResolveError> {
+        debug!("CoreContext::resolve_all_fp x{}: {:?}", ids.len(), ids);
 
         // Deadlock-safe cycle detection (docs/cycle-detection.md): a requested
         // resolution that is already on this task's in-progress ancestor chain
@@ -243,46 +257,29 @@ impl Global {
 
         let n = ids.len();
         if n == 1 {
-            let id = ids[0].clone();
-            self.graph.register_dependency(caller, StepId::Resolve(id.clone()));
-            let ctx = ResolveContext {
-                current: id.clone(),
-                core: self,
-                ancestors,
-            };
-            let (expr, table) = crate::resolve::resolve(&ctx, id.clone()).await?;
-            self.record_resolve_output(&id, &expr, &table);
-            return Ok((vec![expr], table));
+            let id = ids[0];
+            self.graph.register_dependency(caller, StepId::Resolve(id));
+            let (expr, table, fp) = self.resolve_one(ancestors, id).await?;
+            return Ok((vec![(expr, fp)], table));
         }
 
         // Spawn tasks for items 0..N-1
         let mut handles = Vec::new();
         let core = self;
         for i in 0..n-1 {
-            let id = ids[i].clone();
+            let id = ids[i];
             let ancestors = ancestors.clone();
             let handle = tokio::spawn(async move {
-                core.graph.register_dependency(StepId::Root, StepId::Resolve(id.clone()));
-                let ctx = ResolveContext { current: id.clone(), core, ancestors };
-                let result = crate::resolve::resolve(&ctx, id.clone()).await;
-                if let Ok((expr, table)) = &result {
-                    core.record_resolve_output(&id, expr, table);
-                }
-                result
+                core.graph.register_dependency(caller, StepId::Resolve(id));
+                core.resolve_one(ancestors, id).await
             });
             handles.push(handle);
         }
 
         // Use current task for the Nth item
-        let last_id = ids[n-1].clone();
-        self.graph.register_dependency(caller.clone(), StepId::Resolve(last_id.clone()));
-        let ctx = ResolveContext {
-            current: last_id.clone(),
-            core: self,
-            ancestors,
-        };
-        let last_result = crate::resolve::resolve(&ctx, last_id.clone()).await?;
-        self.record_resolve_output(&last_id, &last_result.0, &last_result.1);
+        let last_id = ids[n-1];
+        self.graph.register_dependency(caller, StepId::Resolve(last_id));
+        let last_result = self.resolve_one(ancestors, last_id).await?;
 
         // Wait for all spawned tasks
         let mut all_results = Vec::with_capacity(n);
@@ -294,16 +291,197 @@ impl Global {
         all_results.push(last_result);
 
         // Build result vectors
-        let mut exprs = Vec::with_capacity(n);
+        let mut results = Vec::with_capacity(n);
         let mut merged_table = SymbolTable::new();
 
-        for (expr, table) in all_results {
-            exprs.push(expr);
+        for (expr, table, fp) in all_results {
+            results.push((expr, fp));
             merged_table.vars.extend(table.vars);
             // funcs are now in global registry, no need to merge
         }
 
-        Ok((exprs, merged_table))
+        Ok((results, merged_table))
+    }
+
+    /// Resolve one file-level unit through the two-layer cache — the pull
+    /// direction of docs/keys-and-invalidation.md ("Recomputation From the
+    /// Root"):
+    ///
+    /// 1. Re-derive the content key top-down: demand the parse (leaf) first,
+    ///    then the imports' resolutions recursively; each level's key embeds
+    ///    the *answer fingerprints* of its direct deps, and cache hits stop
+    ///    the recursion below.
+    /// 2. Look the key up. A hit is served without running the resolver, and
+    ///    is transitively valid *by construction* — the key can only match if
+    ///    every upstream answer (all the way to the leaf digests) matched
+    ///    first. This is the transitive validation of
+    ///    docs/cache-invalidation-problem.md #4, done by key derivation
+    ///    instead of a separate validity walk.
+    /// 3. On a miss, run the resolver body and store the answer under the key
+    ///    — deterministic errors included, as terminal answers.
+    ///
+    /// The dependency set for the key (the import list) is re-derived fresh
+    /// from the parse answer on every demand, never read from recorded graph
+    /// edges — old edges may describe other content (the "zombie" problem the
+    /// design doc warns about).
+    ///
+    /// Boxed because it is recursive through `resolve_all_fp` (import chains
+    /// recurse; spawning breaks the cycle for all but the inline last id).
+    fn resolve_one(&'static self, ancestors: AncestorPath, id: ResolveId) -> Pin<Box<dyn Future<Output = Result<(Expr, SymbolTable, Fingerprint), ResolveError>> + Send>> {
+        Box::pin(async move {
+            let fq = id.func_loc;
+            debug!("CoreContext::resolve_one: {:?}", id);
+
+            // Leaf first: (re-)demand the parse. A content-store hit costs a
+            // read + digest, not a parse.
+            let pre = match self.parse_impl(StepId::Resolve(id), ParseId { file_path: fq.path() }).await {
+                Ok(pre) => pre,
+                // The parse error itself is the cached (terminal) answer;
+                // this wrapper is cheap re-derivation on every demand. It is
+                // not stored: an error output has no fingerprint yet, so a
+                // resolve above it cannot be keyed (error fingerprints arrive
+                // with early cutoff).
+                Err(e) => {
+                    let path_str = fq.path_str(&self.interner).to_string();
+                    return Err(ResolveError::ParseError(path_str, e.clone()));
+                }
+            };
+            // Fingerprint the answer we actually hold (not a memo), so the
+            // key derivation can never pair a stale fingerprint with fresh
+            // content.
+            let sctx = StableCtx { interner: &self.interner };
+            let parse_fp = Fingerprint::of(pre, &sctx);
+
+            let context_str = fq.name_str(&self.interner);
+            let imports = match crate::resolve::extract_import_names(pre, context_str) {
+                Ok(imports) => imports,
+                // Deterministic in the parse answer alone, so cacheable under
+                // a key with an empty dep list. That preimage cannot alias a
+                // successful no-import resolution: same parse fingerprint
+                // means same PreExpr means the same extraction outcome.
+                Err(e) => {
+                    let key = Self::resolve_key(&sctx, fq, parse_fp, &[]);
+                    let entry = self.store.resolve_insert(key, ResolveEntry { answer: Err(e), fingerprint: None });
+                    return self.commit_resolve(id, key, entry);
+                }
+            };
+
+            // Map import names to their file-level resolutions, as
+            // process_imports did: sibling `.telsb` files, callable by name.
+            let base_dir = std::path::Path::new(fq.path_str(&self.interner))
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .to_path_buf();
+            let mut import_ids = Vec::with_capacity(imports.len());
+            let mut import_funcs = Vec::with_capacity(imports.len());
+            for name in &imports {
+                let full_path = base_dir.join(format!("{}.telsb", name));
+                let import_fq = FQ::intern(&self.interner, &full_path.to_string_lossy(), name);
+                import_ids.push(ResolveId { func_loc: import_fq });
+                import_funcs.push((name.clone(), FuncId(import_fq)));
+            }
+
+            // Recurse into the deps. The chain now includes this resolution,
+            // so an import that re-enters it errors as a cycle before any
+            // wait-for edge can form. A dep failure propagates uncached: the
+            // failing node cached its own answer, everything above is cheap
+            // re-derivation.
+            let chain = ancestors.extended(fq);
+            let (dep_results, _tables) = self.resolve_all_fp(StepId::Resolve(id), chain, &import_ids).await?;
+
+            let deps: Vec<(FQ, Fingerprint)> = import_ids.iter()
+                .zip(dep_results.iter())
+                .map(|(dep_id, (_expr, fp))| (dep_id.func_loc, *fp))
+                .collect();
+            let key = Self::resolve_key(&sctx, fq, parse_fp, &deps);
+
+            if let Some(entry) = self.store.resolve_get(&key) {
+                debug!("CoreContext::resolve_one cache hit for {:?}", id);
+                return self.commit_resolve(id, key, entry);
+            }
+
+            debug!("CoreContext::resolve_one resolving {:?}", id);
+            self.computed_resolves.fetch_add(1, Ordering::Relaxed);
+            let ctx = ResolveContext { current: id, core: self };
+            let entry = match crate::resolve::resolve_body(&ctx, id, pre, &import_funcs) {
+                Ok((ast, table, registered)) => {
+                    let funcs: Vec<(FQ, FuncData)> = registered.into_iter()
+                        .map(|f| {
+                            let data = self.func_registry.get(&f)
+                                .expect("resolve_body registered this function")
+                                .clone();
+                            (f, data)
+                        })
+                        .collect();
+                    let answer = ResolveAnswer { ast, table, funcs };
+                    let fingerprint = Fingerprint::of(&answer, &sctx);
+                    ResolveEntry { answer: Ok(answer), fingerprint: Some(fingerprint) }
+                }
+                // Body errors are deterministic in the inputs the key already
+                // pins (parse answer + import answers), so they are terminal
+                // answers (invariant 6). Non-deterministic failures cannot
+                // come from the synchronous body: IO lives in parse, and
+                // cycles/joins happen in the dep recursion above (uncached).
+                Err(e) => ResolveEntry { answer: Err(e), fingerprint: None },
+            };
+            let entry = self.store.resolve_insert(key, entry);
+            self.commit_resolve(id, key, entry)
+        })
+    }
+
+    /// Content key of one resolve step: `hash(kind, args, direct deps'
+    /// fingerprints)` — the args are the FQ (the resolved AST embeds
+    /// path-based FQs, so identical content at two paths must not share), the
+    /// deps are the parse of this file plus the resolve of each direct
+    /// import. Dep identity is pinned alongside each fingerprint
+    /// (invariant 3), and the count is length-prefixed.
+    fn resolve_key(ctx: &StableCtx<'_>, fq: FQ, parse_fp: Fingerprint, deps: &[(FQ, Fingerprint)]) -> ContentKey {
+        ContentKey::build(QueryKind::Resolve, |h| {
+            fq.stable_hash(ctx, h);
+            parse_fp.stable_hash(ctx, h);
+            h.write_len(deps.len());
+            for (dep_fq, dep_fp) in deps {
+                dep_fq.stable_hash(ctx, h);
+                dep_fp.stable_hash(ctx, h);
+            }
+        })
+    }
+
+    /// Commit a resolve answer for `id`: replay its definitions into the
+    /// positional registry, then rebind the logical id — one whole-record
+    /// insert, the atomic last step (invariant 4) — and return the caller's
+    /// view.
+    fn commit_resolve(&self, id: ResolveId, key: ContentKey, entry: ResolveEntry) -> Result<(Expr, SymbolTable, Fingerprint), ResolveError> {
+        match entry.answer {
+            Ok(answer) => {
+                // Overwrite, not or_insert: the position may currently hold
+                // data from different content (e.g. before a revert), and the
+                // answer under this key is what the position resolves to now.
+                for (f, data) in &answer.funcs {
+                    self.func_registry.insert(*f, data.clone());
+                }
+                let fingerprint = entry.fingerprint
+                    .expect("successful resolve answers are stored with their fingerprint");
+                self.bindings.record(StepId::Resolve(id), BindingRecord {
+                    content_key: Some(key),
+                    fingerprint: Some(fingerprint),
+                    input_digest: None,
+                    dirty: false,
+                });
+                Ok((answer.ast, answer.table, fingerprint))
+            }
+            Err(e) => {
+                // A cached error is a terminal answer, bound like a success
+                // but (for now) without an output fingerprint.
+                self.bindings.record(StepId::Resolve(id), BindingRecord {
+                    content_key: Some(key),
+                    fingerprint: None,
+                    input_digest: None,
+                    dirty: false,
+                });
+                Err(e)
+            }
+        }
     }
 
     /// Type check + monomorphise every instance reachable from `entry`.
@@ -325,19 +503,31 @@ impl Global {
             // Mono consumes the resolved AST that Resolve put in the registry.
             self.graph.register_dependency(StepId::Mono(key), StepId::Resolve(ResolveId { func_loc: key.func_loc }));
 
-            // The cache key chains to the parse stage via the content digest
-            // of the instance's defining file (bound when it was parsed
-            // earlier this run), so a changed file cannot be served stale.
-            let parse_step = StepId::Parse(ParseId { file_path: key.func_loc.path() });
-            let digest = self.bindings.leaf_digest(&parse_step)
-                .expect("resolution parsed this file earlier in the run");
-            let preimage = MonoCacheKey { digest, func_loc: key.func_loc, ty: key.ty, is_entry };
-            let cache_key = preimage.content_key(&StableCtx { interner: &self.interner });
+            // The cache key chains to the resolve stage via the fingerprint
+            // of the one thing `check_function` consumes: this function's
+            // resolved data. Fingerprinted from the registry entry we hold
+            // right now, so a changed function cannot be served stale — and
+            // an *unchanged* function is a hit even if its file changed
+            // elsewhere (function-level cutoff).
+            let sctx = StableCtx { interner: &self.interner };
+            let func_fp = self.func_registry.get(&key.func_loc)
+                .map(|f| Fingerprint::of(&*f, &sctx));
+            let Some(func_fp) = func_fp else {
+                // Nothing resolved at this position: a wave-ordering problem,
+                // not a content-addressable answer — surface the phase's
+                // standard error, uncached (invariant 6: only terminal
+                // deterministic answers are persisted).
+                let ctx = MonoContext { core: self };
+                crate::typecheck::check_function(&ctx, key, is_entry)?;
+                unreachable!("check_function must fail for an unresolved function");
+            };
+            let preimage = MonoCacheKey { func_fp, func_loc: key.func_loc, ty: key.ty, is_entry };
+            let cache_key = preimage.content_key(&sctx);
 
             let answer: MonoAnswer = match self.store.mono_get(&cache_key) {
                 Some(hit) => hit,
                 None => {
-                    debug!("CoreContext::mono_impl checking {:?} (digest {:?})", key, digest);
+                    debug!("CoreContext::mono_impl checking {:?} (func fp {:?})", key, func_fp);
                     self.computed_monos.fetch_add(1, Ordering::Relaxed);
                     let ctx = MonoContext { core: self };
                     // A deterministic `TypeError` is a terminal answer: it is
@@ -370,6 +560,13 @@ impl Global {
         Ok(())
     }
 
+    /// Execute the program rooted at `id`.
+    ///
+    /// Exec is deliberately *not* a cached query: its value is its side
+    /// effects (`print`), so re-demanding it must re-run them — same content
+    /// prints again. What IS cached is everything exec pulls: the compiled
+    /// artifact (parse/resolve/mono answers) comes from the content store,
+    /// only the interpretation re-runs.
     async fn execute_impl(&'static self, caller: StepId, id: ExecId) -> Result<(), ExecuteError> {
         debug!("CoreContext::execute_impl: {:?}", id);
         self.graph.register_dependency(caller, StepId::Exec(id.clone()));
@@ -412,45 +609,24 @@ impl RootContext {
     }
 }
 
+/// Context handed to the resolver *body*. Deliberately narrow: parsing and
+/// import resolution happen before the body runs (in `Global::resolve_one`,
+/// which needs their fingerprints to build the step's content key first), so
+/// the body can neither recurse nor do IO — it only reads the interner and
+/// the function registry.
 pub struct ResolveContext {
+    #[allow(dead_code)] // identifies the step; kept for symmetry/debugging
     current: ResolveId,
     core: &'static Global,
-    /// In-progress resolutions leading here, `current` implied at the tail.
-    ancestors: AncestorPath,
 }
 
 impl ResolveContext {
-    pub fn graph(&self) -> &Graph {
-        &self.core.graph
-    }
-
     pub fn interner(&self) -> &Interner {
         &self.core.interner
     }
 
     pub fn func_registry(&self) -> &DashMap<FQ, FuncData> {
         &self.core.func_registry
-    }
-
-    pub async fn parse(&self, id: ParseId) -> Result<&'static PreExpr, &'static ParseError> {
-        self.core.parse_impl(StepId::Resolve(self.current.clone()), id).await
-    }
-
-    pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
-        // Children see the chain including `current`, so re-requesting any
-        // resolution on this task's path (self-import included) is caught.
-        let chain = self.ancestors.extended(self.current.func_loc);
-        self.core.resolve_all_impl(StepId::Resolve(self.current.clone()), chain, ids).await
-    }
-}
-
-impl Clone for ResolveContext {
-    fn clone(&self) -> Self {
-        ResolveContext {
-            current: self.current.clone(),
-            core: self.core,
-            ancestors: self.ancestors.clone(),
-        }
     }
 }
 

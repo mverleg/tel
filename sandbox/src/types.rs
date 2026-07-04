@@ -293,7 +293,12 @@ impl From<std::io::Error> for ParseError {
 
 /// Error payloads carry already-resolved strings (interned names/paths are
 /// resolved at the throw site), so `Display` needs no `Interner`.
-#[derive(Debug)]
+///
+/// `Clone` because a deterministic resolve error is a terminal answer that
+/// lives in the content store and is cloned out on every re-demand (the
+/// `IoError` payload is a rendered string for the same reason —
+/// `std::io::Error` is not `Clone`).
+#[derive(Debug, Clone)]
 pub enum ResolveError {
     UndefinedVariable(String, String),
     UndefinedFunction(String, String),
@@ -309,7 +314,7 @@ pub enum ResolveError {
     ArityGap { context: String, func_name: String, max_arg: usize },
     UnreachableCode { context: String, source_location: String },
     CyclicDependency { cycle: Vec<String> },
-    IoError(String, std::io::Error),
+    IoError(String, String),
     ParseError(String, ParseError),
     JoinError(String),
 }

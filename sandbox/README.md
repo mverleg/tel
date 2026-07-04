@@ -30,13 +30,13 @@ start with [plans/roadmap.md](plans/roadmap.md).
 - [ ] Prevent ctx leak outside scope (just pure fn pointers?)
 - [ ] Lock-free (during compile)
 - [x] Write using async
-- [ ] Cache computation steps (mono instances are content-cached; resolve/exec remain)
-- [ ] Cache IO steps
+- [x] Cache computation steps (parse/resolve/mono answers are content-cached, keys chained through dep answer fingerprints; exec deliberately stays uncached — its value is its side effects)
+- [x] Cache IO steps (read stays fused with parse: the cached IO answer is the parse-level result; the read itself re-runs each compile to derive the lookup digest)
 - [ ] Store cache in LMDB (with postcard)
 - [x] Include schema hash in file cache
 - [ ] Incremental compile starting from main
 - [ ] Incremental compile starting from leafs
-- [ ] Selective caching (e.g not file read)
+- [x] Selective caching (e.g not file read) (policy: file reads and exec side effects are never cached; deterministic errors are)
 - [x] Cycle detection
 
 ## Running Programs

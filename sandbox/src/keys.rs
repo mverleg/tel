@@ -172,6 +172,14 @@ impl Fingerprint {
     }
 }
 
+/// Fingerprints enter dependents' content-key preimages by value — that is
+/// their entire job ("hash(kind, stable args, dep result fingerprints)").
+impl StableHash for Fingerprint {
+    fn stable_hash(&self, _ctx: &StableCtx<'_>, out: &mut StableHasher) {
+        out.write_u64(self.0);
+    }
+}
+
 /// A content-addressed digest of a source file's bytes — the `input_state` of
 /// the model: the external input a leaf query's content key hashes. Not itself
 /// a [`ContentKey`] (no kind, no schema); it is an *ingredient* of the parse
@@ -604,6 +612,29 @@ impl StableHash for MExpr {
                 items.stable_hash(ctx, out);
             }
         }
+    }
+}
+
+/// The fingerprint of a resolved function: what the mono phase actually
+/// consumes from resolution — its content key chains to this, giving
+/// *function-level* cutoff (editing one function in a file leaves the file's
+/// other functions' mono keys unchanged).
+impl StableHash for crate::types::FuncData {
+    fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
+        self.loc.stable_hash(ctx, out);
+        out.write_len(self.arity);
+        self.ast.stable_hash(ctx, out);
+    }
+}
+
+/// The direct output of one resolve step (docs/keys-and-invalidation.md: a
+/// result fingerprint hashes the direct output, and *only* that). `funcs` is
+/// in registration order, which is deterministic given the input.
+impl StableHash for crate::store::ResolveAnswer {
+    fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
+        self.ast.stable_hash(ctx, out);
+        self.table.stable_hash(ctx, out);
+        self.funcs.stable_hash(ctx, out);
     }
 }
 

@@ -19,15 +19,39 @@
 //! per kind — no dynamic downcasts, and each kind can later grow its own
 //! eviction policy and disk layout).
 
+use crate::common::FQ;
 use crate::graph::StepId;
 use crate::keys::{ContentDigest, ContentKey, Fingerprint};
-use crate::types::{MonoFuncData, ParseError, PreExpr, TypeError};
+use crate::types::{Expr, FuncData, MonoFuncData, ParseError, PreExpr, ResolveError, SymbolTable, TypeError};
 use async_lazy::Cache;
 use dashmap::DashMap;
 
 /// A monomorphisation answer: the checked instance plus the callee instances
 /// it needs (stored so the worklist can keep walking on a cache hit).
 pub type MonoAnswer = Result<(MonoFuncData, Vec<crate::graph::MonoId>), TypeError>;
+
+/// A successful resolution of one file-level unit: the resolved body, its
+/// symbol table, and — because resolving also *defines* things — the functions
+/// this file registered (its implicit file-function plus local functions), in
+/// registration order. The definitions ride along in the answer so a cache hit
+/// can replay them into the positional registry without running the resolver.
+#[derive(Debug, Clone)]
+pub struct ResolveAnswer {
+    pub ast: Expr,
+    pub table: SymbolTable,
+    pub funcs: Vec<(FQ, FuncData)>,
+}
+
+/// One stored resolve row: the answer (deterministic errors included) plus
+/// the answer's result fingerprint (docs/keys-and-invalidation.md stores the
+/// fingerprint *with* the value so dependents can key on it without
+/// re-hashing). `None` for errors — error fingerprints arrive with early
+/// cutoff.
+#[derive(Debug, Clone)]
+pub struct ResolveEntry {
+    pub answer: Result<ResolveAnswer, ResolveError>,
+    pub fingerprint: Option<Fingerprint>,
+}
 
 /// The immutable content-addressed layer: one append-only table per query
 /// kind that has cacheable answers today. Entries are never mutated or
@@ -38,6 +62,12 @@ pub struct ContentStore {
     /// same key must claim/await a single computation — the cache is
     /// init-once per key, which *is* the append-only guarantee.
     parse: Cache<ContentKey, PreExpr, ParseError>,
+    /// Resolve answers. Keyed on `hash(fq, parse fingerprint, import resolve
+    /// fingerprints)` — Merkle-over-answers, so a hit is transitively valid by
+    /// construction. First-write-wins like `mono` (concurrent duplicate
+    /// resolutions of the same key compute equal answers; keeping the first
+    /// upholds append-only cheaply).
+    resolve: DashMap<ContentKey, ResolveEntry>,
     /// Mono answers. The mono worklist is synchronous, so a plain map with
     /// first-write-wins semantics suffices; deterministic `TypeError`s are
     /// answers and are stored like successes.
@@ -48,6 +78,7 @@ impl ContentStore {
     pub fn new() -> ContentStore {
         ContentStore {
             parse: Cache::new(),
+            resolve: DashMap::new(),
             mono: DashMap::new(),
         }
     }
@@ -60,6 +91,16 @@ impl ContentStore {
         Fut: std::future::Future<Output = Result<PreExpr, ParseError>>,
     {
         self.parse.get(key, init).await
+    }
+
+    pub fn resolve_get(&self, key: &ContentKey) -> Option<ResolveEntry> {
+        self.resolve.get(key).map(|hit| hit.clone())
+    }
+
+    /// Insert a resolve entry. Append-only: if the key is already present the
+    /// existing entry wins and is returned (see [`ContentStore::mono_insert`]).
+    pub fn resolve_insert(&self, key: ContentKey, entry: ResolveEntry) -> ResolveEntry {
+        self.resolve.entry(key).or_insert(entry).clone()
     }
 
     pub fn mono_get(&self, key: &ContentKey) -> Option<MonoAnswer> {
@@ -77,6 +118,11 @@ impl ContentStore {
     /// Number of distinct parse answers stored (by content key).
     pub fn parse_len(&self) -> usize {
         self.parse.len()
+    }
+
+    /// Number of distinct resolve answers stored (by content key).
+    pub fn resolve_len(&self) -> usize {
+        self.resolve.len()
     }
 
     /// Number of distinct mono answers stored (by content key).

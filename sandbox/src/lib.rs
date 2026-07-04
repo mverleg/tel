@@ -168,6 +168,20 @@ impl Compiler {
     pub fn computed_mono_count(&self) -> usize {
         self.core.computed_mono_count()
     }
+
+    /// Number of distinct resolve answers cached so far, keyed by the parse
+    /// answer's fingerprint plus the imports' answer fingerprints.
+    pub fn cached_resolve_count(&self) -> usize {
+        self.core.cached_resolve_count()
+    }
+
+    /// Number of resolve computations actually executed. A cache hit —
+    /// including a cached *error* — does not grow it; nor does serving a
+    /// resolve whose key was re-derived but found stored (that is the
+    /// transitive validation working).
+    pub fn computed_resolve_count(&self) -> usize {
+        self.core.computed_resolve_count()
+    }
 }
 
 pub async fn run_file(path: &str, show_deps: bool) -> Result<(), Error> {

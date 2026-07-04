@@ -201,12 +201,105 @@ async fn unchanged_recompile_recomputes_no_cached_phase() {
 
     compiler.run(path, false).await.unwrap();
     assert_eq!(last_output(&out), "42");
-    let (parses, monos) = (compiler.computed_parse_count(), compiler.computed_mono_count());
+    let (parses, resolves, monos) = (
+        compiler.computed_parse_count(),
+        compiler.computed_resolve_count(),
+        compiler.computed_mono_count(),
+    );
 
     compiler.run(path, false).await.unwrap();
     assert_eq!(last_output(&out), "42");
     assert_eq!(compiler.computed_parse_count(), parses, "unchanged files must not re-parse");
+    assert_eq!(compiler.computed_resolve_count(), resolves, "unchanged files must not re-resolve");
     assert_eq!(compiler.computed_mono_count(), monos, "unchanged instances must not re-check");
+}
+
+/// Editing one file recomputes only its own chain: the changed file re-parses
+/// and re-resolves, its importer re-resolves (a dep fingerprint in its key
+/// changed), but a sibling import is served from cache at every phase — and
+/// because the importer's resolve *answer* comes out unchanged, its mono
+/// instance is a pure hit too (the fingerprint chain cutting the change off).
+#[tokio::test]
+async fn changed_import_recomputes_only_its_chain() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let path = main.to_str().unwrap();
+    fs::write(&main, "(import stable)\n(import edited)\n(print (+ (call stable 1) (call edited 1)))\n").unwrap();
+    fs::write(dir.path().join("stable.telsb"), "(+ (arg 1) 10)\n").unwrap();
+    fs::write(dir.path().join("edited.telsb"), "(+ (arg 1) 100)\n").unwrap();
+
+    let (compiler, out) = recording_compiler();
+    compiler.run(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "112");
+    let (parses, resolves, monos) = (
+        compiler.computed_parse_count(),
+        compiler.computed_resolve_count(),
+        compiler.computed_mono_count(),
+    );
+
+    fs::write(dir.path().join("edited.telsb"), "(+ (arg 1) 200)\n").unwrap();
+    compiler.run(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "212", "the edited import must not be served stale");
+
+    assert_eq!(compiler.computed_parse_count(), parses + 1, "only the edited file re-parses");
+    assert_eq!(
+        compiler.computed_resolve_count(),
+        resolves + 2,
+        "the edited file and its importer re-resolve; the sibling must be a cache hit"
+    );
+    assert_eq!(
+        compiler.computed_mono_count(),
+        monos + 1,
+        "only the edited instance re-checks: main's resolve answer is unchanged, so its mono key is too"
+    );
+}
+
+/// Deterministic resolve errors are terminal answers like parse/type errors:
+/// re-demanding the same broken content serves the cached error without
+/// running the resolver again.
+#[tokio::test]
+async fn resolve_errors_are_cached_answers() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let path = main.to_str().unwrap();
+    fs::write(&main, "(print undefined_variable)\n").unwrap();
+
+    let (compiler, _out) = recording_compiler();
+
+    assert!(compiler.run(path, false).await.is_err());
+    let after_first = compiler.computed_resolve_count();
+    assert!(compiler.run(path, false).await.is_err(), "the same error must be reported again");
+    assert_eq!(
+        compiler.computed_resolve_count(),
+        after_first,
+        "the second run must hit the cached resolve error, not re-resolve"
+    );
+}
+
+/// A resolve answer is shared wherever its key is re-derived, no matter which
+/// entry point demanded it: a second program importing the same unchanged
+/// library re-derives the same key and is served from the store.
+#[tokio::test]
+async fn shared_import_is_served_from_cache_across_entry_points() {
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("lib.telsb"), "(* (arg 1) 2)\n").unwrap();
+    let entry1 = dir.path().join("one.telsb");
+    let entry2 = dir.path().join("two.telsb");
+    fs::write(&entry1, "(import lib)\n(print (call lib 21))\n").unwrap();
+    fs::write(&entry2, "(import lib)\n(print (call lib 50))\n").unwrap();
+
+    let (compiler, out) = recording_compiler();
+    compiler.run(entry1.to_str().unwrap(), false).await.unwrap();
+    assert_eq!(last_output(&out), "42");
+    let resolves = compiler.computed_resolve_count();
+
+    compiler.run(entry2.to_str().unwrap(), false).await.unwrap();
+    assert_eq!(last_output(&out), "100");
+    assert_eq!(
+        compiler.computed_resolve_count(),
+        resolves + 1,
+        "only the new entry point resolves; the shared library must be a cache hit"
+    );
 }
 
 /// Re-running the same unchanged file reuses the cached parse rather than
