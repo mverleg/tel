@@ -8,7 +8,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 struct Resolver<'a> {
-    ctx: &'a ResolveContext,
+    ctx: &'a ResolveContext<'a>,
     symbol_table: SymbolTable,  // Now only for vars
     scopes: Vec<Scope>,
     current_scope: ScopeId,

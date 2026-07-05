@@ -83,7 +83,7 @@ fn context_str(ctx: &MonoContext, key: MonoId) -> String {
 }
 
 struct Checker<'a> {
-    ctx: &'a MonoContext,
+    ctx: &'a MonoContext<'a>,
     key: MonoId,
     slots: Vec<Slot>,
     vars: HashMap<VarId, TermId>,

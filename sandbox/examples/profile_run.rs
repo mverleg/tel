@@ -184,7 +184,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn bench_code(main_path: &String) -> Result<(), Box<dyn Error>> {
-    let noop_printer: &'static dyn sandbox::Printer = Box::leak(Box::new(sandbox::NoopPrinter));
+    let noop_printer: std::sync::Arc<dyn sandbox::Printer> = std::sync::Arc::new(sandbox::NoopPrinter);
 
     // Run multiple iterations to get better profile data
     // The compilation itself is what we want to profile, not file generation
@@ -193,7 +193,7 @@ async fn bench_code(main_path: &String) -> Result<(), Box<dyn Error>> {
             println!("Iteration {}/10000", i);
         }
         //TODO @mark: make sure to clean first, once we have multi-run cache
-        sandbox::run_file_with_printer(&main_path, false, noop_printer).await?;
+        sandbox::run_file_with_printer(&main_path, false, noop_printer.clone()).await?;
     }
     Ok(())
 }

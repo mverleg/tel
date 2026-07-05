@@ -35,7 +35,7 @@ start with [plans/roadmap.md](plans/roadmap.md).
 - [x] Early cutoff via result fingerprints (a formatting-only edit re-parses one file and recomputes nothing above it — Scenario B; errors are fingerprinted answers too, so dependents of stably-failing steps are cached as well)
 - [ ] Store cache in LMDB (with postcard)
 - [x] Include schema hash in file cache
-- [ ] Incremental compile starting from main
+- [x] Incremental compile starting from main (a `Compiler` is a persistent, droppable process — no more `Box::leak`; each run is a demand-driven pull from the entry point, and re-resolves replace their graph edges so restructured imports leave no zombies)
 - [ ] Incremental compile starting from leafs
 - [x] Selective caching (e.g not file read) (policy: file reads and exec side effects are never cached; deterministic errors are)
 - [x] Cycle detection

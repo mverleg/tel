@@ -81,6 +81,31 @@ impl Graph {
             .insert(caller);
     }
 
+    /// Replace `caller`'s outgoing dependency edges with `new_deps`, fixing up
+    /// the inverse edges of anything dropped or added.
+    ///
+    /// Edges are session memos: in a persistent process a step's dep set is
+    /// re-derived from its (possibly changed) content on every recompute, and
+    /// edges from *previous* content must not accumulate — a stale edge
+    /// describes a program that no longer exists (the "zombie edge" problem of
+    /// docs/keys-and-invalidation.md) and could even join with fresh edges
+    /// into a phantom cycle after an import restructure.
+    pub fn replace_dependencies(&self, caller: StepId, new_deps: impl IntoIterator<Item = StepId>) {
+        let new_set: HashSet<StepId> = new_deps.into_iter().collect();
+        let old_set = self.dependencies.insert(caller.clone(), new_set.clone())
+            .unwrap_or_default();
+        for dropped in old_set.difference(&new_set) {
+            if let Some(mut inv) = self.dependents.get_mut(dropped) {
+                inv.remove(&caller);
+            }
+        }
+        for added in new_set.difference(&old_set) {
+            self.dependents.entry(added.clone())
+                .or_insert_with(HashSet::new)
+                .insert(caller.clone());
+        }
+    }
+
     pub fn get_dependencies(&self, step: &StepId) -> Option<dashmap::mapref::one::Ref<StepId, HashSet<StepId>>> {
         self.dependencies.get(step)
     }

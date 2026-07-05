@@ -7,21 +7,21 @@
 //! instead of deadlocking the parallel resolver, while legitimate shared
 //! dependencies (diamonds) resolve normally.
 
-use sandbox::{Compiler, NoopPrinter, Printer};
+use sandbox::{Compiler, NoopPrinter};
 use std::fs;
+use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 
 fn noop_compiler() -> Compiler {
-    let printer: &'static dyn Printer = Box::leak(Box::new(NoopPrinter));
-    Compiler::new(printer)
+    Compiler::new(Arc::new(NoopPrinter))
 }
 
 /// Runs the compile under a timeout: a hang here is precisely the deadlock the
 /// ancestor-path detector exists to prevent, so it must fail the test rather
 /// than stall the suite.
 async fn run_expecting_cycle(path: &str) -> String {
-    let compiler = noop_compiler();
+    let mut compiler = noop_compiler();
     let result = tokio::time::timeout(Duration::from_secs(10), compiler.run(path, false))
         .await
         .expect("cycle detection must terminate, not deadlock");
@@ -89,7 +89,7 @@ async fn diamond_imports_are_not_flagged_as_cycle() {
     fs::write(dir.path().join("c.telsb"), "(import d)\n(call d)\n").unwrap();
     fs::write(dir.path().join("d.telsb"), "21\n").unwrap();
 
-    let compiler = noop_compiler();
+    let mut compiler = noop_compiler();
     tokio::time::timeout(Duration::from_secs(10), compiler.run(main.to_str().unwrap(), false))
         .await
         .expect("diamond must not deadlock")
@@ -134,8 +134,8 @@ async fn concurrent_diamond_compiles_succeed() {
     fs::write(&entry1, "(import b)\n(import c)\n(print (+ (call b) (call c)))\n").unwrap();
     fs::write(&entry2, "(import c)\n(import b)\n(print (+ (call c) (call b)))\n").unwrap();
 
-    let compiler1 = noop_compiler();
-    let compiler2 = noop_compiler();
+    let mut compiler1 = noop_compiler();
+    let mut compiler2 = noop_compiler();
     let (r1, r2) = tokio::join!(
         tokio::time::timeout(Duration::from_secs(10), compiler1.run(entry1.to_str().unwrap(), false)),
         tokio::time::timeout(Duration::from_secs(10), compiler2.run(entry2.to_str().unwrap(), false)),

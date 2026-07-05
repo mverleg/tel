@@ -11,6 +11,7 @@ mod store;
 
 use std::fmt;
 use std::collections::HashSet;
+use std::sync::Arc;
 use crate::common::{Ctx, FQ};
 use crate::context::{Global, RootContext};
 use crate::graph::{ExecId, StepId};
@@ -95,33 +96,39 @@ fn print_dependency_tree(ctx: &RootContext) {
     }
 }
 
-/// A reusable compiler whose caches persist across runs.
+/// A persistent, reusable compiler process: create one, compile against it
+/// repeatedly, drop it when done.
 ///
-/// [`run_file`] builds a fresh `Global` on every call, so nothing is cached
-/// between compiles. A `Compiler` instead keeps one `Global` — and therefore
-/// its content-addressed parse cache — alive across every [`run`](Compiler::run)
-/// call. That is the cross-run cache from docs/cache-invalidation-problem.md: an
-/// unchanged or reverted source file is not re-parsed on a later run, while a
-/// changed file is re-parsed (never served stale) because its content digest
-/// differs.
+/// [`run_file`] builds a fresh `Compiler` on every call, so nothing is cached
+/// between compiles. Holding a `Compiler` instead keeps one [`Global`] — the
+/// content store and binding layer — alive across every
+/// [`run`](Compiler::run) call. That is the incremental-from-main mode of
+/// plans/roadmap.md: each run is a demand-driven pull from the entry point,
+/// re-deriving content keys top-down and stopping at cache hits, so only what
+/// main transitively needs — and among that, only what actually changed — is
+/// recomputed. An unchanged or reverted source file costs a read + digest,
+/// never a recompute; a changed file is recomputed (never served stale)
+/// because its content key differs.
+///
+/// Runs are serialized by `&mut self`: the positional mono registry is
+/// per-run state, so two interleaved runs on one `Compiler` must not race it.
+/// (Separate `Compiler`s may run concurrently.) Ownership is ordinary `Arc`
+/// sharing — dropping the `Compiler` reclaims everything once in-flight
+/// spawned tasks finish; nothing is leaked.
 pub struct Compiler {
-    core: &'static Global,
+    core: Arc<Global>,
 }
 
 impl Compiler {
     /// Create a compiler with an empty, persistent cache.
-    ///
-    /// The `Global` is leaked to `'static`: a `Compiler` is meant to be
-    /// long-lived (e.g. a watch-mode session) and its caches live for the
-    /// process. Dropping the `Compiler` does not reclaim it.
-    pub fn new(printer: &'static dyn Printer) -> Compiler {
-        Compiler { core: Box::leak(Box::new(Global::new(printer))) }
+    pub fn new(printer: Arc<dyn Printer>) -> Compiler {
+        Compiler { core: Arc::new(Global::new(printer)) }
     }
 
     /// Compile and execute `path`, reusing anything already cached from previous
     /// runs of this `Compiler`.
-    pub async fn run(&self, path: &str, show_deps: bool) -> Result<(), Error> {
-        let ctx = RootContext::new(self.core);
+    pub async fn run(&mut self, path: &str, show_deps: bool) -> Result<(), Error> {
+        let ctx = RootContext::new(self.core.clone());
         let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
         ctx.execute(exec_id).await
             .map_err(|e| Error::Execute("main".to_string(), e))?;
@@ -185,11 +192,10 @@ impl Compiler {
 }
 
 pub async fn run_file(path: &str, show_deps: bool) -> Result<(), Error> {
-    let printer: &'static dyn Printer = Box::leak(Box::new(StdoutPrinter));
-    run_file_with_printer(path, show_deps, printer).await
+    run_file_with_printer(path, show_deps, Arc::new(StdoutPrinter)).await
 }
 
-pub async fn run_file_with_printer(path: &str, show_deps: bool, printer: &'static dyn Printer) -> Result<(), Error> {
+pub async fn run_file_with_printer(path: &str, show_deps: bool, printer: Arc<dyn Printer>) -> Result<(), Error> {
     // Each call builds a fresh, single-shot compiler (no cross-run cache). Use
     // `Compiler` directly to keep the cache alive across runs.
     Compiler::new(printer).run(path, show_deps).await

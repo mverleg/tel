@@ -24,7 +24,7 @@ impl Printer for RecordingPrinter {
 
 fn recording_compiler() -> (Compiler, Arc<Mutex<Vec<String>>>) {
     let out = Arc::new(Mutex::new(Vec::new()));
-    let printer: &'static dyn Printer = Box::leak(Box::new(RecordingPrinter { out: out.clone() }));
+    let printer: Arc<dyn Printer> = Arc::new(RecordingPrinter { out: out.clone() });
     (Compiler::new(printer), out)
 }
 
@@ -41,7 +41,7 @@ async fn cross_run_cache_invalidates_and_reuses_by_content() {
     let main = dir.path().join("main.telsb");
     let path = main.to_str().unwrap();
 
-    let (compiler, out) = recording_compiler();
+    let (mut compiler, out) = recording_compiler();
 
     // Run 1: content v1. First parse -> exactly one cached content.
     fs::write(&main, "(print 42)\n").unwrap();
@@ -82,7 +82,7 @@ async fn mono_cache_follows_content_per_file() {
     let dbl = dir.path().join("dbl.telsb");
     let path = main.to_str().unwrap();
 
-    let (compiler, out) = recording_compiler();
+    let (mut compiler, out) = recording_compiler();
 
     // Run 1: two instances get checked and cached: main @ i64 and dbl @ i64.
     fs::write(&main, "(import dbl)\n(print (call dbl 21))\n").unwrap();
@@ -128,7 +128,7 @@ async fn identical_content_at_two_paths_shares_parse_but_not_mono() {
     fs::write(dir.path().join("dbl.telsb"), "(* (arg 1) 2)\n").unwrap();
     fs::write(dir.path().join("dup.telsb"), "(* (arg 1) 2)\n").unwrap();
 
-    let (compiler, out) = recording_compiler();
+    let (mut compiler, out) = recording_compiler();
     compiler.run(main.to_str().unwrap(), false).await.unwrap();
     assert_eq!(last_output(&out), "42");
     assert_eq!(
@@ -153,7 +153,7 @@ async fn parse_errors_are_cached_answers() {
     let path = main.to_str().unwrap();
     fs::write(&main, "(print 42").unwrap(); // missing closing paren
 
-    let (compiler, _out) = recording_compiler();
+    let (mut compiler, _out) = recording_compiler();
 
     assert!(compiler.run(path, false).await.is_err());
     assert!(compiler.run(path, false).await.is_err(), "the same error must be reported again");
@@ -174,7 +174,7 @@ async fn type_errors_are_cached_answers() {
     let path = main.to_str().unwrap();
     fs::write(&main, "(print (+ 1i32 2i64))\n").unwrap(); // type mismatch
 
-    let (compiler, _out) = recording_compiler();
+    let (mut compiler, _out) = recording_compiler();
 
     assert!(compiler.run(path, false).await.is_err());
     let after_first = compiler.computed_mono_count();
@@ -197,7 +197,7 @@ async fn unchanged_recompile_recomputes_no_cached_phase() {
     fs::write(&main, "(import dbl)\n(print (call dbl 21))\n").unwrap();
     fs::write(&dbl, "(* (arg 1) 2)\n").unwrap();
 
-    let (compiler, out) = recording_compiler();
+    let (mut compiler, out) = recording_compiler();
 
     compiler.run(path, false).await.unwrap();
     assert_eq!(last_output(&out), "42");
@@ -228,7 +228,7 @@ async fn changed_import_recomputes_only_its_chain() {
     fs::write(dir.path().join("stable.telsb"), "(+ (arg 1) 10)\n").unwrap();
     fs::write(dir.path().join("edited.telsb"), "(+ (arg 1) 100)\n").unwrap();
 
-    let (compiler, out) = recording_compiler();
+    let (mut compiler, out) = recording_compiler();
     compiler.run(path, false).await.unwrap();
     assert_eq!(last_output(&out), "112");
     let (parses, resolves, monos) = (
@@ -269,7 +269,7 @@ async fn whitespace_only_edit_reparses_one_file_and_nothing_else() {
     fs::write(dir.path().join("mid.telsb"), "(import leaf)\n(+ (call leaf (arg 1)) 1)\n").unwrap();
     fs::write(dir.path().join("leaf.telsb"), "(* (arg 1) 2)\n").unwrap();
 
-    let (compiler, out) = recording_compiler();
+    let (mut compiler, out) = recording_compiler();
     compiler.run(path, false).await.unwrap();
     assert_eq!(last_output(&out), "81");
     let (parses, resolves, monos) = (
@@ -302,7 +302,7 @@ async fn semantic_edit_recomputes_exactly_the_affected_cone() {
     fs::write(dir.path().join("mid.telsb"), "(import leaf)\n(+ (call leaf (arg 1)) 1)\n").unwrap();
     fs::write(dir.path().join("leaf.telsb"), "(* (arg 1) 2)\n").unwrap();
 
-    let (compiler, out) = recording_compiler();
+    let (mut compiler, out) = recording_compiler();
     compiler.run(path, false).await.unwrap();
     assert_eq!(last_output(&out), "81");
     let (parses, resolves, monos) = (
@@ -342,7 +342,7 @@ async fn editing_one_function_leaves_sibling_functions_cached() {
         "(function double (* (arg 1) 2))\n(function triple (* (arg 1) 3))\n(+ (call double (arg 1)) (call triple (arg 1)))\n",
     ).unwrap();
 
-    let (compiler, out) = recording_compiler();
+    let (mut compiler, out) = recording_compiler();
     compiler.run(path, false).await.unwrap();
     assert_eq!(last_output(&out), "35");
     let monos = compiler.computed_mono_count();
@@ -374,7 +374,7 @@ async fn importer_of_stably_erroring_import_is_cached() {
     fs::write(&main, "(import broken)\n(print (call broken))\n").unwrap();
     fs::write(dir.path().join("broken.telsb"), "(print undefined_variable)\n").unwrap();
 
-    let (compiler, _out) = recording_compiler();
+    let (mut compiler, _out) = recording_compiler();
 
     let first = compiler.run(path, false).await.expect_err("the broken import must fail the compile").to_string();
     assert_eq!(
@@ -407,7 +407,7 @@ async fn identical_panic_files_report_their_own_path() {
     fs::write(&main_a, "(import pana)\n(call pana)\n").unwrap();
     fs::write(&main_b, "(import panb)\n(call panb)\n").unwrap();
 
-    let (compiler, _out) = recording_compiler();
+    let (mut compiler, _out) = recording_compiler();
 
     let err_a = compiler.run(main_a.to_str().unwrap(), false).await.expect_err("pana panics").to_string();
     assert!(err_a.contains("pana.telsb"), "panic must point at pana's path, got: {err_a}");
@@ -432,7 +432,7 @@ async fn resolve_errors_are_cached_answers() {
     let path = main.to_str().unwrap();
     fs::write(&main, "(print undefined_variable)\n").unwrap();
 
-    let (compiler, _out) = recording_compiler();
+    let (mut compiler, _out) = recording_compiler();
 
     assert!(compiler.run(path, false).await.is_err());
     let after_first = compiler.computed_resolve_count();
@@ -456,7 +456,7 @@ async fn shared_import_is_served_from_cache_across_entry_points() {
     fs::write(&entry1, "(import lib)\n(print (call lib 21))\n").unwrap();
     fs::write(&entry2, "(import lib)\n(print (call lib 50))\n").unwrap();
 
-    let (compiler, out) = recording_compiler();
+    let (mut compiler, out) = recording_compiler();
     compiler.run(entry1.to_str().unwrap(), false).await.unwrap();
     assert_eq!(last_output(&out), "42");
     let resolves = compiler.computed_resolve_count();
@@ -479,7 +479,7 @@ async fn unchanged_file_reuses_cache_across_runs() {
     let path = main.to_str().unwrap();
     fs::write(&main, "(print 7)\n").unwrap();
 
-    let (compiler, out) = recording_compiler();
+    let (mut compiler, out) = recording_compiler();
 
     compiler.run(path, false).await.unwrap();
     assert_eq!(last_output(&out), "7");

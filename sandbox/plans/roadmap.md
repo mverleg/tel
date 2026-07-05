@@ -81,11 +81,17 @@ two-layer model (immutable content store vs mutable binding layer).
 
 ## Phase 2 — Incremental & watch mode
 
-Requires a persistent process (the in-code TODO at `lib.rs:86` about getting rid
-of the `Box::leak` for a continuous shared-cache process).
+Requires a persistent process (~~the in-code TODO at `lib.rs:86` about getting
+rid of the `Box::leak` for a continuous shared-cache process~~ — done:
+`Compiler` owns its `Global` via `Arc`, runs serialized by `&mut self`,
+dropping it reclaims everything).
 
-9. **Incremental compile starting from main** `[readme]` — demand-driven
-   top-down re-derivation reusing the caches from Phase 1.
+9. **Incremental compile starting from main** `[readme]` — **done** —
+   demand-driven top-down re-derivation reusing the caches from Phase 1.
+   Scenario A asserted across all phases (revert recomputes nothing); a file
+   dropped from the import graph is not even demanded; a re-resolved step
+   *replaces* its dependency edges, so cross-run restructures cannot
+   accumulate zombie edges (which could otherwise fabricate a phantom cycle).
 
 10. **Incremental compile starting from leafs + watch mode** `[readme]`
     `[cache-doc #7, #8]`

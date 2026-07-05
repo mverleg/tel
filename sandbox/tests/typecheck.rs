@@ -27,7 +27,7 @@ async fn run_program(files: &[(&str, &str)]) -> (Result<(), String>, Vec<String>
         fs::write(dir.path().join(name), content).unwrap();
     }
     let out = Arc::new(Mutex::new(Vec::new()));
-    let printer: &'static dyn Printer = Box::leak(Box::new(RecordingPrinter { out: out.clone() }));
+    let printer: Arc<dyn Printer> = Arc::new(RecordingPrinter { out: out.clone() });
     let main = dir.path().join("main.telsb");
     let result = run_file_with_printer(main.to_str().unwrap(), false, printer)
         .await
