@@ -254,6 +254,174 @@ async fn changed_import_recomputes_only_its_chain() {
     );
 }
 
+/// Scenario B from docs/cache-invalidation-problem.md, exactly as specified:
+/// a whitespace/comment-only edit deep in a leaf dependency re-parses that one
+/// file — the input genuinely changed — but its parse *answer* is unchanged,
+/// so its fingerprint is unchanged, so every content key above it is unchanged:
+/// zero resolve and zero mono recomputation anywhere in the tree.
+#[tokio::test]
+async fn whitespace_only_edit_reparses_one_file_and_nothing_else() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let path = main.to_str().unwrap();
+    // Three levels deep so the cutoff is visibly transitive: main -> mid -> leaf.
+    fs::write(&main, "(import mid)\n(print (call mid 40))\n").unwrap();
+    fs::write(dir.path().join("mid.telsb"), "(import leaf)\n(+ (call leaf (arg 1)) 1)\n").unwrap();
+    fs::write(dir.path().join("leaf.telsb"), "(* (arg 1) 2)\n").unwrap();
+
+    let (compiler, out) = recording_compiler();
+    compiler.run(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "81");
+    let (parses, resolves, monos) = (
+        compiler.computed_parse_count(),
+        compiler.computed_resolve_count(),
+        compiler.computed_mono_count(),
+    );
+
+    // Reformat the deepest leaf: blank line + comment, same code.
+    fs::write(dir.path().join("leaf.telsb"), "\n# reformatted, semantically identical\n(* (arg 1) 2)\n").unwrap();
+    compiler.run(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "81");
+
+    assert_eq!(compiler.computed_parse_count(), parses + 1, "the edited bytes must re-parse — the input did change");
+    assert_eq!(compiler.computed_resolve_count(), resolves, "unchanged parse answer: zero resolve recompute (early cutoff)");
+    assert_eq!(compiler.computed_mono_count(), monos, "unchanged resolve answers: zero mono recompute (early cutoff)");
+}
+
+/// Control for the cutoff: a *semantic* edit to the same leaf must recompute —
+/// and stop exactly where its effects stop. The leaf and its importer re-resolve
+/// (the leaf's answer fingerprint changed), but the importer's own *answer* is
+/// unchanged (it references the leaf by FQ, not by content), so the root's
+/// resolve key is untouched and only the leaf's mono instance re-checks.
+#[tokio::test]
+async fn semantic_edit_recomputes_exactly_the_affected_cone() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let path = main.to_str().unwrap();
+    fs::write(&main, "(import mid)\n(print (call mid 40))\n").unwrap();
+    fs::write(dir.path().join("mid.telsb"), "(import leaf)\n(+ (call leaf (arg 1)) 1)\n").unwrap();
+    fs::write(dir.path().join("leaf.telsb"), "(* (arg 1) 2)\n").unwrap();
+
+    let (compiler, out) = recording_compiler();
+    compiler.run(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "81");
+    let (parses, resolves, monos) = (
+        compiler.computed_parse_count(),
+        compiler.computed_resolve_count(),
+        compiler.computed_mono_count(),
+    );
+
+    fs::write(dir.path().join("leaf.telsb"), "(* (arg 1) 3)\n").unwrap();
+    compiler.run(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "121", "the semantic edit must take effect — cutoff must not over-fire");
+
+    assert_eq!(compiler.computed_parse_count(), parses + 1, "only the edited file re-parses");
+    assert_eq!(
+        compiler.computed_resolve_count(),
+        resolves + 2,
+        "leaf and mid re-resolve; mid's answer is unchanged so main must be a hit"
+    );
+    assert_eq!(
+        compiler.computed_mono_count(),
+        monos + 1,
+        "only the leaf's instance re-checks; mid's and main's resolved functions are unchanged"
+    );
+}
+
+/// Function-level cutoff within one file: editing one function re-checks only
+/// that function's mono instance — sibling functions in the same (re-parsed,
+/// re-resolved) file chain to their own resolved data, which is unchanged.
+#[tokio::test]
+async fn editing_one_function_leaves_sibling_functions_cached() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let path = main.to_str().unwrap();
+    fs::write(&main, "(import lib)\n(print (call lib 7))\n").unwrap();
+    fs::write(
+        dir.path().join("lib.telsb"),
+        "(function double (* (arg 1) 2))\n(function triple (* (arg 1) 3))\n(+ (call double (arg 1)) (call triple (arg 1)))\n",
+    ).unwrap();
+
+    let (compiler, out) = recording_compiler();
+    compiler.run(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "35");
+    let monos = compiler.computed_mono_count();
+
+    // Change double only; triple and lib's own body keep their resolved data.
+    fs::write(
+        dir.path().join("lib.telsb"),
+        "(function double (* (arg 1) 4))\n(function triple (* (arg 1) 3))\n(+ (call double (arg 1)) (call triple (arg 1)))\n",
+    ).unwrap();
+    compiler.run(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "49");
+
+    assert_eq!(
+        compiler.computed_mono_count(),
+        monos + 1,
+        "only the edited function's instance re-checks; its siblings in the same file stay cached"
+    );
+}
+
+/// A dependent above a *stably erroring* import is itself a cached answer: the
+/// erroring dep still has an answer fingerprint (errors are answers), so the
+/// importer's content key is derivable and its propagated failure is stored.
+/// The second compile serves both from the store.
+#[tokio::test]
+async fn importer_of_stably_erroring_import_is_cached() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let path = main.to_str().unwrap();
+    fs::write(&main, "(import broken)\n(print (call broken))\n").unwrap();
+    fs::write(dir.path().join("broken.telsb"), "(print undefined_variable)\n").unwrap();
+
+    let (compiler, _out) = recording_compiler();
+
+    let first = compiler.run(path, false).await.expect_err("the broken import must fail the compile").to_string();
+    assert_eq!(
+        compiler.cached_resolve_count(),
+        2,
+        "both the failing dep's answer and the importer's propagated failure must be stored"
+    );
+    let resolves = compiler.computed_resolve_count();
+
+    let second = compiler.run(path, false).await.expect_err("the same failure must be reported again").to_string();
+    assert_eq!(second, first, "the cached failure must be byte-identical");
+    assert_eq!(
+        compiler.computed_resolve_count(),
+        resolves,
+        "the second compile must be pure cache hits — dependent included"
+    );
+}
+
+/// Byte-identical files share one parse answer across paths, so that answer
+/// must embed nothing path-derived — `panic` diagnostics get their location
+/// attached at resolve (whose key pins the FQ), and each file reports its OWN
+/// path even though the parse entry is shared.
+#[tokio::test]
+async fn identical_panic_files_report_their_own_path() {
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("pana.telsb"), "(panic)\n").unwrap();
+    fs::write(dir.path().join("panb.telsb"), "(panic)\n").unwrap();
+    let main_a = dir.path().join("main_a.telsb");
+    let main_b = dir.path().join("main_b.telsb");
+    fs::write(&main_a, "(import pana)\n(call pana)\n").unwrap();
+    fs::write(&main_b, "(import panb)\n(call panb)\n").unwrap();
+
+    let (compiler, _out) = recording_compiler();
+
+    let err_a = compiler.run(main_a.to_str().unwrap(), false).await.expect_err("pana panics").to_string();
+    assert!(err_a.contains("pana.telsb"), "panic must point at pana's path, got: {err_a}");
+
+    let err_b = compiler.run(main_b.to_str().unwrap(), false).await.expect_err("panb panics").to_string();
+    assert!(err_b.contains("panb.telsb"), "panic must point at panb's own path even though its parse answer is shared, got: {err_b}");
+
+    assert_eq!(
+        compiler.cached_parse_count(),
+        3,
+        "the two identical panic files must still share one parse entry (2 mains + 1 shared body)"
+    );
+}
+
 /// Deterministic resolve errors are terminal answers like parse/type errors:
 /// re-demanding the same broken content serves the cached error without
 /// running the resolver again.

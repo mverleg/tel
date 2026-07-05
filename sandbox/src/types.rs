@@ -113,8 +113,11 @@ pub enum PreExpr {
     },
     Print(Box<PreExpr>),
     Return(Box<PreExpr>),
-    Panic { source_location: String },
-    Unreachable { source_location: String },
+    /// No source location here: the parse answer is shared across paths (its
+    /// content key hashes the bytes only), so it must embed nothing
+    /// path-derived. Resolve — whose key pins the FQ — attaches the location.
+    Panic,
+    Unreachable,
     Import(String),
     FunctionDef {
         name: String,

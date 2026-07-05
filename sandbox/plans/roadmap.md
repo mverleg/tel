@@ -71,11 +71,13 @@ two-layer model (immutable content store vs mutable binding layer).
 7. **Transitive validation for resolve/exec** `[cache-doc #4]` — before serving
    a cached derived result, verify upstream steps are still valid.
 
-8. **Output-digest comparison / early cutoff** `[cache-doc #5]`
+8. **Output-digest comparison / early cutoff** `[cache-doc #5]` — **done**
    - Recompute, compare result to cached, stop propagation when unchanged; key
      downstream results on the input's *output* digest, not source bytes.
    - Delivers Scenario B (whitespace-only edit re-parses one file, tree above
-     stays cached).
+     stays cached) — asserted by test, plus a semantic-edit control and
+     function-level cutoff within a file. Errors carry (tagged) fingerprints
+     too, so dependents of stably-erroring steps are cached answers as well.
 
 ## Phase 2 — Incremental & watch mode
 

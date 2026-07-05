@@ -170,6 +170,30 @@ impl Fingerprint {
         value.stable_hash(ctx, &mut h);
         Fingerprint(h.finish())
     }
+
+    /// Fingerprint of a *successful* answer. Deterministic errors are answers
+    /// too (invariant 6), so success and failure share one fingerprint space —
+    /// a `Result` variant tag keeps an `Ok` from ever aliasing an `Err` in the
+    /// same dependency slot. All step-output fingerprints go through
+    /// [`Fingerprint::of_ok`] / [`Fingerprint::of_err`]; plain
+    /// [`Fingerprint::of`] is for hashing *ingredients*, not step answers.
+    pub fn of_ok<T: StableHash + ?Sized>(value: &T, ctx: &StableCtx<'_>) -> Fingerprint {
+        let mut h = StableHasher::new();
+        h.write_u32(0); // Result variant tag: Ok
+        value.stable_hash(ctx, &mut h);
+        Fingerprint(h.finish())
+    }
+
+    /// Fingerprint of a deterministic *error* answer — see
+    /// [`Fingerprint::of_ok`]. Only terminal errors may be fingerprinted;
+    /// transient failures (IO, joins) and cycle errors are not answers and
+    /// never get one.
+    pub fn of_err<E: StableHash + ?Sized>(error: &E, ctx: &StableCtx<'_>) -> Fingerprint {
+        let mut h = StableHasher::new();
+        h.write_u32(1); // Result variant tag: Err
+        error.stable_hash(ctx, &mut h);
+        Fingerprint(h.finish())
+    }
 }
 
 /// Fingerprints enter dependents' content-key preimages by value — that is
@@ -456,13 +480,13 @@ impl StableHash for PreExpr {
                 out.write_u32(7);
                 inner.stable_hash(ctx, out);
             }
-            PreExpr::Panic { source_location } => {
+            // Fieldless by design (nothing path-derived in the shared parse
+            // answer); the tags alone distinguish them.
+            PreExpr::Panic => {
                 out.write_u32(8);
-                source_location.stable_hash(ctx, out);
             }
-            PreExpr::Unreachable { source_location } => {
+            PreExpr::Unreachable => {
                 out.write_u32(9);
-                source_location.stable_hash(ctx, out);
             }
             PreExpr::Import(name) => {
                 out.write_u32(10);
@@ -638,6 +662,161 @@ impl StableHash for crate::store::ResolveAnswer {
     }
 }
 
+// ---- StableHash impls: deterministic errors ---------------------------------
+//
+// A deterministic error is a terminal answer (invariant 6 of
+// docs/keys-and-invalidation.md) and therefore fingerprintable, so a
+// dependent whose dep *stably errors* can still derive its content key. The
+// payloads are already-rendered `String`s, which are stable by construction.
+// (Impls cover all variants for totality, but non-terminal errors — cycles,
+// joins, IO — are never fingerprinted: they never become store entries.)
+
+impl StableHash for crate::types::ParseError {
+    fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
+        use crate::types::ParseError::*;
+        match self {
+            UnexpectedEof => out.write_u32(0),
+            UnexpectedToken(tok) => {
+                out.write_u32(1);
+                tok.stable_hash(ctx, out);
+            }
+            InvalidNumber(s) => {
+                out.write_u32(2);
+                s.stable_hash(ctx, out);
+            }
+            EmptyExpression => out.write_u32(3),
+            IoError(e) => {
+                out.write_u32(4);
+                e.stable_hash(ctx, out);
+            }
+        }
+    }
+}
+
+impl StableHash for crate::types::ResolveError {
+    fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
+        use crate::types::ResolveError::*;
+        match self {
+            UndefinedVariable(c, name) => {
+                out.write_u32(0);
+                c.stable_hash(ctx, out);
+                name.stable_hash(ctx, out);
+            }
+            UndefinedFunction(c, name) => {
+                out.write_u32(1);
+                c.stable_hash(ctx, out);
+                name.stable_hash(ctx, out);
+            }
+            InvalidImportPath(c, name) => {
+                out.write_u32(2);
+                c.stable_hash(ctx, out);
+                name.stable_hash(ctx, out);
+            }
+            VariableAlreadyDefined(c, name) => {
+                out.write_u32(3);
+                c.stable_hash(ctx, out);
+                name.stable_hash(ctx, out);
+            }
+            ArgOutsideFunction(c) => {
+                out.write_u32(4);
+                c.stable_hash(ctx, out);
+            }
+            InvalidArgNumber(c, n) => {
+                out.write_u32(5);
+                c.stable_hash(ctx, out);
+                n.stable_hash(ctx, out);
+            }
+            ImportNotAtTop(c) => {
+                out.write_u32(6);
+                c.stable_hash(ctx, out);
+            }
+            FunctionDefNotAfterImports(c) => {
+                out.write_u32(7);
+                c.stable_hash(ctx, out);
+            }
+            FunctionAlreadyDefined(c, name) => {
+                out.write_u32(8);
+                c.stable_hash(ctx, out);
+                name.stable_hash(ctx, out);
+            }
+            FunctionOverload { loc, existing_arity, new_arity } => {
+                out.write_u32(9);
+                loc.stable_hash(ctx, out);
+                out.write_len(*existing_arity);
+                out.write_len(*new_arity);
+            }
+            ArityMismatch { context, func_name, expected, got } => {
+                out.write_u32(10);
+                context.stable_hash(ctx, out);
+                func_name.stable_hash(ctx, out);
+                out.write_len(*expected);
+                out.write_len(*got);
+            }
+            ArityGap { context, func_name, max_arg } => {
+                out.write_u32(11);
+                context.stable_hash(ctx, out);
+                func_name.stable_hash(ctx, out);
+                out.write_len(*max_arg);
+            }
+            UnreachableCode { context, source_location } => {
+                out.write_u32(12);
+                context.stable_hash(ctx, out);
+                source_location.stable_hash(ctx, out);
+            }
+            CyclicDependency { cycle } => {
+                out.write_u32(13);
+                cycle.stable_hash(ctx, out);
+            }
+            IoError(path, e) => {
+                out.write_u32(14);
+                path.stable_hash(ctx, out);
+                e.stable_hash(ctx, out);
+            }
+            ParseError(path, e) => {
+                out.write_u32(15);
+                path.stable_hash(ctx, out);
+                e.stable_hash(ctx, out);
+            }
+            JoinError(msg) => {
+                out.write_u32(16);
+                msg.stable_hash(ctx, out);
+            }
+        }
+    }
+}
+
+impl StableHash for crate::types::TypeError {
+    fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
+        use crate::types::TypeError::*;
+        match self {
+            Mismatch { context, expected, found } => {
+                out.write_u32(0);
+                context.stable_hash(ctx, out);
+                expected.stable_hash(ctx, out);
+                found.stable_hash(ctx, out);
+            }
+            TraitNotSatisfied { context, ty, tr } => {
+                out.write_u32(1);
+                context.stable_hash(ctx, out);
+                ty.stable_hash(ctx, out);
+                out.write_u32(match tr {
+                    crate::types::Trait::Number => 0,
+                });
+            }
+            LiteralOutOfRange { context, value, ty } => {
+                out.write_u32(2);
+                context.stable_hash(ctx, out);
+                value.stable_hash(ctx, out);
+                ty.stable_hash(ctx, out);
+            }
+            FunctionNotResolved { context } => {
+                out.write_u32(3);
+                context.stable_hash(ctx, out);
+            }
+        }
+    }
+}
+
 impl StableHash for VarInfo {
     fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
         self.name.stable_hash(ctx, out);
@@ -740,6 +919,20 @@ mod tests {
             h.finish()
         };
         assert_ne!(fp("ab", "c"), fp("a", "bc"));
+    }
+
+    /// Success and error answers share one fingerprint space (a dependency
+    /// slot can hold either), so the `Result` variant tag must keep an `Ok`
+    /// from ever aliasing an `Err` over the same payload bytes.
+    #[test]
+    fn ok_and_err_step_answers_cannot_alias() {
+        let interner = Interner::new();
+        let c = ctx(&interner);
+        assert_ne!(Fingerprint::of_ok(&42u64, &c), Fingerprint::of_err(&42u64, &c));
+        // Both are tagged, so neither collides with the untagged ingredient
+        // hash of the same value either.
+        assert_ne!(Fingerprint::of_ok(&42u64, &c), Fingerprint::of(&42u64, &c));
+        assert_ne!(Fingerprint::of_err(&42u64, &c), Fingerprint::of(&42u64, &c));
     }
 
     /// Different variants with equal payload bytes must not collide (the u32

@@ -45,12 +45,13 @@ pub struct ResolveAnswer {
 /// One stored resolve row: the answer (deterministic errors included) plus
 /// the answer's result fingerprint (docs/keys-and-invalidation.md stores the
 /// fingerprint *with* the value so dependents can key on it without
-/// re-hashing). `None` for errors — error fingerprints arrive with early
-/// cutoff.
+/// re-hashing). Errors are fingerprinted too ([`Fingerprint::of_err`]): a
+/// stably-erroring answer is a terminal answer, and its dependents key on it
+/// like any other.
 #[derive(Debug, Clone)]
 pub struct ResolveEntry {
     pub answer: Result<ResolveAnswer, ResolveError>,
-    pub fingerprint: Option<Fingerprint>,
+    pub fingerprint: Fingerprint,
 }
 
 /// The immutable content-addressed layer: one append-only table per query
@@ -142,9 +143,12 @@ pub struct BindingRecord {
     /// whose key derivation does not exist yet (resolve/exec get content
     /// keys built from dep fingerprints in a later step).
     pub content_key: Option<ContentKey>,
-    /// Fingerprint of the step's last output; `None` if the last answer was
-    /// an error (error fingerprints arrive with early cutoff).
-    pub fingerprint: Option<Fingerprint>,
+    /// Fingerprint of the step's last *answer* — success or deterministic
+    /// error, tagged apart by [`Fingerprint::of_ok`]/[`of_err`]. Always
+    /// recorded with the key (invariant 4: memo updates are atomic per
+    /// query); a step whose attempt ended non-terminally (transient IO,
+    /// cancelled/joined task, cycle) is never bound at all.
+    pub fingerprint: Fingerprint,
     /// For leaf (parse) steps: the source digest the current key was built
     /// from — the recorded `input_state`. Later stages chain their keys to
     /// the content that this position actually consumed, and recovery
@@ -182,11 +186,11 @@ impl BindingLayer {
         self.get(step).and_then(|r| r.input_digest)
     }
 
-    /// True if `step` is already bound to `key` with a fingerprint — lets a
-    /// re-demand of an unchanged step skip re-fingerprinting its output.
+    /// True if `step` is already bound to `key` — lets a re-demand of an
+    /// unchanged step skip re-fingerprinting its output.
     pub fn is_current(&self, step: &StepId, key: ContentKey) -> bool {
         self.get(step)
-            .map(|r| r.content_key == Some(key) && r.fingerprint.is_some())
+            .map(|r| r.content_key == Some(key))
             .unwrap_or(false)
     }
 }
@@ -201,6 +205,10 @@ mod tests {
 
     fn key(n: u64) -> ContentKey {
         ContentKey::build(QueryKind::Mono, |h| h.write_u64(n))
+    }
+
+    fn fp(interner: &Interner, n: u64) -> Fingerprint {
+        Fingerprint::of(&n, &StableCtx { interner })
     }
 
     fn mono_answer(interner: &Interner, name: &str, v: i64) -> MonoAnswer {
@@ -249,21 +257,22 @@ mod tests {
         assert!(bindings.get(&step).is_none());
         bindings.record(step, BindingRecord {
             content_key: Some(key(1)),
-            fingerprint: None,
-            input_digest: None,
+            fingerprint: fp(&interner, 1),
+            input_digest: Some(ContentDigest::of("stale")),
             dirty: false,
         });
         // Replacing the binding swaps the whole record: no field of the old
         // one survives to mix with the new (invariant 4).
         bindings.record(step, BindingRecord {
             content_key: Some(key(2)),
-            fingerprint: None,
+            fingerprint: fp(&interner, 2),
             input_digest: None,
             dirty: false,
         });
         let got = bindings.get(&step).unwrap();
         assert_eq!(got.content_key, Some(key(2)));
-        assert!(got.fingerprint.is_none());
+        assert_eq!(got.fingerprint, fp(&interner, 2));
+        assert!(got.input_digest.is_none(), "no field of the old record may survive");
     }
 
     #[test]
@@ -276,7 +285,7 @@ mod tests {
         let digest = ContentDigest::of("(print 42)");
         bindings.record(step, BindingRecord {
             content_key: Some(key(3)),
-            fingerprint: None,
+            fingerprint: fp(&interner, 3),
             input_digest: Some(digest),
             dirty: false,
         });

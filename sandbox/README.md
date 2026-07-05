@@ -32,6 +32,7 @@ start with [plans/roadmap.md](plans/roadmap.md).
 - [x] Write using async
 - [x] Cache computation steps (parse/resolve/mono answers are content-cached, keys chained through dep answer fingerprints; exec deliberately stays uncached — its value is its side effects)
 - [x] Cache IO steps (read stays fused with parse: the cached IO answer is the parse-level result; the read itself re-runs each compile to derive the lookup digest)
+- [x] Early cutoff via result fingerprints (a formatting-only edit re-parses one file and recomputes nothing above it — Scenario B; errors are fingerprinted answers too, so dependents of stably-failing steps are cached as well)
 - [ ] Store cache in LMDB (with postcard)
 - [x] Include schema hash in file cache
 - [ ] Incremental compile starting from main

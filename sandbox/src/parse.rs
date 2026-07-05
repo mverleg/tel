@@ -122,12 +122,11 @@ fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
-    file_path: String,
 }
 
 impl Parser {
-    fn new(tokens: Vec<Token>, file_path: String) -> Self {
-        Parser { tokens, pos: 0, file_path }
+    fn new(tokens: Vec<Token>) -> Self {
+        Parser { tokens, pos: 0 }
     }
 
     fn peek(&self) -> Option<&Token> {
@@ -248,11 +247,15 @@ impl Parser {
                     }
                     "panic" => {
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::Panic { source_location: self.file_path.clone() })
+                        // Location-free on purpose: the parse answer is
+                        // shared across identical files at different paths, so
+                        // it must embed nothing path-derived; resolve attaches
+                        // the location (its key pins the FQ).
+                        Ok(PreExpr::Panic)
                     }
                     "unreachable" => {
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::Unreachable { source_location: self.file_path.clone() })
+                        Ok(PreExpr::Unreachable)
                     }
                     "import" => {
                         let path = match self.advance() {
@@ -318,8 +321,8 @@ impl Parser {
 }
 
 
-pub fn tokenize_and_parse(source: &str, file_path: &str) -> Result<PreExpr, ParseError> {
+pub fn tokenize_and_parse(source: &str) -> Result<PreExpr, ParseError> {
     let tokens = tokenize(source)?;
-    let mut parser = Parser::new(tokens, file_path.to_string());
+    let mut parser = Parser::new(tokens);
     parser.parse_all()
 }

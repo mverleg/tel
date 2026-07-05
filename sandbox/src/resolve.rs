@@ -53,6 +53,13 @@ impl<'a> Resolver<'a> {
         self.current_context.resolve(self.ctx.interner()).to_string()
     }
 
+    /// The location string for diagnostics that point at this file
+    /// (`panic`/`unreachable`). File-level granularity — the sandbox tracks no
+    /// line numbers.
+    fn source_location_str(&self) -> String {
+        self.current_file.to_string_lossy().to_string()
+    }
+
     fn calculate_arity(expr: &PreExpr, func_name: &str, context: &str) -> Result<usize, ResolveError> {
         let mut max_arg = 0u8;
         let mut arg_numbers = std::collections::HashSet::new();
@@ -99,7 +106,7 @@ impl<'a> Resolver<'a> {
             PreExpr::Print(e) | PreExpr::Return(e) => {
                 Self::collect_arg_numbers(e, arg_numbers, max_arg);
             }
-            PreExpr::Panic { .. } | PreExpr::Unreachable { .. } => {}
+            PreExpr::Panic | PreExpr::Unreachable => {}
             PreExpr::Call { args, .. } => {
                 for arg in args {
                     Self::collect_arg_numbers(arg, arg_numbers, max_arg);
@@ -221,11 +228,15 @@ impl<'a> Resolver<'a> {
                 let resolved_expr = Box::new(self.resolve_expr(*expr)?);
                 Ok(Expr::Return(resolved_expr))
             }
-            PreExpr::Panic { source_location } => {
-                Ok(Expr::Panic { source_location })
+            // The location is attached here, not at parse: the parse answer is
+            // shared across identical files at different paths, so it must be
+            // path-free; this step's key pins the FQ, so embedding the path in
+            // the *resolve* answer is sound.
+            PreExpr::Panic => {
+                Ok(Expr::Panic { source_location: self.source_location_str() })
             }
-            PreExpr::Unreachable { source_location } => {
-                Err(ResolveError::UnreachableCode { context: self.context_str(), source_location })
+            PreExpr::Unreachable => {
+                Err(ResolveError::UnreachableCode { context: self.context_str(), source_location: self.source_location_str() })
             }
             PreExpr::Import(_) => {
                 Err(ResolveError::ImportNotAtTop(self.context_str()))

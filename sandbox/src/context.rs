@@ -81,6 +81,13 @@ pub struct Global {
     printer: &'static dyn Printer,
 }
 
+/// One resolve outcome: the answer triple, or the failure paired with the
+/// failure's *answer fingerprint* when it is a terminal (cached) answer.
+/// `None` on the error side marks a non-terminal failure — a cycle, a task
+/// join failure, transient IO — which is not an answer: nothing above it may
+/// be keyed or cached (invariant 6 of docs/keys-and-invalidation.md).
+type ResolveOutcome = Result<(Expr, SymbolTable, Fingerprint), (ResolveError, Option<Fingerprint>)>;
+
 /// Content-key *preimage* of one monomorphised instance: the instance identity
 /// plus the fingerprint of the one thing `check_function` consumes — the
 /// resolved [`FuncData`] of the instance's function. Hashed (via `StableHash`,
@@ -202,7 +209,7 @@ impl Global {
         let result = self.store.parse_get(key, move || async move {
             debug!("CoreContext::parse_impl parsing {:?} (digest {:?})", path, digest);
             self.computed_parses.fetch_add(1, Ordering::Relaxed);
-            crate::parse::tokenize_and_parse(&source, path)
+            crate::parse::tokenize_and_parse(&source)
         }).await;
 
         // Rebind this position to what its content resolves to now: content
@@ -213,12 +220,16 @@ impl Global {
         let step = StepId::Parse(id);
         if !self.bindings.is_current(&step, key) {
             let ctx = StableCtx { interner: &self.interner };
+            // A deterministic parse error is a terminal answer like any
+            // other: cached above and fingerprinted (tagged apart from
+            // successes), so dependents can key on it.
+            let fingerprint = match result {
+                Ok(pre) => Fingerprint::of_ok(pre, &ctx),
+                Err(e) => Fingerprint::of_err(e, &ctx),
+            };
             self.bindings.record(step, BindingRecord {
                 content_key: Some(key),
-                // A deterministic parse error is a terminal answer and is
-                // cached above, but carries no output fingerprint yet (error
-                // fingerprints arrive with early cutoff).
-                fingerprint: result.as_ref().ok().map(|pre| Fingerprint::of(pre, &ctx)),
+                fingerprint,
                 input_digest: Some(digest),
                 dirty: false,
             });
@@ -235,9 +246,33 @@ impl Global {
 
     /// Resolve every id (concurrently for more than one), returning each
     /// answer *with its result fingerprint* — the ingredient a dependent needs
-    /// to build its own content key.
+    /// to build its own content key. Fail-fast batch view over
+    /// [`Global::resolve_each`]: the first failure (in id order) becomes the
+    /// batch's error.
     async fn resolve_all_fp(&'static self, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId]) -> Result<(Vec<(Expr, Fingerprint)>, SymbolTable), ResolveError> {
-        debug!("CoreContext::resolve_all_fp x{}: {:?}", ids.len(), ids);
+        let outcomes = self.resolve_each(caller, ancestors, ids).await?;
+
+        let mut results = Vec::with_capacity(outcomes.len());
+        let mut merged_table = SymbolTable::new();
+        for outcome in outcomes {
+            let (expr, table, fp) = outcome.map_err(|(e, _fp)| e)?;
+            results.push((expr, fp));
+            merged_table.vars.extend(table.vars);
+            // funcs are now in global registry, no need to merge
+        }
+        Ok((results, merged_table))
+    }
+
+    /// Resolve every id (concurrently for more than one), returning the
+    /// per-id outcomes in id order — *without* failing the batch on a single
+    /// dep's terminal error. A dependent needs exactly this view: a dep whose
+    /// answer is a deterministic error still has an answer fingerprint, so
+    /// the dependent's own content key stays derivable.
+    ///
+    /// The outer `Err` is batch-level and always non-terminal: an import
+    /// cycle caught by the pre-flight ancestor check, or a task join failure.
+    async fn resolve_each(&'static self, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId]) -> Result<Vec<ResolveOutcome>, ResolveError> {
+        debug!("CoreContext::resolve_each x{}: {:?}", ids.len(), ids);
 
         // Deadlock-safe cycle detection (docs/cycle-detection.md): a requested
         // resolution that is already on this task's in-progress ancestor chain
@@ -252,15 +287,14 @@ impl Global {
         }
 
         if ids.is_empty() {
-            return Ok((Vec::new(), SymbolTable::new()));
+            return Ok(Vec::new());
         }
 
         let n = ids.len();
         if n == 1 {
             let id = ids[0];
             self.graph.register_dependency(caller, StepId::Resolve(id));
-            let (expr, table, fp) = self.resolve_one(ancestors, id).await?;
-            return Ok((vec![(expr, fp)], table));
+            return Ok(vec![self.resolve_one(ancestors, id).await]);
         }
 
         // Spawn tasks for items 0..N-1
@@ -279,28 +313,18 @@ impl Global {
         // Use current task for the Nth item
         let last_id = ids[n-1];
         self.graph.register_dependency(caller, StepId::Resolve(last_id));
-        let last_result = self.resolve_one(ancestors, last_id).await?;
+        let last_outcome = self.resolve_one(ancestors, last_id).await;
 
-        // Wait for all spawned tasks
-        let mut all_results = Vec::with_capacity(n);
+        // Wait for all spawned tasks; only a *join* failure aborts the batch
+        // (it is transient, never an answer).
+        let mut outcomes = Vec::with_capacity(n);
         for handle in handles {
-            let result = handle.await
+            let outcome = handle.await
                 .map_err(|e| ResolveError::JoinError(format!("Task join failed: {}", e)))?;
-            all_results.push(result?);
+            outcomes.push(outcome);
         }
-        all_results.push(last_result);
-
-        // Build result vectors
-        let mut results = Vec::with_capacity(n);
-        let mut merged_table = SymbolTable::new();
-
-        for (expr, table, fp) in all_results {
-            results.push((expr, fp));
-            merged_table.vars.extend(table.vars);
-            // funcs are now in global registry, no need to merge
-        }
-
-        Ok((results, merged_table))
+        outcomes.push(last_outcome);
+        Ok(outcomes)
     }
 
     /// Resolve one file-level unit through the two-layer cache — the pull
@@ -325,32 +349,42 @@ impl Global {
     /// edges — old edges may describe other content (the "zombie" problem the
     /// design doc warns about).
     ///
-    /// Boxed because it is recursive through `resolve_all_fp` (import chains
+    /// Boxed because it is recursive through `resolve_each` (import chains
     /// recurse; spawning breaks the cycle for all but the inline last id).
-    fn resolve_one(&'static self, ancestors: AncestorPath, id: ResolveId) -> Pin<Box<dyn Future<Output = Result<(Expr, SymbolTable, Fingerprint), ResolveError>> + Send>> {
+    fn resolve_one(&'static self, ancestors: AncestorPath, id: ResolveId) -> Pin<Box<dyn Future<Output = ResolveOutcome> + Send>> {
         Box::pin(async move {
             let fq = id.func_loc;
             debug!("CoreContext::resolve_one: {:?}", id);
+            let sctx = StableCtx { interner: &self.interner };
 
             // Leaf first: (re-)demand the parse. A content-store hit costs a
             // read + digest, not a parse.
             let pre = match self.parse_impl(StepId::Resolve(id), ParseId { file_path: fq.path() }).await {
                 Ok(pre) => pre,
-                // The parse error itself is the cached (terminal) answer;
-                // this wrapper is cheap re-derivation on every demand. It is
-                // not stored: an error output has no fingerprint yet, so a
-                // resolve above it cannot be keyed (error fingerprints arrive
-                // with early cutoff).
                 Err(e) => {
+                    // A transient IO failure never produced a digest: nothing
+                    // to key on, nothing may be cached (invariant 6).
+                    if matches!(e, ParseError::IoError(_)) {
+                        let path_str = fq.path_str(&self.interner).to_string();
+                        return Err((ResolveError::ParseError(path_str, e.clone()), None));
+                    }
+                    // A deterministic parse error is the leaf's terminal
+                    // answer; the wrapper is *this* step's answer,
+                    // deterministic in (fq, parse answer) — cacheable under a
+                    // key with an empty dep list, like any other answer.
+                    let parse_fp = Fingerprint::of_err(e, &sctx);
                     let path_str = fq.path_str(&self.interner).to_string();
-                    return Err(ResolveError::ParseError(path_str, e.clone()));
+                    let err = ResolveError::ParseError(path_str, e.clone());
+                    let fp = Fingerprint::of_err(&err, &sctx);
+                    let key = Self::resolve_key(&sctx, fq, parse_fp, &[]);
+                    let entry = self.store.resolve_insert(key, ResolveEntry { answer: Err(err), fingerprint: fp });
+                    return self.commit_resolve(id, key, entry);
                 }
             };
             // Fingerprint the answer we actually hold (not a memo), so the
             // key derivation can never pair a stale fingerprint with fresh
             // content.
-            let sctx = StableCtx { interner: &self.interner };
-            let parse_fp = Fingerprint::of(pre, &sctx);
+            let parse_fp = Fingerprint::of_ok(pre, &sctx);
 
             let context_str = fq.name_str(&self.interner);
             let imports = match crate::resolve::extract_import_names(pre, context_str) {
@@ -360,8 +394,9 @@ impl Global {
                 // successful no-import resolution: same parse fingerprint
                 // means same PreExpr means the same extraction outcome.
                 Err(e) => {
+                    let fp = Fingerprint::of_err(&e, &sctx);
                     let key = Self::resolve_key(&sctx, fq, parse_fp, &[]);
-                    let entry = self.store.resolve_insert(key, ResolveEntry { answer: Err(e), fingerprint: None });
+                    let entry = self.store.resolve_insert(key, ResolveEntry { answer: Err(e), fingerprint: fp });
                     return self.commit_resolve(id, key, entry);
                 }
             };
@@ -383,18 +418,57 @@ impl Global {
 
             // Recurse into the deps. The chain now includes this resolution,
             // so an import that re-enters it errors as a cycle before any
-            // wait-for edge can form. A dep failure propagates uncached: the
-            // failing node cached its own answer, everything above is cheap
-            // re-derivation.
+            // wait-for edge can form.
             let chain = ancestors.extended(fq);
-            let (dep_results, _tables) = self.resolve_all_fp(StepId::Resolve(id), chain, &import_ids).await?;
+            let outcomes = match self.resolve_each(StepId::Resolve(id), chain, &import_ids).await {
+                Ok(outcomes) => outcomes,
+                // Batch-level failure: cycle or join — non-terminal, nothing
+                // above it may be cached.
+                Err(e) => return Err((e, None)),
+            };
 
-            let deps: Vec<(FQ, Fingerprint)> = import_ids.iter()
-                .zip(dep_results.iter())
-                .map(|(dep_id, (_expr, fp))| (dep_id.func_loc, *fp))
-                .collect();
+            // Collect each dep's answer fingerprint — success or terminal
+            // error alike. A dep that stably errors is still an answer, so
+            // this step's key stays derivable and its (propagated) failure is
+            // itself cacheable: the preimage pins every dep answer, and the
+            // first failing import is determined by them.
+            let mut deps: Vec<(FQ, Fingerprint)> = Vec::with_capacity(outcomes.len());
+            let mut first_failure: Option<ResolveError> = None;
+            let mut non_terminal = false;
+            for (dep_id, outcome) in import_ids.iter().zip(&outcomes) {
+                match outcome {
+                    Ok((_expr, _table, fp)) => deps.push((dep_id.func_loc, *fp)),
+                    Err((e, Some(fp))) => {
+                        deps.push((dep_id.func_loc, *fp));
+                        if first_failure.is_none() {
+                            first_failure = Some(e.clone());
+                        }
+                    }
+                    Err((e, None)) => {
+                        non_terminal = true;
+                        if first_failure.is_none() {
+                            first_failure = Some(e.clone());
+                        }
+                    }
+                }
+            }
+            if let Some(err) = first_failure {
+                if non_terminal {
+                    // Some dep aborted rather than answered (cycle, join,
+                    // IO): this step has no complete preimage — propagate
+                    // uncached (invariant 6).
+                    return Err((err, None));
+                }
+                let key = Self::resolve_key(&sctx, fq, parse_fp, &deps);
+                if let Some(entry) = self.store.resolve_get(&key) {
+                    return self.commit_resolve(id, key, entry);
+                }
+                let fp = Fingerprint::of_err(&err, &sctx);
+                let entry = self.store.resolve_insert(key, ResolveEntry { answer: Err(err), fingerprint: fp });
+                return self.commit_resolve(id, key, entry);
+            }
+
             let key = Self::resolve_key(&sctx, fq, parse_fp, &deps);
-
             if let Some(entry) = self.store.resolve_get(&key) {
                 debug!("CoreContext::resolve_one cache hit for {:?}", id);
                 return self.commit_resolve(id, key, entry);
@@ -414,15 +488,19 @@ impl Global {
                         })
                         .collect();
                     let answer = ResolveAnswer { ast, table, funcs };
-                    let fingerprint = Fingerprint::of(&answer, &sctx);
-                    ResolveEntry { answer: Ok(answer), fingerprint: Some(fingerprint) }
+                    let fingerprint = Fingerprint::of_ok(&answer, &sctx);
+                    ResolveEntry { answer: Ok(answer), fingerprint }
                 }
                 // Body errors are deterministic in the inputs the key already
                 // pins (parse answer + import answers), so they are terminal
-                // answers (invariant 6). Non-deterministic failures cannot
-                // come from the synchronous body: IO lives in parse, and
-                // cycles/joins happen in the dep recursion above (uncached).
-                Err(e) => ResolveEntry { answer: Err(e), fingerprint: None },
+                // answers (invariant 6), fingerprinted like successes.
+                // Non-deterministic failures cannot come from the synchronous
+                // body: IO lives in parse, and cycles/joins happen in the dep
+                // recursion above (uncached).
+                Err(e) => {
+                    let fingerprint = Fingerprint::of_err(&e, &sctx);
+                    ResolveEntry { answer: Err(e), fingerprint }
+                }
             };
             let entry = self.store.resolve_insert(key, entry);
             self.commit_resolve(id, key, entry)
@@ -450,37 +528,27 @@ impl Global {
     /// Commit a resolve answer for `id`: replay its definitions into the
     /// positional registry, then rebind the logical id — one whole-record
     /// insert, the atomic last step (invariant 4) — and return the caller's
-    /// view.
-    fn commit_resolve(&self, id: ResolveId, key: ContentKey, entry: ResolveEntry) -> Result<(Expr, SymbolTable, Fingerprint), ResolveError> {
+    /// view. Both arms carry the answer's fingerprint: a terminal error is an
+    /// answer, and dependents key on it like any other.
+    fn commit_resolve(&self, id: ResolveId, key: ContentKey, entry: ResolveEntry) -> ResolveOutcome {
+        if let Ok(answer) = &entry.answer {
+            // Overwrite, not or_insert: the position may currently hold
+            // data from different content (e.g. before a revert), and the
+            // answer under this key is what the position resolves to now.
+            for (f, data) in &answer.funcs {
+                self.func_registry.insert(*f, data.clone());
+            }
+        }
+        // Rebinding is the atomic last step, after the commit's side effects.
+        self.bindings.record(StepId::Resolve(id), BindingRecord {
+            content_key: Some(key),
+            fingerprint: entry.fingerprint,
+            input_digest: None,
+            dirty: false,
+        });
         match entry.answer {
-            Ok(answer) => {
-                // Overwrite, not or_insert: the position may currently hold
-                // data from different content (e.g. before a revert), and the
-                // answer under this key is what the position resolves to now.
-                for (f, data) in &answer.funcs {
-                    self.func_registry.insert(*f, data.clone());
-                }
-                let fingerprint = entry.fingerprint
-                    .expect("successful resolve answers are stored with their fingerprint");
-                self.bindings.record(StepId::Resolve(id), BindingRecord {
-                    content_key: Some(key),
-                    fingerprint: Some(fingerprint),
-                    input_digest: None,
-                    dirty: false,
-                });
-                Ok((answer.ast, answer.table, fingerprint))
-            }
-            Err(e) => {
-                // A cached error is a terminal answer, bound like a success
-                // but (for now) without an output fingerprint.
-                self.bindings.record(StepId::Resolve(id), BindingRecord {
-                    content_key: Some(key),
-                    fingerprint: None,
-                    input_digest: None,
-                    dirty: false,
-                });
-                Err(e)
-            }
+            Ok(answer) => Ok((answer.ast, answer.table, entry.fingerprint)),
+            Err(e) => Err((e, Some(entry.fingerprint))),
         }
     }
 
@@ -541,9 +609,13 @@ impl Global {
             let step = StepId::Mono(key);
             if !self.bindings.is_current(&step, cache_key) {
                 let sctx = StableCtx { interner: &self.interner };
+                let fingerprint = match &answer {
+                    Ok(pair) => Fingerprint::of_ok(pair, &sctx),
+                    Err(e) => Fingerprint::of_err(e, &sctx),
+                };
                 self.bindings.record(step, BindingRecord {
                     content_key: Some(cache_key),
-                    fingerprint: answer.as_ref().ok().map(|pair| Fingerprint::of(pair, &sctx)),
+                    fingerprint,
                     input_digest: None,
                     dirty: false,
                 });
@@ -719,7 +791,7 @@ mod tests {
 
         let record = g.bindings.get(&StepId::Parse(id)).expect("parse step is bound");
         let key = record.content_key.expect("leaf content key is bound");
-        let fingerprint = record.fingerprint.expect("output fingerprint is bound");
+        let fingerprint = record.fingerprint;
         assert_eq!(record.input_digest, Some(ContentDigest::of("(print 42)\n")));
         assert!(!record.dirty);
 
@@ -727,7 +799,7 @@ mod tests {
         g.parse_impl(StepId::Root, id).await.unwrap();
         let again = g.bindings.get(&StepId::Parse(id)).unwrap();
         assert_eq!(again.content_key, Some(key));
-        assert_eq!(again.fingerprint, Some(fingerprint));
+        assert_eq!(again.fingerprint, fingerprint);
 
         // Changed content rebinds the same logical id to a new key (and here
         // a new fingerprint — the AST changed too).
@@ -735,7 +807,7 @@ mod tests {
         g.parse_impl(StepId::Root, id).await.unwrap();
         let rebound = g.bindings.get(&StepId::Parse(id)).unwrap();
         assert_ne!(rebound.content_key, Some(key));
-        assert_ne!(rebound.fingerprint, Some(fingerprint));
+        assert_ne!(rebound.fingerprint, fingerprint);
     }
 
     /// A deterministic parse error is a terminal answer: it is stored in the
@@ -755,6 +827,12 @@ mod tests {
         assert_eq!(g.computed_parse_count(), 1, "the cached error must be served, not re-parsed");
         let record = g.bindings.get(&StepId::Parse(id)).expect("errored parse is still bound");
         assert!(record.content_key.is_some());
-        assert!(record.fingerprint.is_none());
+
+        // The error answer is fingerprinted (tagged apart from successes), so
+        // a dependent above it can still derive its own content key.
+        fs::write(&file, "(print 42)\n").unwrap();
+        g.parse_impl(StepId::Root, id).await.unwrap();
+        let fixed = g.bindings.get(&StepId::Parse(id)).unwrap();
+        assert_ne!(fixed.fingerprint, record.fingerprint, "an Ok answer must never fingerprint like the Err");
     }
 }
