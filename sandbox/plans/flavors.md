@@ -2,8 +2,11 @@
 
 Status: **draft / not implemented.** Roadmap: Phase 3, step 15 (see
 [roadmap.md](roadmap.md)). Leaning **towards** adopting flavors; this doc lays
-out what they are, the trade-offs, and a recommended shape. The first concrete
-flavor is fast-vs-IDE mode ([fast-mode.md](fast-mode.md)).
+out what they are, the trade-offs, and a recommended shape. Fast-vs-detail
+mode was the candidate first flavor, but per the inventory in
+[fast-mode.md](fast-mode.md) it likely needs no key dimension at all (detail
+data = sidecar queries + driver demand policy); the first genuine flavor is
+then **opt-level**, which arrives with the backend.
 
 ## What a flavor is
 
@@ -17,8 +20,8 @@ Candidate flavors floated for Tel (from `qcompiler/README.md`):
 
 | Candidate | Real nature | Verdict |
 |---|---|---|
-| fast vs IDE mode | ambient, result-affecting (metadata richness) | **genuine flavor** — adopt first |
-| debug / opt level | ambient, result-affecting (lowering/codegen) | genuine flavor, but **backend only** — out of current scope |
+| fast vs IDE/detail mode | metadata richness only — never affects core results | **not a flavor after all** — sidecar queries + demand policy (fast-mode.md); revisit only if a compute-differently case appears |
+| debug / opt level | ambient, result-affecting (lowering/codegen) | **genuine flavor** — the first real customer, but **backend only**, out of current scope |
 | which source filesystem (disk vs web IDE) | changes the *bytes* | **not a flavor** — resolves to content; handle at the read/content layer |
 | which cache | storage location of results | **not a flavor** — storage-layer concern, not a key dimension |
 | generics / references (monomorph for types) | part of the query *subject* | **not a flavor** — model as query *parameters* (`monomorph F for (U,T)`) |

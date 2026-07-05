@@ -7,12 +7,16 @@ Working plans for the sandbox query engine. Design *analysis* lives in
   (Phases 0–4), merging the README feature checklist, the caching design
   priorities, in-code `TODO @mark` markers, and the gap analysis vs `qcompiler`.
   Start here.
-- **[fast-mode.md](fast-mode.md)** — fast mode vs IDE mode: whether they are
-  separate targets (no — a flavor), the shared-core + metadata-sidecar shape,
-  and the fast→ide upgrade-retry path. Roadmap Phase 2 / step 11.
-- **[flavors.md](flavors.md)** — query "flavors" (mode, opt-level, …) as a
-  cache-key dimension: representation options, pros & cons, and a recommendation
-  (per-query declared subset, starting with `mode`). Roadmap Phase 3 / step 15.
+- **[fast-mode.md](fast-mode.md)** — fast mode vs detail (IDE) mode: whether
+  they are separate targets (no — same code path; likely not even a key
+  dimension: detail = sidecar queries + driver demand policy), the
+  core + sidecar shape, NodeId locators, the upgrade-retry path, and the
+  runtime/AOT line-number story. Roadmap Phase 2 / step 11.
+- **[flavors.md](flavors.md)** — query "flavors" (opt-level, …) as a
+  cache-key dimension: representation options, pros & cons, and a
+  recommendation (per-query declared subset). Mode was the candidate first
+  flavor but likely dissolves into demand policy (see fast-mode.md); the
+  first real customer is then opt-level. Roadmap Phase 3 / step 15.
 
 Related analysis (not plans, but referenced throughout):
 - `../../docs/cache-invalidation-problem.md` — content-addressed caching, the
