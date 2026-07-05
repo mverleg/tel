@@ -1,0 +1,76 @@
+// The daemon API (sandbox/plans/daemon.md "Connection and API shape").
+//
+// One persistent HTTP/2 connection per client; every RPC below is a stream
+// multiplexed over it. Compile and Watch are server-streaming: the client
+// blocks reading the stream (blocking is a client choice, not a protocol
+// property), and dropping the stream is the cancellation signal.
+//
+// Client and server must be the exact same build (Handshake); messages here
+// are therefore a serialization convenience, not a compatibility contract —
+// change them freely until version skew is deliberately supported.
+//
+// Auth: every request carries the token from the discovery ad file in the
+// "x-telsb-token" metadata key. The trust boundary is "can read the
+// owner-only ad file", not "can reach the port".
+
+syntax = "proto3";
+
+package telsb.daemon.v1;
+
+service SandboxDaemon {
+  // Version check; the client is the authority on mismatch (it calls
+  // Shutdown and spawns its own build).
+  rpc Handshake(HandshakeRequest) returns (HandshakeReply);
+
+  // One compile+execute of an entry file, batch stance. Streams program
+  // output, then exactly one Done.
+  rpc Compile(CompileRequest) returns (stream RunEvent);
+
+  // Never-ending watch stance: an initial run, then one run per file-change
+  // wave. Streams program output continuously and one Done per run. Ends
+  // only by cancellation (client drops the stream).
+  rpc Watch(CompileRequest) returns (stream RunEvent);
+
+  // Drain and exit; the daemon removes its ad file on the way out.
+  rpc Shutdown(ShutdownRequest) returns (ShutdownReply);
+}
+
+message HandshakeRequest {
+  // The client's build fingerprint (pkg version + cache schema version +
+  // build id) — see src/version.rs.
+  string version = 1;
+}
+
+message HandshakeReply {
+  // The daemon's build fingerprint, for the client to compare.
+  string version = 1;
+}
+
+message CompileRequest {
+  // Canonical absolute path to the entry .telsb file. Canonical because the
+  // engine interns paths textually and the watch stance matches file-change
+  // events against them (path identity contract, sandbox/src/monitor.rs).
+  string entry_path = 1;
+  // Print the dependency tree after the run (goes through the same output
+  // stream).
+  bool show_deps = 2;
+}
+
+message RunEvent {
+  oneof event {
+    // One program print statement (or dependency-tree line).
+    string output_line = 1;
+    // A run finished. Terminal for Compile; per-wave for Watch.
+    Done done = 2;
+  }
+}
+
+message Done {
+  bool ok = 1;
+  // Rendered compile/execute error when !ok.
+  string error = 2;
+}
+
+message ShutdownRequest {}
+
+message ShutdownReply {}

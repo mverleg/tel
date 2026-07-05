@@ -14,6 +14,7 @@ mod trace;
 use std::fmt;
 use std::collections::HashSet;
 use std::sync::Arc;
+pub use crate::keys::SCHEMA_VERSION;
 use crate::common::{Ctx, FQ};
 use crate::context::{Global, PullMode, RootContext};
 use crate::graph::{ExecId, StepId};

@@ -1,0 +1,36 @@
+[package]
+name = "sandbox-daemon"
+description = "Daemon + CLI host for the sandbox query compiler (plans/daemon.md): one warm compiler process per workspace root, gRPC API, spawn-on-demand client."
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+homepage.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "telsb"
+path = "src/main.rs"
+
+[dependencies]
+sandbox = { path = "../sandbox" }
+
+clap.workspace = true
+env_logger.workspace = true
+log.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["sync", "net", "time"] }
+
+# Transport (plans/daemon.md "Transport — tonic/gRPC (committed)"); same
+# versions as telir so the .proto toolchain is shared. Approved 2026-07-06.
+prost = "0.13.5"
+tokio-stream = { version = "0.1.17", features = ["net"] }
+tonic = "0.13.1"
+
+[build-dependencies]
+tonic-build = "0.13.1"
+
+[dev-dependencies]
+tempfile = "3.15"

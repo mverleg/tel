@@ -42,6 +42,15 @@ start with [plans/roadmap.md](plans/roadmap.md).
 - [x] Cycle detection
 - [x] Step-trace debug mode (`--features step-trace`: per-step JSONL records — logical id, key/fingerprint hashes, cache hit/miss with entry age, micros timing; zero-sized no-ops when off)
 
+## Daemon and CLI
+
+The `sandbox-daemon` sibling crate (binary `telsb`) hosts one warm
+`Compiler` per workspace root — marked by a `tel.toml` file — behind a
+gRPC API, spawned on demand by the CLI and kept exactly version-matched to
+it. `telsb run main.telsb` compiles through the daemon (or in-process with
+`--no-daemon` / without a root marker); `telsb watch` streams a recompile
+per file-change wave. Design and rationale: [plans/daemon.md](plans/daemon.md).
+
 ## Running Programs
 
 ```rust
