@@ -1,4 +1,4 @@
-use crate::common::{Interner, FQ};
+use crate::common::{Interner, Path, FQ};
 use crate::graph::{ExecId, Graph, MonoId, ParseId, ResolveId, StepId};
 use crate::keys::{ContentDigest, ContentKey, Fingerprint, QueryKind, StableCtx, StableHash};
 use crate::store::{BindingLayer, BindingRecord, ContentStore, MonoAnswer, ResolveAnswer, ResolveEntry};
@@ -6,10 +6,12 @@ use crate::types::{ExecuteError, Expr, FuncData, FuncId, MonoFuncData, ParseErro
 use crate::Printer;
 use dashmap::DashMap;
 use log::debug;
+use std::collections::HashSet;
 use std::future::Future;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Immutable chain of resolutions in progress on this task's path, root-most
 /// first (docs/cycle-detection.md). Each child resolution extends the chain by
@@ -47,6 +49,25 @@ impl AncestorPath {
     }
 }
 
+/// How a pull decides whether a memoized binding can be trusted — the two
+/// reconciliation stances of docs/execution-and-recovery.md ("When
+/// `reconcile()` runs, by mode").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PullMode {
+    /// Batch stance: never trust events; every demanded leaf is re-read and
+    /// re-digested (leaf digests are ground truth), and every demanded step
+    /// re-derives its content key. Always correct with no invalidation state
+    /// at all — this is what [`crate::Compiler::run`] does.
+    Reconcile,
+    /// Watch stance: trust that every change was announced via
+    /// [`crate::Compiler::invalidate`]. A *clean* (`Verified`) binding is
+    /// served from its memoized content key with zero recursion — its leaf is
+    /// not even re-read — while dirty nodes re-derive through the normal pull
+    /// path (pass 2 of the two-pass protocol). This is the entire payoff of
+    /// push invalidation: untouched subgraphs cost nothing per wave.
+    TrustClean,
+}
+
 /// The shared core of one persistent compiler: every cache layer and the
 /// session memos live here, behind an `Arc` so spawned tasks and long-lived
 /// [`crate::Compiler`]s share it without leaking (the old `Box::leak`
@@ -71,17 +92,43 @@ pub struct Global {
     /// keys to. The only cache state that is ever rebound.
     bindings: BindingLayer,
     func_registry: DashMap<FQ, FuncData>,
+    /// Which file-level resolve step *defined* each function — recorded at
+    /// resolve commit. The mono phase depends on the resolved data of one
+    /// function, and for reverse-edge cone marking that dependency must point
+    /// at the real resolve step (the file-level unit), not at a phantom
+    /// `Resolve(function FQ)` node that no resolution ever binds. Session
+    /// memo, like the graph edges.
+    definer: DashMap<FQ, ResolveId>,
     /// Monomorphised instances of the *current* run, keyed by function +
     /// numeric type. This is the positional view the interpreter executes
     /// from; it is rebuilt per run (from content-store hits where possible).
     mono_registry: DashMap<MonoId, MonoFuncData>,
+    /// Source files actually read and digested (the input probe of the pull).
+    /// In watch mode a clean subtree skips even this.
+    leaf_reads: AtomicUsize,
     /// Parse computations actually executed (content-store misses).
     computed_parses: AtomicUsize,
     /// Resolve computations actually executed (content-store misses).
     computed_resolves: AtomicUsize,
     /// Mono checks actually executed (content-store misses).
     computed_monos: AtomicUsize,
+    /// Test support: when set, resolving a file whose path contains this
+    /// needle panics at the recompute boundary. The least invasive way to
+    /// exercise the panic-safety path (`catch_unwind` + node-stays-dirty)
+    /// from integration tests; never set in production use.
+    panic_on_resolve: Mutex<Option<String>>,
     printer: Arc<dyn Printer>,
+}
+
+/// Render a caught panic payload for the non-terminal `Panicked` variants.
+fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "non-string panic payload".to_string()
+    }
 }
 
 /// One resolve outcome: the answer triple, or the failure paired with the
@@ -131,10 +178,13 @@ impl Global {
             store: ContentStore::new(),
             bindings: BindingLayer::new(),
             func_registry: DashMap::new(),
+            definer: DashMap::new(),
             mono_registry: DashMap::new(),
+            leaf_reads: AtomicUsize::new(0),
             computed_parses: AtomicUsize::new(0),
             computed_resolves: AtomicUsize::new(0),
             computed_monos: AtomicUsize::new(0),
+            panic_on_resolve: Mutex::new(None),
             printer,
         }
     }
@@ -176,16 +226,91 @@ impl Global {
     pub fn computed_mono_count(&self) -> usize {
         self.computed_monos.load(Ordering::Relaxed)
     }
+
+    /// Number of source files read and digested so far (every demanded leaf
+    /// in [`PullMode::Reconcile`]; only dirty cones in
+    /// [`PullMode::TrustClean`]).
+    pub fn leaf_read_count(&self) -> usize {
+        self.leaf_reads.load(Ordering::Relaxed)
+    }
+
+    /// Test support — see the `panic_on_resolve` field.
+    pub fn set_panic_on_resolve(&self, needle: Option<&str>) {
+        *self.panic_on_resolve.lock().unwrap() = needle.map(String::from);
+    }
+
+    /// Pass 1 of two-pass invalidation (docs/execution-and-recovery.md,
+    /// docs/cache-invalidation-problem.md #7): mark the changed leaf and its
+    /// whole reverse-edge cone dirty. Bit flips only — infallible, no
+    /// hashing, no IO — so it can never half-fail into a falsely-clean state;
+    /// recompute (pass 2) happens lazily on the next pull and clears dirty
+    /// only on successful commit.
+    ///
+    /// A path never seen just interns a fresh leaf with no record and no
+    /// dependents: harmless. Over-marking through stale edges of dead
+    /// subgraphs is inherent and safe (marked nodes nobody pulls are never
+    /// executed); under-marking is impossible because edges are only ever
+    /// *replaced* with sets re-derived from current content, never dropped.
+    pub fn invalidate_path(&self, path: &str) {
+        let leaf = StepId::Parse(ParseId { file_path: Path::intern(&self.interner, path) });
+        let mut visited = HashSet::new();
+        self.mark_cone(leaf, &mut visited);
+    }
+
+    /// Post-order marking walk: recurse up the reverse edges first, flip on
+    /// the way back, so the leaf flips last. At every intermediate state the
+    /// marking invariant (*dirty implies all transitive dependents are
+    /// dirty*) holds, which is what makes an interrupted walk resumable and
+    /// the stop-at-dirty short-circuit sound (docs/keys-and-invalidation.md
+    /// "Marking invariant and resumability").
+    fn mark_cone(&self, step: StepId, visited: &mut HashSet<StepId>) {
+        if !visited.insert(step) {
+            return;
+        }
+        // Already dirty: by the marking invariant its entire cone is already
+        // dirty too — the common IDE case of a file changing again before any
+        // compile ran costs O(1).
+        if self.bindings.is_dirty(&step) {
+            return;
+        }
+        // Collect before recursing: holding a DashMap read guard across a
+        // recursive re-entry of the same map risks deadlock with writers.
+        let dependents: Vec<StepId> = self.graph.get_dependents(&step)
+            .map(|d| d.iter().copied().collect())
+            .unwrap_or_default();
+        for dependent in dependents {
+            self.mark_cone(dependent, visited);
+        }
+        self.bindings.mark_dirty(&step);
+    }
 }
 
 impl Global {
-    async fn parse_impl(&self, caller: StepId, id: ParseId) -> Result<&PreExpr, ParseError> {
+    async fn parse_impl(&self, caller: StepId, id: ParseId, mode: PullMode) -> Result<&PreExpr, ParseError> {
         debug!("CoreContext::parse_impl: {:?}", id);
 
         // Always register dependency, regardless of cache hit/miss. The graph
         // node stays keyed on the file *position* (path); the content digest is
         // an implementation detail of the parse cache below.
         self.graph.register_dependency(caller, StepId::Parse(id));
+
+        // Watch stance: a clean leaf binding is trusted outright — no read,
+        // no digest. Sound under the watch contract (every change is
+        // announced via invalidate, so an unannounced clean leaf really is
+        // unchanged); the binding is written strictly after the store insert,
+        // so the memoized key always has a stored answer behind it.
+        if mode == PullMode::TrustClean {
+            if let Some(record) = self.bindings.get(&StepId::Parse(id)) {
+                if !record.dirty {
+                    if let Some(key) = record.content_key {
+                        let result = self.store.parse_get(key, || async {
+                            unreachable!("a clean binding implies a stored parse answer")
+                        }).await;
+                        return result.as_ref().map_err(|e| e.clone());
+                    }
+                }
+            }
+        }
 
         // Read+parse stay fused, but the read happens on every compile so we can
         // compute a content digest and key the cache on it. This saves the parse
@@ -200,6 +325,7 @@ impl Global {
             // store or the binding layer.
             Err(err) => return Err(ParseError::from(err)),
         };
+        self.leaf_reads.fetch_add(1, Ordering::Relaxed);
 
         let digest = ContentDigest::of(&source);
         // Parse is the leaf query, so its content key hashes the external
@@ -243,8 +369,8 @@ impl Global {
         result.as_ref().map_err(|e| e.clone())
     }
 
-    async fn resolve_all_impl(this: &Arc<Global>, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
-        let (results, table) = Global::resolve_all_fp(this, caller, ancestors, ids).await?;
+    async fn resolve_all_impl(this: &Arc<Global>, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId], mode: PullMode) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
+        let (results, table) = Global::resolve_all_fp(this, caller, ancestors, ids, mode).await?;
         Ok((results.into_iter().map(|(expr, _fp)| expr).collect(), table))
     }
 
@@ -253,8 +379,8 @@ impl Global {
     /// to build its own content key. Fail-fast batch view over
     /// [`Global::resolve_each`]: the first failure (in id order) becomes the
     /// batch's error.
-    async fn resolve_all_fp(this: &Arc<Global>, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId]) -> Result<(Vec<(Expr, Fingerprint)>, SymbolTable), ResolveError> {
-        let outcomes = Global::resolve_each(this, caller, ancestors, ids).await?;
+    async fn resolve_all_fp(this: &Arc<Global>, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId], mode: PullMode) -> Result<(Vec<(Expr, Fingerprint)>, SymbolTable), ResolveError> {
+        let outcomes = Global::resolve_each(this, caller, ancestors, ids, mode).await?;
 
         let mut results = Vec::with_capacity(outcomes.len());
         let mut merged_table = SymbolTable::new();
@@ -275,7 +401,7 @@ impl Global {
     ///
     /// The outer `Err` is batch-level and always non-terminal: an import
     /// cycle caught by the pre-flight ancestor check, or a task join failure.
-    async fn resolve_each(this: &Arc<Global>, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId]) -> Result<Vec<ResolveOutcome>, ResolveError> {
+    async fn resolve_each(this: &Arc<Global>, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId], mode: PullMode) -> Result<Vec<ResolveOutcome>, ResolveError> {
         debug!("CoreContext::resolve_each x{}: {:?}", ids.len(), ids);
 
         // Deadlock-safe cycle detection (docs/cycle-detection.md): a requested
@@ -298,7 +424,7 @@ impl Global {
         if n == 1 {
             let id = ids[0];
             this.graph.register_dependency(caller, StepId::Resolve(id));
-            return Ok(vec![Global::resolve_one(this, ancestors, id).await]);
+            return Ok(vec![Global::resolve_one(this, ancestors, id, mode).await]);
         }
 
         // Spawn tasks for items 0..N-1; each task owns its own handle to the
@@ -310,7 +436,7 @@ impl Global {
             let core = this.clone();
             let handle = tokio::spawn(async move {
                 core.graph.register_dependency(caller, StepId::Resolve(id));
-                Global::resolve_one(&core, ancestors, id).await
+                Global::resolve_one(&core, ancestors, id, mode).await
             });
             handles.push(handle);
         }
@@ -318,7 +444,7 @@ impl Global {
         // Use current task for the Nth item
         let last_id = ids[n-1];
         this.graph.register_dependency(caller, StepId::Resolve(last_id));
-        let last_outcome = Global::resolve_one(this, ancestors, last_id).await;
+        let last_outcome = Global::resolve_one(this, ancestors, last_id, mode).await;
 
         // Wait for all spawned tasks; only a *join* failure aborts the batch
         // (it is transient, never an answer).
@@ -358,7 +484,7 @@ impl Global {
     /// recurse; spawning breaks the cycle for all but the inline last id).
     /// The future owns its own handle to the core, so it satisfies the
     /// `'static` bound of `tokio::spawn` without any leaking.
-    fn resolve_one(this: &Arc<Global>, ancestors: AncestorPath, id: ResolveId) -> Pin<Box<dyn Future<Output = ResolveOutcome> + Send>> {
+    fn resolve_one(this: &Arc<Global>, ancestors: AncestorPath, id: ResolveId, mode: PullMode) -> Pin<Box<dyn Future<Output = ResolveOutcome> + Send>> {
         let this = this.clone();
         Box::pin(async move {
             let fq = id.func_loc;
@@ -366,9 +492,30 @@ impl Global {
             let sctx = StableCtx { interner: &this.interner };
             let parse_step = StepId::Parse(ParseId { file_path: fq.path() });
 
+            // Watch stance: a clean (Verified) binding is served from its
+            // memoized key with zero recursion — no parse demand, no leaf
+            // read, no import walk. This is step 2 of "Invalidation From the
+            // Leafs" (docs/keys-and-invalidation.md): queries not marked
+            // reuse their memo outright; only the dirty cone re-derives. The
+            // commit replays the answer's definitions and rebinds (a no-op
+            // rebind of the same record), and the step's edges stay as last
+            // derived — same content, same deps.
+            if mode == PullMode::TrustClean {
+                if let Some(record) = this.bindings.get(&StepId::Resolve(id)) {
+                    if !record.dirty {
+                        if let Some(key) = record.content_key {
+                            if let Some(entry) = this.store.resolve_get(&key) {
+                                debug!("CoreContext::resolve_one trusting clean binding for {:?}", id);
+                                return this.commit_resolve(id, key, entry);
+                            }
+                        }
+                    }
+                }
+            }
+
             // Leaf first: (re-)demand the parse. A content-store hit costs a
             // read + digest, not a parse.
-            let pre = match this.parse_impl(StepId::Resolve(id), ParseId { file_path: fq.path() }).await {
+            let pre = match this.parse_impl(StepId::Resolve(id), ParseId { file_path: fq.path() }, mode).await {
                 Ok(pre) => pre,
                 Err(e) => {
                     // A transient IO failure never produced a digest: nothing
@@ -444,7 +591,7 @@ impl Global {
             // so an import that re-enters it errors as a cycle before any
             // wait-for edge can form.
             let chain = ancestors.extended(fq);
-            let outcomes = match Global::resolve_each(&this, StepId::Resolve(id), chain, &import_ids).await {
+            let outcomes = match Global::resolve_each(&this, StepId::Resolve(id), chain, &import_ids, mode).await {
                 Ok(outcomes) => outcomes,
                 // Batch-level failure: cycle or join — non-terminal, nothing
                 // above it may be cached.
@@ -501,7 +648,31 @@ impl Global {
             debug!("CoreContext::resolve_one resolving {:?}", id);
             this.computed_resolves.fetch_add(1, Ordering::Relaxed);
             let ctx = ResolveContext { current: id, core: &this };
-            let entry = match crate::resolve::resolve_body(&ctx, id, pre, &import_funcs) {
+            // The recompute boundary (docs/cache-invalidation-problem.md #8):
+            // a panic here is an accident of the run, not an answer. Catching
+            // it *before* the store insert and the binding commit means a
+            // panicking node writes nothing and its binding keeps whatever
+            // state it had — in a marked cone, that is dirty, so the next
+            // pull recomputes the full affected chain. The injected needle is
+            // test support for exactly that property.
+            let body_outcome = {
+                let needle = this.panic_on_resolve.lock().unwrap().clone();
+                catch_unwind(AssertUnwindSafe(|| {
+                    if let Some(needle) = &needle {
+                        let path_str = fq.path_str(&this.interner);
+                        if path_str.contains(needle.as_str()) {
+                            panic!("injected panic resolving {}", path_str);
+                        }
+                    }
+                    crate::resolve::resolve_body(&ctx, id, pre, &import_funcs)
+                }))
+            };
+            let body_result = match body_outcome {
+                Ok(result) => result,
+                // Non-terminal (invariant 6): propagate uncached, unbound.
+                Err(payload) => return Err((ResolveError::Panicked(panic_message(payload)), None)),
+            };
+            let entry = match body_result {
                 Ok((ast, table, registered)) => {
                     let funcs: Vec<(FQ, FuncData)> = registered.into_iter()
                         .map(|f| {
@@ -559,8 +730,12 @@ impl Global {
             // Overwrite, not or_insert: the position may currently hold
             // data from different content (e.g. before a revert), and the
             // answer under this key is what the position resolves to now.
+            // The definer memo rides along: mono steps depend on the
+            // *file-level* resolve step that defined their function, and this
+            // is where that association is authoritative.
             for (f, data) in &answer.funcs {
                 self.func_registry.insert(*f, data.clone());
+                self.definer.insert(*f, id);
             }
         }
         // Rebinding is the atomic last step, after the commit's side effects.
@@ -583,7 +758,7 @@ impl Global {
     /// memoized worklist rather than a recursive query: recursion (including
     /// polymorphic recursion between the i32 and i64 instances of a function)
     /// terminates because there are at most two instances per function.
-    fn mono_impl(&self, caller: StepId, entry: MonoId) -> Result<(), TypeError> {
+    fn mono_impl(&self, caller: StepId, entry: MonoId, mode: PullMode) -> Result<(), TypeError> {
         debug!("CoreContext::mono_impl: entry {:?}", entry);
         self.graph.register_dependency(caller, StepId::Mono(entry));
 
@@ -592,8 +767,42 @@ impl Global {
             if self.mono_registry.contains_key(&key) {
                 continue;
             }
-            // Mono consumes the resolved AST that Resolve put in the registry.
-            self.graph.register_dependency(StepId::Mono(key), StepId::Resolve(ResolveId { func_loc: key.func_loc }));
+            let step = StepId::Mono(key);
+
+            // Watch stance: a clean instance is replayed from its memoized
+            // key — no registry fingerprinting, no check. Sound because the
+            // instance depends only on its definer's resolve step, and that
+            // edge is in the cone-marking graph: had the defining file
+            // changed (and been announced), this binding would be dirty.
+            if mode == PullMode::TrustClean {
+                if let Some(record) = self.bindings.get(&step) {
+                    if !record.dirty {
+                        if let Some(bound_key) = record.content_key {
+                            if let Some(answer) = self.store.mono_get(&bound_key) {
+                                let (data, needed) = answer?;
+                                self.mono_registry.insert(key, data);
+                                for callee in needed {
+                                    queue.push((callee, false));
+                                }
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Mono consumes the resolved AST of exactly one function; the
+            // graph edge points at the *file-level* resolve step that defined
+            // it (the definer memo), because `Resolve(function FQ)` is not a
+            // step any resolution ever performs — an edge to that phantom
+            // node would leave this instance outside the leaf's marking cone
+            // and push invalidation would under-mark, serving stale
+            // instances. The fallback covers the file-function itself, whose
+            // FQ *is* the file-level resolve id.
+            let definer = self.definer.get(&key.func_loc)
+                .map(|d| *d)
+                .unwrap_or(ResolveId { func_loc: key.func_loc });
+            let resolve_dep = StepId::Resolve(definer);
 
             // The cache key chains to the resolve stage via the fingerprint
             // of the one thing `check_function` consumes: this function's
@@ -622,15 +831,40 @@ impl Global {
                     debug!("CoreContext::mono_impl checking {:?} (func fp {:?})", key, func_fp);
                     self.computed_monos.fetch_add(1, Ordering::Relaxed);
                     let ctx = MonoContext { core: self };
-                    // A deterministic `TypeError` is a terminal answer: it is
-                    // stored like a success, so re-demanding the same content
-                    // reports the same error without re-checking.
-                    let computed = crate::typecheck::check_function(&ctx, key, is_entry);
+                    // The recompute boundary, like resolve's: a panic is not
+                    // an answer, so it returns before the store insert and
+                    // the binding commit — nothing cached, node stays dirty.
+                    let computed = match catch_unwind(AssertUnwindSafe(|| {
+                        // A deterministic `TypeError` is a terminal answer: it is
+                        // stored like a success, so re-demanding the same content
+                        // reports the same error without re-checking.
+                        crate::typecheck::check_function(&ctx, key, is_entry)
+                    })) {
+                        Ok(computed) => computed,
+                        Err(payload) => return Err(TypeError::Panicked(panic_message(payload))),
+                    };
                     self.store.mono_insert(cache_key, computed)
                 }
             };
 
-            let step = StepId::Mono(key);
+            // The dep set re-derived from the answer we hold replaces this
+            // instance's edges wholesale (same discipline as resolve): the
+            // definer edge plus the callee instances on success, the definer
+            // alone on a terminal type error. Stale callee edges from
+            // previous content would otherwise accumulate across runs —
+            // harmless-but-growing over-marking the docs say to avoid at the
+            // source when the fresh set is already in hand.
+            match &answer {
+                Ok((_, needed)) => {
+                    let deps = std::iter::once(resolve_dep)
+                        .chain(needed.iter().map(|callee| StepId::Mono(*callee)));
+                    self.graph.replace_dependencies(step, deps);
+                }
+                Err(_) => {
+                    self.graph.replace_dependencies(step, [resolve_dep]);
+                }
+            }
+
             if !self.bindings.is_current(&step, cache_key) {
                 let sctx = StableCtx { interner: &self.interner };
                 let fingerprint = match &answer {
@@ -649,7 +883,6 @@ impl Global {
             self.mono_registry.insert(key, data);
 
             for callee in needed {
-                self.graph.register_dependency(StepId::Mono(key), StepId::Mono(callee));
                 queue.push((callee, false));
             }
         }
@@ -663,7 +896,7 @@ impl Global {
     /// prints again. What IS cached is everything exec pulls: the compiled
     /// artifact (parse/resolve/mono answers) comes from the content store,
     /// only the interpretation re-runs.
-    async fn execute_impl(this: &Arc<Global>, caller: StepId, id: ExecId) -> Result<(), ExecuteError> {
+    async fn execute_impl(this: &Arc<Global>, caller: StepId, id: ExecId, mode: PullMode) -> Result<(), ExecuteError> {
         debug!("CoreContext::execute_impl: {:?}", id);
         this.graph.register_dependency(caller, StepId::Exec(id.clone()));
         // The mono *registry* is the positional (FQ + type) view of the
@@ -676,6 +909,7 @@ impl Global {
         let ctx = ExecContext {
             current: id.clone(),
             core: this.clone(),
+            mode,
         };
         crate::execute::execute(&ctx, id).await
     }
@@ -702,8 +936,8 @@ impl RootContext {
         self.core.printer.as_ref()
     }
 
-    pub async fn execute(&self, id: ExecId) -> Result<(), ExecuteError> {
-        Global::execute_impl(&self.core, StepId::Root, id).await
+    pub async fn execute(&self, id: ExecId, mode: PullMode) -> Result<(), ExecuteError> {
+        Global::execute_impl(&self.core, StepId::Root, id, mode).await
     }
 }
 
@@ -750,6 +984,9 @@ impl MonoContext<'_> {
 pub struct ExecContext {
     current: ExecId,
     core: Arc<Global>,
+    /// The reconciliation stance of the wave this exec drives; threaded into
+    /// every pull it makes.
+    mode: PullMode,
 }
 
 impl ExecContext {
@@ -775,11 +1012,11 @@ impl ExecContext {
 
     pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
         // Exec is the root of a resolve tree: no resolutions are in progress yet.
-        Global::resolve_all_impl(&self.core, StepId::Exec(self.current.clone()), AncestorPath::empty(), ids).await
+        Global::resolve_all_impl(&self.core, StepId::Exec(self.current.clone()), AncestorPath::empty(), ids, self.mode).await
     }
 
     pub fn mono(&self, entry: MonoId) -> Result<(), TypeError> {
-        self.core.mono_impl(StepId::Exec(self.current.clone()), entry)
+        self.core.mono_impl(StepId::Exec(self.current.clone()), entry, self.mode)
     }
 }
 
@@ -815,7 +1052,7 @@ mod tests {
 
         let g = global();
         let id = ParseId { file_path: Path::intern(&g.interner, file.to_str().unwrap()) };
-        g.parse_impl(StepId::Root, id).await.unwrap();
+        g.parse_impl(StepId::Root, id, PullMode::Reconcile).await.unwrap();
 
         let record = g.bindings.get(&StepId::Parse(id)).expect("parse step is bound");
         let key = record.content_key.expect("leaf content key is bound");
@@ -824,7 +1061,7 @@ mod tests {
         assert!(!record.dirty);
 
         // Unchanged re-demand: the binding stays current.
-        g.parse_impl(StepId::Root, id).await.unwrap();
+        g.parse_impl(StepId::Root, id, PullMode::Reconcile).await.unwrap();
         let again = g.bindings.get(&StepId::Parse(id)).unwrap();
         assert_eq!(again.content_key, Some(key));
         assert_eq!(again.fingerprint, fingerprint);
@@ -832,7 +1069,7 @@ mod tests {
         // Changed content rebinds the same logical id to a new key (and here
         // a new fingerprint — the AST changed too).
         fs::write(&file, "(print 43)\n").unwrap();
-        g.parse_impl(StepId::Root, id).await.unwrap();
+        g.parse_impl(StepId::Root, id, PullMode::Reconcile).await.unwrap();
         let rebound = g.bindings.get(&StepId::Parse(id)).unwrap();
         assert_ne!(rebound.content_key, Some(key));
         assert_ne!(rebound.fingerprint, fingerprint);
@@ -849,8 +1086,8 @@ mod tests {
 
         let g = global();
         let id = ParseId { file_path: Path::intern(&g.interner, file.to_str().unwrap()) };
-        assert!(g.parse_impl(StepId::Root, id).await.is_err());
-        assert!(g.parse_impl(StepId::Root, id).await.is_err());
+        assert!(g.parse_impl(StepId::Root, id, PullMode::Reconcile).await.is_err());
+        assert!(g.parse_impl(StepId::Root, id, PullMode::Reconcile).await.is_err());
 
         assert_eq!(g.computed_parse_count(), 1, "the cached error must be served, not re-parsed");
         let record = g.bindings.get(&StepId::Parse(id)).expect("errored parse is still bound");
@@ -859,7 +1096,7 @@ mod tests {
         // The error answer is fingerprinted (tagged apart from successes), so
         // a dependent above it can still derive its own content key.
         fs::write(&file, "(print 42)\n").unwrap();
-        g.parse_impl(StepId::Root, id).await.unwrap();
+        g.parse_impl(StepId::Root, id, PullMode::Reconcile).await.unwrap();
         let fixed = g.bindings.get(&StepId::Parse(id)).unwrap();
         assert_ne!(fixed.fingerprint, record.fingerprint, "an Ok answer must never fingerprint like the Err");
     }

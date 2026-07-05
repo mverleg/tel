@@ -781,6 +781,10 @@ impl StableHash for crate::types::ResolveError {
                 out.write_u32(16);
                 msg.stable_hash(ctx, out);
             }
+            // A panic is not an answer (invariant 6): control flow returns it
+            // as a non-terminal failure before any fingerprint or cache write
+            // can happen, so hashing one is a bug by construction.
+            Panicked(_) => unreachable!("panics are non-terminal and never fingerprinted"),
         }
     }
 }
@@ -813,6 +817,8 @@ impl StableHash for crate::types::TypeError {
                 out.write_u32(3);
                 context.stable_hash(ctx, out);
             }
+            // See ResolveError::Panicked above: non-terminal, never hashed.
+            Panicked(_) => unreachable!("panics are non-terminal and never fingerprinted"),
         }
     }
 }

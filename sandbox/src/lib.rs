@@ -13,7 +13,7 @@ use std::fmt;
 use std::collections::HashSet;
 use std::sync::Arc;
 use crate::common::{Ctx, FQ};
-use crate::context::{Global, RootContext};
+use crate::context::{Global, PullMode, RootContext};
 use crate::graph::{ExecId, StepId};
 
 pub trait Printer: Send + Sync {
@@ -127,10 +127,49 @@ impl Compiler {
 
     /// Compile and execute `path`, reusing anything already cached from previous
     /// runs of this `Compiler`.
+    ///
+    /// This is the *batch* stance (docs/execution-and-recovery.md): it never
+    /// trusts change events — every demanded leaf is re-read and re-digested,
+    /// every demanded step re-derives its content key. Always correct, no
+    /// [`invalidate`](Compiler::invalidate) calls required.
     pub async fn run(&mut self, path: &str, show_deps: bool) -> Result<(), Error> {
+        self.run_mode(path, show_deps, PullMode::Reconcile).await
+    }
+
+    /// Compile and execute `path` in the *watch* stance: clean subgraphs are
+    /// served from their memoized bindings with zero recursion — their source
+    /// files are not even re-read — and only cones marked dirty by
+    /// [`invalidate`](Compiler::invalidate) re-derive (and un-dirty again on
+    /// unchanged fingerprints — early cutoff).
+    ///
+    /// The contract: every file change since the previous run must have been
+    /// announced via `invalidate` before calling this, the way a file watcher
+    /// would. An unannounced edit is served stale — by design ("events are
+    /// hints" applies to *extra* events; missing ones are the caller's
+    /// responsibility here until an OS watcher drives this automatically).
+    /// When unsure, [`run`](Compiler::run) is always correct.
+    pub async fn run_watch(&mut self, path: &str, show_deps: bool) -> Result<(), Error> {
+        self.run_mode(path, show_deps, PullMode::TrustClean).await
+    }
+
+    /// Pass 1 of two-pass push invalidation: mark `path`'s reverse-dependency
+    /// cone dirty (bit flips only, infallible). Pass 2 is lazy: the next
+    /// [`run_watch`](Compiler::run_watch) recomputes exactly the dirty ∩ live
+    /// cone, clearing dirty only on successful commit. Unknown paths and
+    /// spurious calls are harmless (the next watch run re-verifies via
+    /// digests and early cutoff).
+    ///
+    /// `&mut self` is the mutation phase of docs/execution-and-recovery.md:
+    /// marking is mutually exclusive with any in-flight query wave at compile
+    /// time.
+    pub fn invalidate(&mut self, path: &str) {
+        self.core.invalidate_path(path);
+    }
+
+    async fn run_mode(&mut self, path: &str, show_deps: bool, mode: PullMode) -> Result<(), Error> {
         let ctx = RootContext::new(self.core.clone());
         let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
-        ctx.execute(exec_id).await
+        ctx.execute(exec_id, mode).await
             .map_err(|e| Error::Execute("main".to_string(), e))?;
 
         // The ancestor-path check makes a cyclic import fail resolution, so a
@@ -188,6 +227,22 @@ impl Compiler {
     /// transitive validation working).
     pub fn computed_resolve_count(&self) -> usize {
         self.core.computed_resolve_count()
+    }
+
+    /// Number of source files read and digested. [`run`](Compiler::run) reads
+    /// every demanded leaf (the unavoidable input probe of the batch stance);
+    /// [`run_watch`](Compiler::run_watch) reads only dirty cones — a clean
+    /// sibling subtree costs nothing at all.
+    pub fn leaf_read_count(&self) -> usize {
+        self.core.leaf_read_count()
+    }
+
+    /// Test support: make resolving any file whose path contains `needle`
+    /// panic at the recompute boundary, to exercise panic safety (the node
+    /// stays dirty, no cache layer is poisoned). `None` clears it.
+    #[doc(hidden)]
+    pub fn inject_panic_on_resolve(&mut self, needle: Option<&str>) {
+        self.core.set_panic_on_resolve(needle);
     }
 }
 

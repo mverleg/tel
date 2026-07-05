@@ -94,15 +94,25 @@ dropping it reclaims everything).
    accumulate zombie edges (which could otherwise fabricate a phantom cycle).
 
 10. **Incremental compile starting from leafs + watch mode** `[readme]`
-    `[cache-doc #7, #8]`
-    - File watcher + reverse-edge (`transitive_dependents`) cone invalidation.
-    - **Two-pass invalidation**: Pass 1 marks the whole cone dirty (infallible);
-      Pass 2 recomputes bottom-up, clearing dirty only on successful commit.
-    - **Panic-safe recompute**: `catch_unwind` at the recompute boundary marks
-      the node dirty (never clean); "commit + mark clean" is the atomic last
-      step. Guarantees consistency under partial failure without a root-down
-      walk. (Note: this is strictly better than qcompiler's current stance of
-      "trash the whole cache on panic".)
+    `[cache-doc #7, #8]` — **done except the OS watcher itself**
+    - Explicit `Compiler::invalidate(path)` (what a watcher would call) +
+      `run_watch` (trust-clean stance: clean subgraphs are served from their
+      bindings without even re-reading their sources); plain `run` remains the
+      always-correct batch stance that never trusts events. The `notify`-based
+      watcher is deferred (new dependency — needs approval).
+    - **Two-pass invalidation**: Pass 1 marks the whole cone dirty via reverse
+      edges (bit flips only, infallible); Pass 2 is the next watch run, which
+      re-derives exactly the dirty ∩ live cone, clearing dirty only as part of
+      a successful whole-record commit — and early cutoff un-dirties a node
+      whose fingerprint comes back unchanged.
+    - **Panic-safe recompute**: `catch_unwind` at the recompute boundary; a
+      panic becomes a non-terminal `Panicked` error that is never cached or
+      fingerprinted, and the node's binding stays dirty. Asserted by test:
+      caches stay unpoisoned and a later fix recomputes the full chain. (Note:
+      this is strictly better than qcompiler's current stance of "trash the
+      whole cache on panic".)
+    - Mono instances now hang off their defining file's resolve step in the
+      graph, so a file's marking cone includes its function instances.
 
 11. **Fast mode vs IDE mode** `[qcompiler-gap]` — detailed plan:
     [fast-mode.md](fast-mode.md)

@@ -154,9 +154,23 @@ pub struct BindingRecord {
     /// the content that this position actually consumed, and recovery
     /// (invariant 10) compares current leaf digests against this.
     pub input_digest: Option<ContentDigest>,
-    /// Push-invalidation dirty bit. Placeholder: nothing sets it yet; the
-    /// two-pass marking protocol (docs/execution-and-recovery.md) lands
-    /// separately.
+    /// Push-invalidation dirty bit — pass 1 of the two-pass protocol
+    /// (docs/execution-and-recovery.md) sets it via
+    /// [`BindingLayer::mark_dirty`]; pass 2 clears it only as part of a
+    /// successful whole-record commit (invariant 8: never at scheduling
+    /// time).
+    ///
+    /// Of the node states the design doc prescribes (`Unknown / Dirty /
+    /// Pending(owner, wakers) / Verified(key, fp)`), the reachable ones map
+    /// onto this layer as: no record = `Unknown`, `dirty: true` = `Dirty`
+    /// (the record's key/fingerprint are the memo the red-green comparison
+    /// runs against), `dirty: false` = `Verified`. `Pending` is deliberately
+    /// not represented here: single-flight for the async leaf lives inside
+    /// the `async-lazy` parse cache, runs on one compiler are serialized
+    /// (`Compiler::run` takes `&mut self`), and duplicate computation of a
+    /// derived step within one wave is benign by determinism (first-write-wins
+    /// in the content store) — so there is no waker machinery to build until
+    /// concurrent waves exist.
     pub dirty: bool,
 }
 
@@ -186,12 +200,30 @@ impl BindingLayer {
         self.get(step).and_then(|r| r.input_digest)
     }
 
-    /// True if `step` is already bound to `key` — lets a re-demand of an
-    /// unchanged step skip re-fingerprinting its output.
+    /// True if `step` is already bound to `key` *and verified clean* — lets a
+    /// re-demand of an unchanged step skip re-fingerprinting its output. A
+    /// dirty record is never "current" even under the same key: the caller
+    /// must re-commit the whole record so cleaning happens atomically with
+    /// the commit (invariant 8), never as a separate flag flip.
     pub fn is_current(&self, step: &StepId, key: ContentKey) -> bool {
         self.get(step)
-            .map(|r| r.content_key == Some(key))
+            .map(|r| !r.dirty && r.content_key == Some(key))
             .unwrap_or(false)
+    }
+
+    /// Pass-1 marking: flip `step` to dirty. A bit flip only — no hashing, no
+    /// IO, infallible (docs/keys-and-invalidation.md "Invalidation From the
+    /// Leafs"). A step with no record is `Unknown` and needs no flip: it has
+    /// no memoized key that could be wrongly trusted.
+    pub fn mark_dirty(&self, step: &StepId) {
+        if let Some(mut r) = self.records.get_mut(step) {
+            r.dirty = true;
+        }
+    }
+
+    /// True if `step` has a record that is currently marked dirty.
+    pub fn is_dirty(&self, step: &StepId) -> bool {
+        self.get(step).map(|r| r.dirty).unwrap_or(false)
     }
 }
 

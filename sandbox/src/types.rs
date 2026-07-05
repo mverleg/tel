@@ -320,6 +320,12 @@ pub enum ResolveError {
     IoError(String, String),
     ParseError(String, ParseError),
     JoinError(String),
+    /// A Rust panic caught at the recompute boundary. Non-terminal by
+    /// definition (invariant 6 of docs/keys-and-invalidation.md): a panic is
+    /// an accident of the run, not a function of the content key, so this
+    /// variant is never cached, never fingerprinted, and the panicking node's
+    /// binding is left untouched (dirty stays dirty).
+    Panicked(String),
 }
 
 impl fmt::Display for ResolveError {
@@ -353,6 +359,7 @@ impl fmt::Display for ResolveError {
             ResolveError::IoError(path, e) => write!(f, "IO error in {}: {}", path, e),
             ResolveError::ParseError(path, e) => write!(f, "Parse error in {}: {}", path, e),
             ResolveError::JoinError(msg) => write!(f, "Join error: {}", msg),
+            ResolveError::Panicked(msg) => write!(f, "Internal compiler panic during resolve: {}", msg),
         }
     }
 }
@@ -367,6 +374,9 @@ pub enum TypeError {
     TraitNotSatisfied { context: String, ty: Ty, tr: Trait },
     LiteralOutOfRange { context: String, value: i64, ty: Ty },
     FunctionNotResolved { context: String },
+    /// A Rust panic caught at the recompute boundary — see
+    /// `ResolveError::Panicked`: non-terminal, never cached or fingerprinted.
+    Panicked(String),
 }
 
 impl fmt::Display for TypeError {
@@ -376,6 +386,7 @@ impl fmt::Display for TypeError {
             TypeError::TraitNotSatisfied { context, ty, tr } => write!(f, "Type {} does not implement {} in {}", ty, tr, context),
             TypeError::LiteralOutOfRange { context, value, ty } => write!(f, "Literal {} does not fit in {} in {}", value, ty, context),
             TypeError::FunctionNotResolved { context } => write!(f, "Function {} was not resolved before monomorphisation", context),
+            TypeError::Panicked(msg) => write!(f, "Internal compiler panic during type check: {}", msg),
         }
     }
 }
