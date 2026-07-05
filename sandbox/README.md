@@ -36,7 +36,8 @@ start with [plans/roadmap.md](plans/roadmap.md).
 - [ ] Store cache in LMDB (with postcard)
 - [x] Include schema hash in file cache
 - [x] Incremental compile starting from main (a `Compiler` is a persistent, droppable process — no more `Box::leak`; each run is a demand-driven pull from the entry point, and re-resolves replace their graph edges so restructured imports leave no zombies)
-- [x] Incremental compile starting from leafs (explicit `invalidate(path)` + `run_watch`: reverse-edge cone marking, dirty cleared only on successful whole-record commit, `catch_unwind` keeps panicking nodes dirty; OS file watcher itself still pending — new dependency)
+- [x] Incremental compile starting from leafs (explicit `invalidate(path)` + `run_watch`: reverse-edge cone marking, dirty cleared only on successful whole-record commit, `catch_unwind` keeps panicking nodes dirty)
+- [x] OS file watcher (`src/monitor.rs`: `FileMonitor` trait with disk (`notify`) and mock backends feeding a batching `ChangeStream`; `Compiler::run_watch_loop` drives invalidate → watch-run waves until the stream closes)
 - [x] Selective caching (e.g not file read) (policy: file reads and exec side effects are never cached; deterministic errors are)
 - [x] Cycle detection
 - [x] Step-trace debug mode (`--features step-trace`: per-step JSONL records — logical id, key/fingerprint hashes, cache hit/miss with entry age, micros timing; zero-sized no-ops when off)

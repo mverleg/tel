@@ -8,9 +8,11 @@ async-lazy = { path = "../async-lazy" }
 dashmap.workspace = true
 env_logger.workspace = true
 log.workspace = true
+# Disk backend of src/monitor.rs (approved 2026-07-05 with the monitor work).
+notify = "8.2.0"
 serde.workspace = true
 serde_json.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 
 [features]
 # Debug step tracing: every parse/resolve/mono/exec step appends one JSON line
@@ -21,6 +23,7 @@ step-trace = []
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
+tokio = { workspace = true, features = ["sync", "time"] }
 pprof = { version = "0.14", features = ["flamegraph", "criterion"] }
 rand.workspace = true
 tempfile = "3.15"

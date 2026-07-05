@@ -8,10 +8,10 @@ for the ordered plan and what already landed). Grouped by what gates them.
 
 New dependencies need explicit approval first (project rule).
 
-* **OS file watcher** — needs the `notify` crate. The invalidation machinery
-  is complete (`Compiler::invalidate(path)` + `run_watch`); the watcher is
-  just the event source that calls `invalidate` on file-change events, then
-  triggers a watch run. Until then, callers announce changes manually.
+* ~~**OS file watcher**~~ — done 2026-07-05 (`notify` approved with the
+  work): `src/monitor.rs` (`FileMonitor` trait, `DiskMonitor` + `MockMonitor`
+  backends, batching `ChangeStream`) plus the `Compiler::run_watch_loop`
+  driver. Design notes in [plans/daemon.md](plans/daemon.md).
 * **xxh3 hashing** — needs `xxhash-rust` (already a qcompiler dependency,
   same rationale). Swap point is the single `StableHasher` in
   `src/keys.rs`, currently `DefaultHasher`-backed: xxh3-128 for content

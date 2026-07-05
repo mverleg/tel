@@ -7,6 +7,7 @@ mod graph;
 mod context;
 mod common;
 mod keys;
+pub mod monitor;
 mod store;
 mod trace;
 
@@ -165,6 +166,41 @@ impl Compiler {
     /// time.
     pub fn invalidate(&mut self, path: &str) {
         self.core.invalidate_path(path);
+    }
+
+    /// Drive watch-stance compiles from a change stream until it closes: one
+    /// initial [`run_watch`](Compiler::run_watch), then per event batch an
+    /// [`invalidate`](Compiler::invalidate) wave followed by another watch
+    /// run. This is the loop a file watcher was always meant to drive
+    /// (TODO.md "OS file watcher") — pair it with
+    /// [`monitor::DiskMonitor`] for real edits or [`monitor::MockMonitor`]
+    /// in tests.
+    ///
+    /// Each run's outcome goes to `on_result`; a failing compile keeps the
+    /// loop alive (watch mode exists to see errors fixed), so termination is
+    /// solely the stream closing — drop the monitor to stop.
+    ///
+    /// Path identity caveat (see [`monitor`] module docs): events must carry
+    /// the same path form the compiler saw, so compile a canonical absolute
+    /// `path` when driving this from disk events.
+    pub async fn run_watch_loop(
+        &mut self,
+        path: &str,
+        events: &mut monitor::ChangeStream,
+        mut on_result: impl FnMut(Result<(), Error>),
+    ) {
+        on_result(self.run_watch(path, false).await);
+        while let Some(batch) = events.next_batch().await {
+            for changed in &batch {
+                match changed.to_str() {
+                    Some(changed) => self.invalidate(changed),
+                    // A non-UTF8 path can't be interned, so it can't have
+                    // been parsed either — skipping it can't serve stale.
+                    None => log::warn!("ignoring non-UTF8 changed path {:?}", changed),
+                }
+            }
+            on_result(self.run_watch(path, false).await);
+        }
     }
 
     async fn run_mode(&mut self, path: &str, show_deps: bool, mode: PullMode) -> Result<(), Error> {
