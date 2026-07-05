@@ -159,12 +159,23 @@ dropping it reclaims everything).
 
 ## Cross-cutting (do alongside the phases they validate)
 
-- **Tests for both change scenarios** `[cache-doc #9]` — revert hits parse
-  cache; blank-line edit re-parses one file, zero resolve/exec recompute.
-- **Partial-failure test** `[cache-doc #10]` — inject error/panic partway up an
-  incremental leaf→root pass; assert a later change still recomputes the full
-  affected chain (no falsely-clean node survives). Land with Phase 2.
-- **Benchmarks** `[cache-doc #11]` — ensure caching/invalidation stays fast.
+- **Tests for both change scenarios** `[cache-doc #9]` — **done**, in both
+  stances: batch (`tests/incremental.rs` scenario A, `tests/cache_invalidation.rs`
+  scenario B) and watch (`tests/invalidation.rs` revert + formatting cutoff).
+- **Partial-failure test** `[cache-doc #10]` — **done**
+  (`tests/invalidation.rs`): panic mid-wave leaves the node dirty and the
+  stores unpoisoned; an edit made *while* the chain was broken by a
+  deterministic error is reflected once the chain heals — no falsely-clean
+  node survives either failure mode.
+- **Benchmarks** `[cache-doc #11]` — **done**; also fixed: the generator had
+  emitted arity-invalid programs ever since the "Function arity" rule landed
+  (`ArityGap`/`ArityMismatch`), so every bench run since then failed — masked
+  because benches are outside `cargo test`. The generator now closes arg gaps
+  and emits call sites at the callee's actual arity, it is shared with
+  `tests/generated_project.rs` as a regression guard, and the query-engine
+  machinery costs nothing on a cold compile vs pre-series 847fed8 (32k funcs:
+  1.29s vs 1.34s; 64k: 2.63s vs 2.73s — if anything slightly faster, thanks
+  to parallel import resolution).
 
 ---
 

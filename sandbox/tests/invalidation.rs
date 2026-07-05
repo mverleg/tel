@@ -290,3 +290,99 @@ async fn local_function_instances_are_in_their_files_marking_cone() {
         "the local function's instance must have been marked dirty and recomputed"
     );
 }
+
+/// Scenario A (docs/cache-invalidation-problem.md) under the watch stance:
+/// edit, then revert to the original bytes. The revert's wave re-reads the
+/// announced leaf (ground truth over events) but its digest leads straight to
+/// answers the content store already holds — zero recompute at every phase,
+/// and the wave un-dirties the cone back to a free steady state.
+#[tokio::test]
+async fn watch_revert_recomputes_nothing() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let dep = dir.path().join("dep.telsb");
+    let path = main.to_str().unwrap();
+    let original = "(* (arg 1) 21)\n";
+    fs::write(&main, "(import dep)\n(print (call dep 2))\n").unwrap();
+    fs::write(&dep, original).unwrap();
+
+    let (mut compiler, out) = recording_compiler();
+    compiler.run_watch(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "42");
+
+    // Semantic edit, announced and applied.
+    fs::write(&dep, "(* (arg 1) 50)\n").unwrap();
+    compiler.invalidate(dep.to_str().unwrap());
+    compiler.run_watch(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "100");
+
+    // Revert to the exact original bytes.
+    fs::write(&dep, original).unwrap();
+    compiler.invalidate(dep.to_str().unwrap());
+    let before = counts(&compiler);
+    compiler.run_watch(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "42");
+    assert_eq!(
+        delta(before, counts(&compiler)),
+        (1, 0, 0, 0),
+        "a revert costs one read: every answer below, beside and above is already stored"
+    );
+
+    // The revert wave must have cleaned the cone, not merely served it.
+    let before = counts(&compiler);
+    compiler.run_watch(path, false).await.unwrap();
+    assert_eq!(delta(before, counts(&compiler)), (0, 0, 0, 0));
+}
+
+/// Partial failure midway up a leaf→root pass (docs/cache-invalidation-problem.md
+/// #10): while a mid-chain file is broken (deterministic resolve error), a
+/// *different* leaf underneath it is edited. When the mid-chain file is later
+/// fixed, the whole affected chain must recompute — the leaf edit made during
+/// the broken period must be reflected. A falsely-clean node anywhere in the
+/// chain would resurrect the pre-edit answer instead.
+#[tokio::test]
+async fn edit_during_error_period_is_not_lost_when_chain_heals() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let mid = dir.path().join("mid.telsb");
+    let leaf = dir.path().join("leaf.telsb");
+    let path = main.to_str().unwrap();
+    let mid_good = "(import leaf)\n(+ (call leaf (arg 1)) 1)\n";
+    fs::write(&main, "(import mid)\n(print (call mid 10))\n").unwrap();
+    fs::write(&mid, mid_good).unwrap();
+    fs::write(&leaf, "(* (arg 1) 2)\n").unwrap();
+
+    let (mut compiler, out) = recording_compiler();
+    compiler.run_watch(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "21");
+
+    // Break the middle of the chain: undefined variable, a deterministic
+    // (and cacheable) resolve error.
+    fs::write(&mid, "(import leaf)\n(+ (call leaf (arg 1)) undefined_var)\n").unwrap();
+    compiler.invalidate(mid.to_str().unwrap());
+    compiler.run_watch(path, false).await
+        .expect_err("the broken mid-chain file must fail the wave");
+
+    // While broken, edit the leaf underneath.
+    fs::write(&leaf, "(* (arg 1) 3)\n").unwrap();
+    compiler.invalidate(leaf.to_str().unwrap());
+    compiler.run_watch(path, false).await
+        .expect_err("still broken: fixing the leaf cannot heal mid");
+
+    // Heal the chain.
+    fs::write(&mid, mid_good).unwrap();
+    compiler.invalidate(mid.to_str().unwrap());
+    compiler.run_watch(path, false).await.unwrap();
+    assert_eq!(
+        last_output(&out),
+        "31",
+        "the leaf edit from the broken period must be in the healed answer (10*3+1); \
+         a 21 means a falsely-clean node served the pre-edit chain"
+    );
+
+    // Steady state after recovery is free.
+    let before = counts(&compiler);
+    compiler.run_watch(path, false).await.unwrap();
+    assert_eq!(last_output(&out), "31");
+    assert_eq!(delta(before, counts(&compiler)), (0, 0, 0, 0));
+}

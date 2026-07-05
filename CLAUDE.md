@@ -38,9 +38,9 @@ The Context automatically registers dependencies between compilation steps, buil
 ### Dependency Graph
 
 The `Graph` structure tracks dependencies between compilation steps using a concurrent HashMap (DashMap):
-- Each step (Parse, Resolve, Exec) has a unique StepId
-- When one step depends on another, the dependency is registered
-- The graph is shared via Rc and thread-safe for concurrent access
+- Each step (Parse, Resolve, Mono, Exec) has a unique StepId
+- When one step depends on another, the dependency is registered (with reverse edges for leaf-driven invalidation)
+- The graph lives in the `Arc`-shared `Global` core and is thread-safe for concurrent access
 
 ## Language Features
 

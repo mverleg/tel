@@ -62,7 +62,14 @@ See the `examples/` directory for complete working programs.
 
 ## Profiling
 
-Benchmarks show excellent performance: 107k functions compile in 1.82s.
+Benchmarks show excellent performance: 32k functions compile in ~1.3s, 64k in
+~2.6s (each iteration also generates the project on disk). The full caching
+machinery costs nothing on a cold compile — it benchmarks slightly *faster*
+than the pre-query-engine compiler at the same commit of the generator.
+
+The generator (`benches/project_gen/`) is shared with
+`tests/generated_project.rs`, so a change that breaks generated-project
+compilation fails `cargo test` instead of only the benches.
 
 ### Quick Profiling with samply (recommended)
 
