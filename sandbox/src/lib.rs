@@ -8,6 +8,7 @@ mod context;
 mod common;
 mod keys;
 mod store;
+mod trace;
 
 use std::fmt;
 use std::collections::HashSet;

@@ -7,3 +7,4 @@ perf.data
 perf.data.*
 *.json.gz
 
+tel-sandbox-trace.jsonl

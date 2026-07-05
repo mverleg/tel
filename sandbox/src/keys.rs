@@ -152,6 +152,13 @@ impl ContentKey {
         fill(&mut h);
         ContentKey(h.finish())
     }
+
+    /// Raw hash bits, for the step tracer's log lines only — never a stable
+    /// serialization or a lookup key outside this process.
+    #[cfg(feature = "step-trace")]
+    pub(crate) fn raw(self) -> u64 {
+        self.0
+    }
 }
 
 /// Result fingerprint: `hash(direct output)` — and only the direct output;
@@ -193,6 +200,13 @@ impl Fingerprint {
         h.write_u32(1); // Result variant tag: Err
         error.stable_hash(ctx, &mut h);
         Fingerprint(h.finish())
+    }
+
+    /// Raw hash bits, for the step tracer's log lines only — see
+    /// [`ContentKey::raw`].
+    #[cfg(feature = "step-trace")]
+    pub(crate) fn raw(self) -> u64 {
+        self.0
     }
 }
 

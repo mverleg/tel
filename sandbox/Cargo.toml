@@ -12,6 +12,13 @@ serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 
+[features]
+# Debug step tracing: every parse/resolve/mono/exec step appends one JSON line
+# (logical id, key hash, cache hit/miss, entry age, duration in micros) to
+# $TEL_SANDBOX_TRACE_FILE (default tel-sandbox-trace.jsonl) — see src/trace.rs.
+# Off by default; when off the tracer compiles to zero-sized no-ops.
+step-trace = []
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
 pprof = { version = "0.14", features = ["flamegraph", "criterion"] }

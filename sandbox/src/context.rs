@@ -1,4 +1,4 @@
-use crate::common::{Interner, Path, FQ};
+use crate::common::{Ctx, Interner, Path, FQ};
 use crate::graph::{ExecId, Graph, MonoId, ParseId, ResolveId, StepId};
 use crate::keys::{ContentDigest, ContentKey, Fingerprint, QueryKind, StableCtx, StableHash};
 use crate::store::{BindingLayer, BindingRecord, ContentStore, MonoAnswer, ResolveAnswer, ResolveEntry};
@@ -117,6 +117,10 @@ pub struct Global {
     /// exercise the panic-safety path (`catch_unwind` + node-stays-dirty)
     /// from integration tests; never set in production use.
     panic_on_resolve: Mutex<Option<String>>,
+    /// Debug step tracer (feature `step-trace`): records each step's logical
+    /// id, key hash, cache outcome, entry age, and timing to a JSONL file.
+    /// A zero-sized no-op when the feature is off — see `src/trace.rs`.
+    trace: crate::trace::StepTrace,
     printer: Arc<dyn Printer>,
 }
 
@@ -185,6 +189,7 @@ impl Global {
             computed_resolves: AtomicUsize::new(0),
             computed_monos: AtomicUsize::new(0),
             panic_on_resolve: Mutex::new(None),
+            trace: crate::trace::StepTrace::new(),
             printer,
         }
     }
@@ -288,6 +293,7 @@ impl Global {
 impl Global {
     async fn parse_impl(&self, caller: StepId, id: ParseId, mode: PullMode) -> Result<&PreExpr, ParseError> {
         debug!("CoreContext::parse_impl: {:?}", id);
+        let mut span = self.trace.span("parse", || format!("{}", Ctx(&id.file_path, &self.interner)));
 
         // Always register dependency, regardless of cache hit/miss. The graph
         // node stays keyed on the file *position* (path); the content digest is
@@ -303,6 +309,8 @@ impl Global {
             if let Some(record) = self.bindings.get(&StepId::Parse(id)) {
                 if !record.dirty {
                     if let Some(key) = record.content_key {
+                        span.cache_hit(key);
+                        span.set_fingerprint(|| Some(record.fingerprint));
                         let result = self.store.parse_get(key, || async {
                             unreachable!("a clean binding implies a stored parse answer")
                         }).await;
@@ -334,11 +342,18 @@ impl Global {
         let key = ContentKey::build(QueryKind::Parse, |h| {
             digest.stable_hash(&StableCtx { interner: &self.interner }, h);
         });
+        // Tracing's hit/miss probe: with single-flight in the parse cache,
+        // "our closure ran" is the only reliable miss signal. A no-op unit
+        // type unless `step-trace` is on.
+        let computed = crate::trace::ComputeFlag::new();
+        let computed_flag = &computed;
         let result = self.store.parse_get(key, move || async move {
             debug!("CoreContext::parse_impl parsing {:?} (digest {:?})", path, digest);
+            computed_flag.set();
             self.computed_parses.fetch_add(1, Ordering::Relaxed);
             crate::parse::tokenize_and_parse(&source)
         }).await;
+        span.record_cache(key, || !computed.is_set());
 
         // Rebind this position to what its content resolves to now: content
         // key, output fingerprint, and the leaf digest later stages chain
@@ -362,6 +377,7 @@ impl Global {
                 dirty: false,
             });
         }
+        span.set_fingerprint(|| self.bindings.get(&step).map(|r| r.fingerprint));
 
         // Success borrows from the content store; a cached error is cloned
         // out (errors are small, and an owned error keeps the signature free
@@ -491,6 +507,7 @@ impl Global {
             debug!("CoreContext::resolve_one: {:?}", id);
             let sctx = StableCtx { interner: &this.interner };
             let parse_step = StepId::Parse(ParseId { file_path: fq.path() });
+            let mut span = this.trace.span("resolve", || format!("{}", Ctx(&fq, &this.interner)));
 
             // Watch stance: a clean (Verified) binding is served from its
             // memoized key with zero recursion — no parse demand, no leaf
@@ -506,6 +523,8 @@ impl Global {
                         if let Some(key) = record.content_key {
                             if let Some(entry) = this.store.resolve_get(&key) {
                                 debug!("CoreContext::resolve_one trusting clean binding for {:?}", id);
+                                span.cache_hit(key);
+                                span.set_fingerprint(|| Some(entry.fingerprint));
                                 return this.commit_resolve(id, key, entry);
                             }
                         }
@@ -537,6 +556,8 @@ impl Global {
                     let fp = Fingerprint::of_err(&err, &sctx);
                     let key = Self::resolve_key(&sctx, fq, parse_fp, &[]);
                     let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(err), fingerprint: fp });
+                    span.cache_miss(key);
+                    span.set_fingerprint(|| Some(entry.fingerprint));
                     return this.commit_resolve(id, key, entry);
                 }
             };
@@ -557,6 +578,8 @@ impl Global {
                     let fp = Fingerprint::of_err(&e, &sctx);
                     let key = Self::resolve_key(&sctx, fq, parse_fp, &[]);
                     let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(e), fingerprint: fp });
+                    span.cache_miss(key);
+                    span.set_fingerprint(|| Some(entry.fingerprint));
                     return this.commit_resolve(id, key, entry);
                 }
             };
@@ -632,16 +655,22 @@ impl Global {
                 }
                 let key = Self::resolve_key(&sctx, fq, parse_fp, &deps);
                 if let Some(entry) = this.store.resolve_get(&key) {
+                    span.cache_hit(key);
+                    span.set_fingerprint(|| Some(entry.fingerprint));
                     return this.commit_resolve(id, key, entry);
                 }
                 let fp = Fingerprint::of_err(&err, &sctx);
                 let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(err), fingerprint: fp });
+                span.cache_miss(key);
+                span.set_fingerprint(|| Some(entry.fingerprint));
                 return this.commit_resolve(id, key, entry);
             }
 
             let key = Self::resolve_key(&sctx, fq, parse_fp, &deps);
             if let Some(entry) = this.store.resolve_get(&key) {
                 debug!("CoreContext::resolve_one cache hit for {:?}", id);
+                span.cache_hit(key);
+                span.set_fingerprint(|| Some(entry.fingerprint));
                 return this.commit_resolve(id, key, entry);
             }
 
@@ -698,6 +727,8 @@ impl Global {
                 }
             };
             let entry = this.store.resolve_insert(key, entry);
+            span.cache_miss(key);
+            span.set_fingerprint(|| Some(entry.fingerprint));
             this.commit_resolve(id, key, entry)
         })
     }
@@ -768,6 +799,7 @@ impl Global {
                 continue;
             }
             let step = StepId::Mono(key);
+            let mut span = self.trace.span("mono", || format!("{} @ {}", Ctx(&key.func_loc, &self.interner), key.ty));
 
             // Watch stance: a clean instance is replayed from its memoized
             // key — no registry fingerprinting, no check. Sound because the
@@ -779,6 +811,8 @@ impl Global {
                     if !record.dirty {
                         if let Some(bound_key) = record.content_key {
                             if let Some(answer) = self.store.mono_get(&bound_key) {
+                                span.cache_hit(bound_key);
+                                span.set_fingerprint(|| Some(record.fingerprint));
                                 let (data, needed) = answer?;
                                 self.mono_registry.insert(key, data);
                                 for callee in needed {
@@ -826,7 +860,10 @@ impl Global {
             let cache_key = preimage.content_key(&sctx);
 
             let answer: MonoAnswer = match self.store.mono_get(&cache_key) {
-                Some(hit) => hit,
+                Some(hit) => {
+                    span.cache_hit(cache_key);
+                    hit
+                }
                 None => {
                     debug!("CoreContext::mono_impl checking {:?} (func fp {:?})", key, func_fp);
                     self.computed_monos.fetch_add(1, Ordering::Relaxed);
@@ -843,7 +880,9 @@ impl Global {
                         Ok(computed) => computed,
                         Err(payload) => return Err(TypeError::Panicked(panic_message(payload))),
                     };
-                    self.store.mono_insert(cache_key, computed)
+                    let stored = self.store.mono_insert(cache_key, computed);
+                    span.cache_miss(cache_key);
+                    stored
                 }
             };
 
@@ -878,6 +917,7 @@ impl Global {
                     dirty: false,
                 });
             }
+            span.set_fingerprint(|| self.bindings.get(&step).map(|r| r.fingerprint));
 
             let (data, needed) = answer?;
             self.mono_registry.insert(key, data);
@@ -898,6 +938,9 @@ impl Global {
     /// only the interpretation re-runs.
     async fn execute_impl(this: &Arc<Global>, caller: StepId, id: ExecId, mode: PullMode) -> Result<(), ExecuteError> {
         debug!("CoreContext::execute_impl: {:?}", id);
+        // Exec is uncached (its value is its side effects), but it is still a
+        // step: the span records its duration, with no key and no cache outcome.
+        let _span = this.trace.span("exec", || format!("{}", Ctx(&id.main_loc, &this.interner)));
         this.graph.register_dependency(caller, StepId::Exec(id.clone()));
         // The mono *registry* is the positional (FQ + type) view of the
         // current program, so it must be rebuilt per run: a re-run may have

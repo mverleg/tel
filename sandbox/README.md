@@ -39,6 +39,7 @@ start with [plans/roadmap.md](plans/roadmap.md).
 - [x] Incremental compile starting from leafs (explicit `invalidate(path)` + `run_watch`: reverse-edge cone marking, dirty cleared only on successful whole-record commit, `catch_unwind` keeps panicking nodes dirty; OS file watcher itself still pending — new dependency)
 - [x] Selective caching (e.g not file read) (policy: file reads and exec side effects are never cached; deterministic errors are)
 - [x] Cycle detection
+- [x] Step-trace debug mode (`--features step-trace`: per-step JSONL records — logical id, key/fingerprint hashes, cache hit/miss with entry age, micros timing; zero-sized no-ops when off)
 
 ## Running Programs
 
@@ -59,6 +60,31 @@ cargo run --example run_math
 ## Examples
 
 See the `examples/` directory for complete working programs.
+
+## Step tracing (debug)
+
+To see exactly what the query engine did — every parse/resolve/mono/exec
+step, whether it was served from cache, how old the cache entry was, and how
+long it took — build with the `step-trace` feature:
+
+```bash
+TEL_SANDBOX_TRACE_FILE=/tmp/trace.jsonl cargo run --features step-trace -- examples/fibonacci/main.telsb
+```
+
+Each step appends one JSON line to the trace file (default
+`tel-sandbox-trace.jsonl` in the working directory):
+
+```json
+{"event":"step","seq":9,"kind":"resolve","step":"examples/fibonacci/fib.telsb::fib",
+ "key":"68b7bd85c6f1ead8","cache":"hit","age_us":375,"fp":"c0c55e56f8646064",
+ "t_us":778,"dur_us":73}
+```
+
+The logical id (`step`: filename / fully-qualified name) is rendered in full;
+content keys and result fingerprints are too large, so only their hashes
+appear. `age_us` is how long ago the hit entry was inserted; timings are in
+microseconds. With the feature off (the default) the tracer compiles to
+zero-sized no-ops — production pays nothing. Details in `src/trace.rs`.
 
 ## Profiling
 
