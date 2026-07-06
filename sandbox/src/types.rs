@@ -32,7 +32,7 @@ impl fmt::Display for Ty {
 /// parameter and on operands of binary operators. All current types implement
 /// it; a future non-numeric type (e.g. strings) would not, and would then be
 /// rejected wherever this bound is checked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trait {
     Number,
 }
@@ -47,7 +47,7 @@ impl fmt::Display for Trait {
 
 /// A runtime value. The variant is fixed at compile time by monomorphisation;
 /// binary operations only ever see two values of the same variant.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Value {
     I32(i32),
     I64(i64),
@@ -131,7 +131,7 @@ pub enum PreExpr {
     Sequence(Vec<PreExpr>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct VarId(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -144,7 +144,7 @@ pub struct FuncData {
     pub ast: Expr,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScopeId(pub usize);
 
 #[derive(Debug, Clone)]
@@ -227,7 +227,7 @@ pub struct MonoFuncData {
     pub ast: MExpr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VarInfo {
     pub name: String,
     pub scope_id: ScopeId,
@@ -239,7 +239,7 @@ pub struct FuncSignature {
     pub arity: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolTable {
     pub vars: Vec<VarInfo>,
     // funcs now stored in Global.func_registry
@@ -265,7 +265,7 @@ impl SymbolTable {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ParseError {
     UnexpectedEof,
     UnexpectedToken(String),
@@ -301,7 +301,7 @@ impl From<std::io::Error> for ParseError {
 /// lives in the content store and is cloned out on every re-demand (the
 /// `IoError` payload is a rendered string for the same reason —
 /// `std::io::Error` is not `Clone`).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ResolveError {
     UndefinedVariable(String, String),
     UndefinedFunction(String, String),
@@ -368,7 +368,7 @@ impl std::error::Error for ResolveError {}
 
 /// Errors from the type check / monomorphisation phase. Payloads carry
 /// already-resolved context strings, like `ResolveError`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TypeError {
     Mismatch { context: String, expected: Ty, found: Ty },
     TraitNotSatisfied { context: String, ty: Ty, tr: Trait },

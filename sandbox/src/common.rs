@@ -102,6 +102,13 @@ impl Name {
         Name { sym: interner.intern(name) }
     }
 
+    /// Wrap an already-interned symbol. The caller must guarantee `sym` came
+    /// from the live interner — the only sanctioned user is the portable
+    /// reader (src/portable.rs), which re-interns a stored string table.
+    pub(crate) fn from_sym(sym: Sym) -> Name {
+        Name { sym }
+    }
+
     pub fn sym(&self) -> Sym {
         self.sym
     }
@@ -127,6 +134,11 @@ pub struct Path {
 impl Path {
     pub fn intern(interner: &Interner, path: &str) -> Path {
         Path { sym: interner.intern(path) }
+    }
+
+    /// Wrap an already-interned symbol — see [`Name::from_sym`].
+    pub(crate) fn from_sym(sym: Sym) -> Path {
+        Path { sym }
     }
 
     pub fn sym(&self) -> Sym {
@@ -157,6 +169,11 @@ impl FQ {
             path: Path::intern(interner, path),
             name: Name::intern(interner, name),
         }
+    }
+
+    /// Assemble from already-interned parts — see [`Name::from_sym`].
+    pub(crate) fn from_parts(path: Path, name: Name) -> FQ {
+        FQ { path, name }
     }
 
     pub fn path(&self) -> Path {

@@ -10,6 +10,9 @@ env_logger.workspace = true
 log.workspace = true
 # Disk backend of src/monitor.rs (approved 2026-07-05 with the monitor work).
 notify = "8.2.0"
+# Value encoding of the persistent cache (approved 2026-07-06): portable
+# entries (src/portable.rs) serialized with postcard into LMDB (src/disk.rs).
+postcard.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["sync"] }

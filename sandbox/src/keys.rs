@@ -223,6 +223,18 @@ impl Fingerprint {
         self.0
     }
 
+    /// Raw bits for the persistence boundary only: a stored answer carries
+    /// its fingerprint so dependents can key on a disk hit without
+    /// re-hashing. Never a storage or lookup key — the invariant above.
+    pub(crate) fn raw_bits(self) -> u64 {
+        self.0
+    }
+
+    /// Inverse of [`raw_bits`](Fingerprint::raw_bits), for decoding stored
+    /// answers.
+    pub(crate) fn from_bits(bits: u64) -> Fingerprint {
+        Fingerprint(bits)
+    }
 }
 
 /// Fingerprints enter dependents' content-key preimages by value — that is
