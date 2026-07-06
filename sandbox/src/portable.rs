@@ -26,10 +26,6 @@
 //! truncated write) makes `from_portable` return `None`, which the disk
 //! tier treats as a cache miss — the recompute overwrites the bad entry.
 
-// Transitional: consumed by the disk tier (src/disk.rs, the next step of
-// this series); until it lands, only the tests exercise this module.
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use crate::common::{Interner, Name, Path, Sym, FQ};

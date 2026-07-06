@@ -39,6 +39,9 @@ ahash = "0.8.12"
 clap = { version = "4.5.54", default-features = true, features = ["std", "derive", "unicode"] }
 dashmap = "6.1.0"
 env_logger = "0.11.8"
+# LMDB wrapper for the sandbox persistent cache (sandbox/plans/roadmap.md
+# Phase 3); values are pre-encoded postcard bytes, so no serde-* features.
+heed = { version = "0.22.1", default-features = false }
 itertools = "0.14.0"
 lalrpop = { version = "0.22.2", features = ["lexer", "unicode"] }
 lalrpop-util = { version = "0.22.2", features = ["lexer", "unicode"] }

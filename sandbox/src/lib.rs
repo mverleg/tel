@@ -6,6 +6,7 @@ mod types;
 mod graph;
 mod context;
 mod common;
+mod disk;
 mod keys;
 pub mod monitor;
 mod portable;

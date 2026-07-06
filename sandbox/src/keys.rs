@@ -173,6 +173,14 @@ impl ContentKey {
         self.0
     }
 
+    /// Big-endian byte encoding — the on-disk cache's lookup key (byte
+    /// order matches numeric order, so LMDB range scans, if ever wanted,
+    /// stay meaningful). Unlike [`raw`](ContentKey::raw) this *is* a stable
+    /// serialization: the key's whole job in the persistent tier is to be
+    /// re-derived identically in a later process.
+    pub(crate) fn to_be_bytes(self) -> [u8; 16] {
+        self.0.to_be_bytes()
+    }
 }
 
 /// Result fingerprint: `hash(direct output)` — and only the direct output;

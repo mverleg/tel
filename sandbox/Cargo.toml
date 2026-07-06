@@ -7,6 +7,8 @@ version.workspace = true
 async-lazy = { path = "../async-lazy" }
 dashmap.workspace = true
 env_logger.workspace = true
+# LMDB tier of the content store (approved 2026-07-06): src/disk.rs.
+heed.workspace = true
 log.workspace = true
 # Disk backend of src/monitor.rs (approved 2026-07-05 with the monitor work).
 notify = "8.2.0"
