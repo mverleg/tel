@@ -54,6 +54,9 @@ smartstring = { version = "1.0.1", features = ["serde"] }
 time = { version = "0.3.45", features = ["serde"] }
 tokio = { version = "1.42.0", features = ["fs", "rt", "rt-multi-thread", "macros", "io-util"] }
 xolir = "0.1.0"
+# Stable hashes: xxh3-128 for content keys (cache lookup), xxh3-64 for result
+# fingerprints (answer-changed checks). See docs/hashing.md.
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 [patch.crates-io]
 tel-common = { path = "./common" }

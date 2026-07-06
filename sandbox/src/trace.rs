@@ -55,7 +55,7 @@ mod enabled {
         out: Option<Mutex<BufWriter<File>>>,
         /// When each content key was first inserted, by raw hash bits — the
         /// stored birth time that `age_us` is measured against.
-        inserts: DashMap<u64, Instant>,
+        inserts: DashMap<u128, Instant>,
         seq: AtomicU64,
         epoch: Instant,
     }
@@ -119,7 +119,7 @@ mod enabled {
         kind: &'static str,
         logical: String,
         start: Instant,
-        key: Option<u64>,
+        key: Option<u128>,
         hit: Option<bool>,
         age_us: Option<u64>,
         fp: Option<u64>,
@@ -192,7 +192,7 @@ mod enabled {
                 "seq": self.trace.seq.fetch_add(1, Ordering::Relaxed),
                 "kind": self.kind,
                 "step": self.logical,
-                "key": self.key.map(|k| format!("{:016x}", k)),
+                "key": self.key.map(|k| format!("{:032x}", k)),
                 "cache": self.hit.map(|h| if h { "hit" } else { "miss" }),
                 "age_us": self.age_us,
                 "fp": self.fp.map(|f| format!("{:016x}", f)),

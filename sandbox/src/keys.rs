@@ -20,8 +20,7 @@
 
 use crate::common::{Interner, Name, Path, Sym, FQ};
 use crate::types::{BinOp, Expr, FuncId, MExpr, MonoFuncData, PreExpr, ScopeId, SymbolTable, Ty, Value, VarId, VarInfo};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hasher;
+use xxhash_rust::xxh3::Xxh3;
 
 /// Version of the compiler's data formats and semantics, folded into every
 /// [`ContentKey`] by construction (the README item "include schema hash in the
@@ -29,7 +28,9 @@ use std::hash::Hasher;
 /// unusable — a different AST shape, different phase semantics, a different
 /// `StableHash` encoding. Old entries are then unreachable (superseded garbage,
 /// not hazards): a cold cache, never a stale one.
-pub const SCHEMA_VERSION: u64 = 1;
+/// History: 2 — `StableHasher` swapped `DefaultHasher` → xxh3, keys widened
+/// to 128 bits.
+pub const SCHEMA_VERSION: u64 = 2;
 
 /// The query kind tag. Folding it into every content key puts each phase in a
 /// disjoint keyspace (docs/keys-and-invalidation.md "Per-Phase Keyspaces"): a
@@ -50,50 +51,61 @@ pub struct StableCtx<'a> {
     pub interner: &'a Interner,
 }
 
-/// The single place the fingerprint hash algorithm lives.
+/// The single place the hash algorithm lives.
 ///
-/// Currently backed by `std`'s `DefaultHasher` (SipHash 1-3 with fixed zero
-/// keys — deterministic in practice, but its stability across std versions is
-/// unspecified, and it only yields 64 bits). Per docs/hashing.md the target is
-/// `xxhash-rust`: xxh3-128 for content keys, xxh3-64 for result fingerprints —
-/// swap it in HERE (and widen [`ContentKey`] to `u128`) once that dependency is
-/// approved; nothing outside this struct knows the algorithm.
+/// Backed by xxh3 per docs/hashing.md: [`finish128`](StableHasher::finish128)
+/// for content keys and content digests (global, ever-accumulating keyspace),
+/// [`finish64`](StableHasher::finish64) for result fingerprints (bounded
+/// per-slot domain) — one streaming state serves both widths. Unlike the
+/// previous `DefaultHasher` backing, xxh3's output is *specified*, stable
+/// across toolchains and platforms, which is what lets keys outlive the
+/// process (persistent cache) and lets golden-hash tests exist. Nothing
+/// outside this struct knows the algorithm.
 ///
-/// The byte *encoding* is ours and already stable (fixed-width little-endian
-/// integers, length-prefixed strings and sequences, tagged enums — the rules in
-/// docs/deterministic-hashing.md), so swapping the algorithm only cold-starts
-/// caches, it does not change any `StableHash` impl.
+/// The byte *encoding* is ours and stable (fixed-width little-endian
+/// integers, length-prefixed strings and sequences, tagged enums — the rules
+/// in docs/deterministic-hashing.md), so an algorithm swap never changes a
+/// `StableHash` impl; the golden tests below pin encoding and algorithm both.
 pub struct StableHasher {
-    inner: DefaultHasher,
+    inner: Xxh3,
 }
 
 impl StableHasher {
     fn new() -> StableHasher {
-        StableHasher { inner: DefaultHasher::new() }
+        // Unseeded (`new`, not `with_seed`): the specified, stable variant.
+        StableHasher { inner: Xxh3::new() }
     }
 
-    fn finish(&self) -> u64 {
-        self.inner.finish()
+    fn finish64(&self) -> u64 {
+        self.inner.digest()
+    }
+
+    fn finish128(&self) -> u128 {
+        self.inner.digest128()
     }
 
     pub fn write_u8(&mut self, v: u8) {
-        self.inner.write(&[v]);
+        self.inner.update(&[v]);
     }
 
     pub fn write_u32(&mut self, v: u32) {
-        self.inner.write(&v.to_le_bytes());
+        self.inner.update(&v.to_le_bytes());
     }
 
     pub fn write_u64(&mut self, v: u64) {
-        self.inner.write(&v.to_le_bytes());
+        self.inner.update(&v.to_le_bytes());
+    }
+
+    pub fn write_u128(&mut self, v: u128) {
+        self.inner.update(&v.to_le_bytes());
     }
 
     pub fn write_i32(&mut self, v: i32) {
-        self.inner.write(&v.to_le_bytes());
+        self.inner.update(&v.to_le_bytes());
     }
 
     pub fn write_i64(&mut self, v: i64) {
-        self.inner.write(&v.to_le_bytes());
+        self.inner.update(&v.to_le_bytes());
     }
 
     /// Length as `u64` — the one sanctioned way to hash a `usize`, so 32- and
@@ -106,7 +118,7 @@ impl StableHasher {
     /// `("ab", "c")` must not hash like `("a", "bc")`.
     pub fn write_bytes(&mut self, bytes: &[u8]) {
         self.write_len(bytes.len());
-        self.inner.write(bytes);
+        self.inner.update(bytes);
     }
 
     pub fn write_str(&mut self, s: &str) {
@@ -129,11 +141,12 @@ pub trait StableHash {
 /// direct deps' result fingerprints)` — transitive by recursion through the dep
 /// fingerprints, forming a Merkle DAG over *answers*.
 ///
-/// 64-bit-backed for now; the design width is 128 bits (birthday territory —
-/// docs/hashing.md), delivered by the xxh3-128 swap in [`StableHasher`]. A
-/// distinct newtype from [`Fingerprint`] so the two can never be mixed up.
+/// 128 bits (xxh3-128): content keys live in one unbounded, ever-accumulating
+/// keyspace — every distinct computation ever seen — which is birthday
+/// territory for 64 bits (docs/hashing.md). A distinct newtype from
+/// [`Fingerprint`] so the two can never be mixed up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ContentKey(u64);
+pub struct ContentKey(u128);
 
 impl ContentKey {
     /// Build a content key. `SCHEMA_VERSION` and the kind tag are folded in
@@ -150,15 +163,16 @@ impl ContentKey {
         h.write_u64(schema);
         h.write_u32(kind as u32);
         fill(&mut h);
-        ContentKey(h.finish())
+        ContentKey(h.finish128())
     }
 
     /// Raw hash bits, for the step tracer's log lines only — never a stable
     /// serialization or a lookup key outside this process.
     #[cfg(feature = "step-trace")]
-    pub(crate) fn raw(self) -> u64 {
+    pub(crate) fn raw(self) -> u128 {
         self.0
     }
+
 }
 
 /// Result fingerprint: `hash(direct output)` — and only the direct output;
@@ -175,7 +189,7 @@ impl Fingerprint {
     pub fn of<T: StableHash + ?Sized>(value: &T, ctx: &StableCtx<'_>) -> Fingerprint {
         let mut h = StableHasher::new();
         value.stable_hash(ctx, &mut h);
-        Fingerprint(h.finish())
+        Fingerprint(h.finish64())
     }
 
     /// Fingerprint of a *successful* answer. Deterministic errors are answers
@@ -188,7 +202,7 @@ impl Fingerprint {
         let mut h = StableHasher::new();
         h.write_u32(0); // Result variant tag: Ok
         value.stable_hash(ctx, &mut h);
-        Fingerprint(h.finish())
+        Fingerprint(h.finish64())
     }
 
     /// Fingerprint of a deterministic *error* answer — see
@@ -199,7 +213,7 @@ impl Fingerprint {
         let mut h = StableHasher::new();
         h.write_u32(1); // Result variant tag: Err
         error.stable_hash(ctx, &mut h);
-        Fingerprint(h.finish())
+        Fingerprint(h.finish64())
     }
 
     /// Raw hash bits, for the step tracer's log lines only — see
@@ -208,6 +222,7 @@ impl Fingerprint {
     pub(crate) fn raw(self) -> u64 {
         self.0
     }
+
 }
 
 /// Fingerprints enter dependents' content-key preimages by value — that is
@@ -227,20 +242,26 @@ impl StableHash for Fingerprint {
 /// source changes (docs/cache-invalidation-problem.md): changed bytes make a
 /// different digest (never a stale hit), reverted bytes hit the old entry
 /// (Scenario A).
+/// 128-bit like [`ContentKey`], not 64-bit like [`Fingerprint`]: the digest
+/// is the *entire* variable part of a parse key's preimage (parse keys are
+/// path-free), so it is compared in the same global keyspace of all distinct
+/// file contents ever seen — a 64-bit digest would silently cap the 128-bit
+/// parse key at 64 bits of entropy. It lives only in memory
+/// (`BindingRecord.input_digest` is never persisted), so the width is free.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ContentDigest(u64);
+pub struct ContentDigest(u128);
 
 impl ContentDigest {
     pub fn of(source: &str) -> ContentDigest {
         let mut h = StableHasher::new();
         h.write_str(source);
-        ContentDigest(h.finish())
+        ContentDigest(h.finish128())
     }
 }
 
 impl StableHash for ContentDigest {
     fn stable_hash(&self, _ctx: &StableCtx<'_>, out: &mut StableHasher) {
-        out.write_u64(self.0);
+        out.write_u128(self.0);
     }
 }
 
@@ -862,6 +883,7 @@ impl StableHash for MonoFuncData {
 mod tests {
     use super::*;
     use crate::graph::MonoId;
+    use crate::types::ResolveError;
 
     fn ctx(interner: &Interner) -> StableCtx<'_> {
         StableCtx { interner }
@@ -936,7 +958,7 @@ mod tests {
             let mut h = StableHasher::new();
             a.stable_hash(&ctx(&interner), &mut h);
             b.stable_hash(&ctx(&interner), &mut h);
-            h.finish()
+            h.finish64()
         };
         assert_ne!(fp("ab", "c"), fp("a", "bc"));
     }
@@ -964,5 +986,51 @@ mod tests {
         let print = MExpr::Print(Box::new(MExpr::Number(Value::I64(1))));
         let ret = MExpr::Return(Box::new(MExpr::Number(Value::I64(1))));
         assert_ne!(Fingerprint::of(&print, &c), Fingerprint::of(&ret, &c));
+    }
+
+    /// Golden hashes (docs/deterministic-hashing.md "Testing Determinism"):
+    /// checked-in constants pin the exact output of the stable encoding +
+    /// xxh3, so an accidental encoding change surfaces as a red test instead
+    /// of a silently cold — or, once persistent, mysteriously slow — cache.
+    /// The goldens are also the cross-process guarantee: they were computed
+    /// in a different process (at implementation time) than any run that
+    /// checks them, so a per-process seed could never pass.
+    ///
+    /// If this fails after an *intentional* encoding/algorithm change: bump
+    /// `SCHEMA_VERSION`, then replace the constants with the values from the
+    /// assertion output. Do not "fix" it any other way.
+    #[test]
+    fn golden_hashes_pin_encoding_and_algorithm() {
+        let interner = Interner::new();
+        let c = ctx(&interner);
+
+        // Leaf input digest (write_str: length prefix + bytes; xxh3-128).
+        let digest = ContentDigest::of("(print 42)\n");
+
+        // Full parse content key (schema + kind tag + digest; xxh3-128).
+        let key = ContentKey::build(QueryKind::Parse, |h| digest.stable_hash(&c, h));
+
+        // Ok-answer fingerprint over a value with an interned FQ (exercises
+        // Sym→string resolution, enum tags, and length prefixes; xxh3-64).
+        let fq = FQ::intern(&interner, "examples/fib/main.telsb", "fib");
+        let expr = MExpr::Call {
+            func: MonoId { func_loc: fq, ty: Ty::I64 },
+            args: vec![Box::new(MExpr::Number(Value::I64(21)))],
+        };
+        let ok_fp = Fingerprint::of_ok(&expr, &c);
+
+        // Err-answer fingerprint (exercises the Err tag and write_len).
+        let err = ResolveError::ArityMismatch {
+            context: "main".to_string(),
+            func_name: "fib".to_string(),
+            expected: 1,
+            got: 2,
+        };
+        let err_fp = Fingerprint::of_err(&err, &c);
+
+        assert_eq!(format!("{:032x}", digest.0), "4af01ba2c8396b3e6b01ec9d7a01ef6a");
+        assert_eq!(format!("{:032x}", key.0), "80a61e3e09ba3c98a4fa357671cc45ca");
+        assert_eq!(format!("{:016x}", ok_fp.0), "ff75d229ef0e880c");
+        assert_eq!(format!("{:016x}", err_fp.0), "b2a5105200850dff");
     }
 }

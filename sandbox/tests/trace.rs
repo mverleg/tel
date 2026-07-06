@@ -68,7 +68,7 @@ async fn trace_records_steps_cache_outcomes_and_ages() {
     assert_eq!(parses[1]["cache"], "hit");
     assert!(parses[1]["age_us"].as_u64().unwrap() > 0, "hit records the entry's age");
     assert_eq!(parses[0]["key"], parses[1]["key"], "same content, same key");
-    assert_eq!(parses[0]["key"].as_str().unwrap().len(), 16, "key is a 64-bit hex hash");
+    assert_eq!(parses[0]["key"].as_str().unwrap().len(), 32, "key is a 128-bit hex hash");
     assert_eq!(parses[0]["fp"], parses[1]["fp"], "same answer, same fingerprint");
 
     // Resolve and mono behave the same way on the second run.

@@ -13,6 +13,9 @@ notify = "8.2.0"
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["sync"] }
+# Stable hasher behind StableHasher in src/keys.rs (approved 2026-07-06 with
+# the persistence work): xxh3-128 content keys, xxh3-64 fingerprints.
+xxhash-rust.workspace = true
 
 [features]
 # Debug step tracing: every parse/resolve/mono/exec step appends one JSON line
