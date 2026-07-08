@@ -184,7 +184,11 @@ impl<'a> Interpreter<'a> {
 }
 
 pub async fn execute(ctx: &ExecContext, path: ExecId) -> Result<(), ExecuteError> {
-    debug!("execute: starting for {:?}", path);
+    // The backend flavor lands here (roadmap item 15): execute is the
+    // sandbox's codegen-analog, so opt-level is consumed at this level and
+    // never above it. No optimizer branches on it yet — this is the wiring
+    // endpoint a real codegen would read.
+    debug!("execute: starting for {:?} (opt-level {:?})", path, ctx.opt_level());
     let my_main_func = path.main_loc.clone();
     let reesolve_id = ResolveId { func_loc: my_main_func.clone() };
     debug!("execute: resolving {:?}", reesolve_id);

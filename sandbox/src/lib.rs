@@ -7,6 +7,7 @@ mod graph;
 mod context;
 mod common;
 mod disk;
+mod flavors;
 mod keys;
 pub mod monitor;
 mod portable;
@@ -16,6 +17,7 @@ mod trace;
 use std::fmt;
 use std::collections::HashSet;
 use std::sync::Arc;
+pub use crate::flavors::{Flavors, OptLevel};
 pub use crate::keys::SCHEMA_VERSION;
 use crate::common::{Ctx, FQ};
 use crate::context::{Global, PullMode, RootContext};
@@ -125,9 +127,25 @@ pub struct Compiler {
 }
 
 impl Compiler {
-    /// Create a compiler with an empty, persistent cache.
+    /// Create a compiler with an empty, persistent cache and the default
+    /// flavors ([`OptLevel::Debug`]).
     pub fn new(printer: Arc<dyn Printer>) -> Compiler {
-        Compiler { core: Arc::new(Global::new(printer)) }
+        Compiler::new_with_flavors(printer, Flavors::default())
+    }
+
+    /// Create a compiler under an explicit flavor environment (roadmap item
+    /// 15). Today the only flavor is opt-level, which the backend-analog
+    /// (`execute`) reads and no cached query depends on — so a different
+    /// opt-level reuses every parse/resolve/mono entry (Option C, no
+    /// fragmentation). Present so the setting threads end-to-end and a real
+    /// codegen query can later declare it.
+    pub fn new_with_flavors(printer: Arc<dyn Printer>, flavors: Flavors) -> Compiler {
+        Compiler { core: Arc::new(Global::new(printer, flavors)) }
+    }
+
+    /// The flavor environment this compiler runs under.
+    pub fn flavors(&self) -> Flavors {
+        self.core.flavors()
     }
 
     /// Create a compiler whose content store is backed by the persistent

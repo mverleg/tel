@@ -1,12 +1,23 @@
 # Query "flavors" — design draft (pros & cons)
 
-Status: **draft / not implemented.** Roadmap: Phase 3, step 15 (see
-[roadmap.md](roadmap.md)). Leaning **towards** adopting flavors; this doc lays
-out what they are, the trade-offs, and a recommended shape. Fast-vs-detail
+Status: **mechanism implemented (Option C), one flavor: opt-level.** Roadmap:
+Phase 3, step 15 (see [roadmap.md](roadmap.md)). This doc lays out what flavors
+are, the trade-offs, and the recommended shape that was adopted. Fast-vs-detail
 mode was the candidate first flavor, but per the inventory in
-[fast-mode.md](fast-mode.md) it likely needs no key dimension at all (detail
-data = sidecar queries + driver demand policy); the first genuine flavor is
-then **opt-level**, which arrives with the backend.
+[fast-mode.md](fast-mode.md) it needs no key dimension at all (detail data =
+sidecar queries + driver demand policy) — so **mode is not a flavor**. The
+first (and currently only) genuine flavor is **opt-level**.
+
+What shipped (`src/flavors.rs`): a `Flavors` struct with a single `opt:
+OptLevel` field (`Debug`/`Release`), room to add more dimensions later. Per
+Option C, opt-level is folded into a key *only* by the query kinds that declare
+it. The sandbox has no codegen, so opt-level's one consumer is `execute` (the
+backend-analog, deliberately uncached) via `ExecContext::opt_level()`; it
+enters **no cached front-end key**, so parse/resolve/typecheck stay shared
+across opt-levels (no fragmentation). The anti-fragmentation property is
+unit-tested in `src/keys.rs`
+(`declared_flavors_key_apart_undeclared_ones_do_not`) and the end-to-end
+threading in `tests/flavors.rs`.
 
 ## What a flavor is
 
@@ -106,15 +117,18 @@ codegen depends on `opt-level` + `target`; etc.
 ## Recommendation
 
 1. **Adopt flavors, via Option C** (per-query declared subset), not an ambient
-   env.
-2. **Start with a single flavor: `mode` (Fast | Ide).** Ship the mechanism with
-   one real user; extend later.
+   env. — *done* (`src/flavors.rs`).
+2. **Start with a single flavor: `opt-level` (Debug | Release).** — *done.*
+   Mode turned out not to be a flavor (sidecar queries + demand policy, see
+   [fast-mode.md](fast-mode.md)); opt-level is the first real dimension. It is
+   consumed only at `execute` (the backend-analog) and enters no cached
+   front-end key. Extend with more flavors (target, …) later.
 3. **Keep source backend and cache selection out** — backend resolves to content
    at the read layer; cache selection is storage-layer.
 4. **Model generics/references as query parameters**, not flavors, when
    monomorphization lands.
-5. **Add opt-level / target flavors only with the backend** (out of current
-   front-end scope).
+5. **Add target / further backend flavors** as codegen grows, alongside the
+   existing opt-level knob.
 
 ## Open questions
 

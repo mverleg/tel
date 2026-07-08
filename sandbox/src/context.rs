@@ -121,6 +121,11 @@ pub struct Global {
     /// id, key hash, cache outcome, entry age, and timing to a JSONL file.
     /// A zero-sized no-op when the feature is off — see `src/trace.rs`.
     trace: crate::trace::StepTrace,
+    /// Ambient flavor environment of this compile (roadmap item 15,
+    /// src/flavors.rs). Read by the backend-analog (`execute`); no cached
+    /// query depends on it, so it never enters a content key — Option C, no
+    /// fragmentation.
+    flavors: crate::flavors::Flavors,
     printer: Arc<dyn Printer>,
 }
 
@@ -175,20 +180,21 @@ impl MonoCacheKey {
 }
 
 impl Global {
-    pub fn new(printer: Arc<dyn Printer>) -> Self {
-        Global::with_store(printer, ContentStore::new())
+    pub fn new(printer: Arc<dyn Printer>, flavors: crate::flavors::Flavors) -> Self {
+        Global::with_store(printer, ContentStore::new(), flavors)
     }
 
     /// A `Global` whose content store also lives in (and is revived from)
     /// the persistent tier at `cache_dir`. Only the content store persists;
     /// the binding layer, graph, definer, and mono registry stay per-process
-    /// session state.
+    /// session state. Uses the default flavors — the daemon's opt-level is
+    /// [`OptLevel::Debug`], and flavors touch no persisted key anyway.
     pub fn with_disk_cache(printer: Arc<dyn Printer>, cache_dir: &std::path::Path) -> Result<Self, crate::disk::DiskCacheError> {
         let disk = Arc::new(crate::disk::DiskCache::open(cache_dir)?);
-        Ok(Global::with_store(printer, ContentStore::with_disk(disk)))
+        Ok(Global::with_store(printer, ContentStore::with_disk(disk), crate::flavors::Flavors::default()))
     }
 
-    fn with_store(printer: Arc<dyn Printer>, store: ContentStore) -> Self {
+    fn with_store(printer: Arc<dyn Printer>, store: ContentStore, flavors: crate::flavors::Flavors) -> Self {
         Global {
             graph: Graph::new(),
             interner: Interner::new(),
@@ -203,8 +209,13 @@ impl Global {
             computed_monos: AtomicUsize::new(0),
             panic_on_resolve: Mutex::new(None),
             trace: crate::trace::StepTrace::new(),
+            flavors,
             printer,
         }
+    }
+
+    pub fn flavors(&self) -> crate::flavors::Flavors {
+        self.flavors
     }
 
     /// Number of distinct source contents parsed and cached so far (by digest).
@@ -1066,6 +1077,13 @@ impl ExecContext {
         self.core.printer.as_ref()
     }
 
+    /// Opt-level of this compile — the backend flavor (roadmap item 15).
+    /// `execute` stands in for codegen; a real optimizer/codegen would branch
+    /// on this. No cached query reads it, so it changes no content key.
+    pub fn opt_level(&self) -> crate::flavors::OptLevel {
+        self.core.flavors.opt
+    }
+
     pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
         // Exec is the root of a resolve tree: no resolutions are in progress yet.
         Global::resolve_all_impl(&self.core, StepId::Exec(self.current.clone()), AncestorPath::empty(), ids, self.mode).await
@@ -1094,7 +1112,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn global() -> Arc<Global> {
-        Arc::new(Global::new(Arc::new(NoopPrinter)))
+        Arc::new(Global::new(Arc::new(NoopPrinter), crate::flavors::Flavors::default()))
     }
 
     /// After a parse completes, its logical id is bound — atomically, as one

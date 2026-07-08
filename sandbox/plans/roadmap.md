@@ -144,13 +144,16 @@ dropping it reclaims everything).
     a source file can come from disk *or* an in-memory / web-IDE buffer, instead
     of `tokio::fs` directly.
 
-15. **Query "flavors"** `[qcompiler-gap]` — detailed plan: [flavors.md](flavors.md)
-    (leaning towards adopting). Parameterize keys by environment (mode, opt
-    level). Recommended shape: a *per-query declared* flavor subset (not an
-    ambient env — that fragments the cache), starting with `mode` only. Note:
-    "which filesystem" resolves to content (not a flavor), "which cache" is
-    storage-layer, and generics are query *parameters*, not flavors. Sandbox
-    keys are currently just `file_path` / `FQ` with no flavor dimension.
+15. **Query "flavors"** `[qcompiler-gap]` — **mechanism done**, detailed plan:
+    [flavors.md](flavors.md). Adopted the *per-query declared* flavor subset
+    (Option C — not an ambient env, which fragments the cache). Currently one
+    flavor, `opt-level` (Debug | Release), in `src/flavors.rs`; room for more.
+    Mode turned out **not** to be a flavor (sidecar queries + demand policy),
+    "which filesystem" resolves to content, "which cache" is storage-layer, and
+    generics are query *parameters*. Opt-level is consumed only at `execute`
+    (the backend-analog) and enters no cached front-end key, so parse/resolve/
+    typecheck stay shared across opt-levels. Remaining: real optimizer/target
+    flavors once codegen exists.
 
 ## Phase 4 — Hardening & performance
 

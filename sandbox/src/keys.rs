@@ -1053,4 +1053,41 @@ mod tests {
         assert_eq!(format!("{:016x}", ok_fp.0), "ff75d229ef0e880c");
         assert_eq!(format!("{:016x}", err_fp.0), "b2a5105200850dff");
     }
+
+    /// Option C of plans/flavors.md, the load-bearing property: a query that
+    /// *declares* a flavor folds it in and so keys per flavor, while a query
+    /// that declares none is invariant across flavors — no fragmentation.
+    /// Here a hypothetical codegen key folds opt-level (and varies), while a
+    /// real parse key is byte-identical whatever the opt-level, because parse
+    /// never touches flavors.
+    #[test]
+    fn declared_flavors_key_apart_undeclared_ones_do_not() {
+        use crate::flavors::OptLevel;
+        let interner = Interner::new();
+        let c = ctx(&interner);
+
+        // A flavor-declaring query (stand-in for codegen): its key folds
+        // opt-level, so Debug and Release get distinct keys.
+        let codegen_key = |opt: OptLevel| {
+            ContentKey::build(QueryKind::Exec, |h| {
+                h.write_u64(7); // subject
+                opt.stable_hash(&c, h);
+            })
+        };
+        assert_ne!(
+            codegen_key(OptLevel::Debug),
+            codegen_key(OptLevel::Release),
+            "a query declaring opt-level must key per opt-level",
+        );
+
+        // A flavor-independent query (parse): its key never mentions a
+        // flavor, so it is shared across every opt-level.
+        let parse_key = || ContentKey::build(QueryKind::Parse, |h| {
+            ContentDigest::of("(print 42)\n").stable_hash(&c, h);
+        });
+        assert_eq!(
+            parse_key(), parse_key(),
+            "parse folds no flavor, so it is one key for all opt-levels — no fragmentation",
+        );
+    }
 }
