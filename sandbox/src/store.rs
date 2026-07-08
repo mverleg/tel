@@ -19,12 +19,15 @@
 //! per kind — no dynamic downcasts, and each kind can later grow its own
 //! eviction policy and disk layout).
 
-use crate::common::FQ;
+use std::sync::Arc;
+use crate::common::{Interner, FQ};
+use crate::disk::DiskCache;
 use crate::graph::StepId;
 use crate::keys::{ContentDigest, ContentKey, Fingerprint};
 use crate::types::{Expr, FuncData, MonoFuncData, ParseError, PreExpr, ResolveError, SymbolTable, TypeError};
 use async_lazy::Cache;
 use dashmap::DashMap;
+use dashmap::mapref::entry::Entry;
 
 /// A monomorphisation answer: the checked instance plus the callee instances
 /// it needs (stored so the worklist can keep walking on a cache hit).
@@ -73,6 +76,11 @@ pub struct ContentStore {
     /// first-write-wins semantics suffices; deterministic `TypeError`s are
     /// answers and are stored like successes.
     mono: DashMap<ContentKey, MonoAnswer>,
+    /// Optional persistent tier (src/disk.rs). Read order is always memory →
+    /// disk → compute; every fresh compute (and only the *winning* insert of
+    /// a race) is written through. `None` is the cold-and-hermetic default —
+    /// the `--no-daemon` contract of plans/daemon.md.
+    disk: Option<Arc<DiskCache>>,
 }
 
 impl ContentStore {
@@ -81,39 +89,94 @@ impl ContentStore {
             parse: Cache::new(),
             resolve: DashMap::new(),
             mono: DashMap::new(),
+            disk: None,
         }
+    }
+
+    /// A store whose entries also live in (and are revived from) `disk`.
+    pub fn with_disk(disk: Arc<DiskCache>) -> ContentStore {
+        ContentStore { disk: Some(disk), ..ContentStore::new() }
     }
 
     /// Get the parse answer for `key`, computing it with `init` on first
     /// demand. Concurrent callers of the same key await one computation.
+    ///
+    /// The disk probe lives *inside* the single-flight init closure: a disk
+    /// hit simply becomes the cache entry — no insert API needed on the
+    /// by-reference `async-lazy` cache — and, because the caller's `init`
+    /// (which counts computed parses) never ran, counters stay honest: a
+    /// disk hit is not a computed parse. Everything reaching this cache is a
+    /// terminal answer (IO failures return earlier, in `parse_impl`), so the
+    /// unconditional write-through on compute is sound.
     pub async fn parse_get<F, Fut>(&self, key: ContentKey, init: F) -> &Result<PreExpr, ParseError>
     where
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Result<PreExpr, ParseError>>,
     {
-        self.parse.get(key, init).await
+        self.parse.get(key, || async move {
+            if let Some(disk) = &self.disk {
+                if let Some(hit) = disk.get_parse(key) {
+                    return hit;
+                }
+            }
+            let answer = init().await;
+            if let Some(disk) = &self.disk {
+                disk.put_parse(key, &answer);
+            }
+            answer
+        }).await
     }
 
-    pub fn resolve_get(&self, key: &ContentKey) -> Option<ResolveEntry> {
-        self.resolve.get(key).map(|hit| hit.clone())
+    pub fn resolve_get(&self, key: &ContentKey, interner: &Interner) -> Option<ResolveEntry> {
+        if let Some(hit) = self.resolve.get(key) {
+            return Some(hit.clone());
+        }
+        let revived = self.disk.as_ref()?.get_resolve(*key, interner)?;
+        // Populate memory; if a concurrent compute won the race meanwhile,
+        // keep it (equal by determinism — first write wins).
+        Some(self.resolve.entry(*key).or_insert(revived).clone())
     }
 
     /// Insert a resolve entry. Append-only: if the key is already present the
     /// existing entry wins and is returned (see [`ContentStore::mono_insert`]).
-    pub fn resolve_insert(&self, key: ContentKey, entry: ResolveEntry) -> ResolveEntry {
-        self.resolve.entry(key).or_insert(entry).clone()
+    /// Only the winning insert reaches disk — losers of the memory race never
+    /// enqueue, extending first-write-wins through the persistent tier.
+    pub fn resolve_insert(&self, key: ContentKey, entry: ResolveEntry, interner: &Interner) -> ResolveEntry {
+        match self.resolve.entry(key) {
+            Entry::Occupied(existing) => existing.get().clone(),
+            Entry::Vacant(slot) => {
+                if let Some(disk) = &self.disk {
+                    disk.put_resolve(key, &entry, interner);
+                }
+                slot.insert(entry).clone()
+            }
+        }
     }
 
-    pub fn mono_get(&self, key: &ContentKey) -> Option<MonoAnswer> {
-        self.mono.get(key).map(|hit| hit.clone())
+    pub fn mono_get(&self, key: &ContentKey, interner: &Interner) -> Option<MonoAnswer> {
+        if let Some(hit) = self.mono.get(key) {
+            return Some(hit.clone());
+        }
+        let revived = self.disk.as_ref()?.get_mono(*key, interner)?;
+        Some(self.mono.entry(*key).or_insert(revived).clone())
     }
 
     /// Insert a mono answer. Append-only: if the key is already present the
     /// existing entry wins and is returned — an entry, once written, never
     /// changes (both values are pure functions of the key, so a race writes
-    /// equal answers; keeping the first upholds the invariant cheaply).
-    pub fn mono_insert(&self, key: ContentKey, answer: MonoAnswer) -> MonoAnswer {
-        self.mono.entry(key).or_insert(answer).clone()
+    /// equal answers; keeping the first upholds the invariant cheaply). Disk
+    /// write-through from the winning insert only, like
+    /// [`ContentStore::resolve_insert`].
+    pub fn mono_insert(&self, key: ContentKey, answer: MonoAnswer, interner: &Interner) -> MonoAnswer {
+        match self.mono.entry(key) {
+            Entry::Occupied(existing) => existing.get().clone(),
+            Entry::Vacant(slot) => {
+                if let Some(disk) = &self.disk {
+                    disk.put_mono(key, &answer, interner);
+                }
+                slot.insert(answer).clone()
+            }
+        }
     }
 
     /// Number of distinct parse answers stored (by content key).
@@ -258,25 +321,26 @@ mod tests {
         let interner = Interner::new();
         let store = ContentStore::new();
 
-        let first = store.mono_insert(key(1), mono_answer(&interner, "f", 42));
-        let second = store.mono_insert(key(1), mono_answer(&interner, "f", 99));
+        let first = store.mono_insert(key(1), mono_answer(&interner, "f", 42), &interner);
+        let second = store.mono_insert(key(1), mono_answer(&interner, "f", 99), &interner);
 
         let fp = |a: &MonoAnswer| {
             let ctx = StableCtx { interner: &interner };
             Fingerprint::of(&a.as_ref().unwrap().0, &ctx)
         };
         assert_eq!(fp(&second), fp(&first), "second insert must return the first answer");
-        assert_eq!(fp(&store.mono_get(&key(1)).unwrap()), fp(&first));
+        assert_eq!(fp(&store.mono_get(&key(1), &interner).unwrap()), fp(&first));
         assert_eq!(store.mono_len(), 1);
     }
 
     /// Deterministic errors are first-class answers in the content store.
     #[test]
     fn content_store_caches_errors() {
+        let interner = Interner::new();
         let store = ContentStore::new();
         let err: MonoAnswer = Err(TypeError::FunctionNotResolved { context: "f".to_string() });
-        assert!(store.mono_insert(key(2), err).is_err());
-        assert!(store.mono_get(&key(2)).unwrap().is_err());
+        assert!(store.mono_insert(key(2), err, &interner).is_err());
+        assert!(store.mono_get(&key(2), &interner).unwrap().is_err());
         assert_eq!(store.mono_len(), 1);
     }
 

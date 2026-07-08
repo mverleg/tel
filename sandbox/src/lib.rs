@@ -130,6 +130,23 @@ impl Compiler {
         Compiler { core: Arc::new(Global::new(printer)) }
     }
 
+    /// Create a compiler whose content store is backed by the persistent
+    /// disk cache at `cache_dir` (LMDB; created if absent): answers computed
+    /// in earlier processes are served as cache hits, and fresh answers are
+    /// written through for later ones.
+    ///
+    /// [`Compiler::new`] deliberately stays cold and hermetic — that is the
+    /// `--no-daemon` contract of plans/daemon.md; this constructor is the
+    /// opt-in disk tier, primarily for the daemon. Only the *content store*
+    /// persists (valid forever by construction — entries can be shared even
+    /// across processes); the binding layer, dependency graph, and mono
+    /// registry remain per-process session state.
+    pub fn with_disk_cache(printer: Arc<dyn Printer>, cache_dir: &std::path::Path) -> Result<Compiler, Error> {
+        let core = Global::with_disk_cache(printer, cache_dir)
+            .map_err(|e| Error::Io(cache_dir.display().to_string(), std::io::Error::other(e)))?;
+        Ok(Compiler { core: Arc::new(core) })
+    }
+
     /// Compile and execute `path`, reusing anything already cached from previous
     /// runs of this `Compiler`.
     ///
@@ -284,6 +301,13 @@ impl Compiler {
     pub fn inject_panic_on_resolve(&mut self, needle: Option<&str>) {
         self.core.set_panic_on_resolve(needle);
     }
+}
+
+/// The conventional persistent-cache location for a workspace root: a
+/// build-artifact-style directory inside the workspace (gitignore `/out/`).
+/// The daemon opens this for its root; `--no-daemon` runs never touch it.
+pub fn default_cache_dir(root: &std::path::Path) -> std::path::PathBuf {
+    root.join("out").join("cache")
 }
 
 pub async fn run_file(path: &str, show_deps: bool) -> Result<(), Error> {

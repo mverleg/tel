@@ -176,10 +176,23 @@ impl MonoCacheKey {
 
 impl Global {
     pub fn new(printer: Arc<dyn Printer>) -> Self {
+        Global::with_store(printer, ContentStore::new())
+    }
+
+    /// A `Global` whose content store also lives in (and is revived from)
+    /// the persistent tier at `cache_dir`. Only the content store persists;
+    /// the binding layer, graph, definer, and mono registry stay per-process
+    /// session state.
+    pub fn with_disk_cache(printer: Arc<dyn Printer>, cache_dir: &std::path::Path) -> Result<Self, crate::disk::DiskCacheError> {
+        let disk = Arc::new(crate::disk::DiskCache::open(cache_dir)?);
+        Ok(Global::with_store(printer, ContentStore::with_disk(disk)))
+    }
+
+    fn with_store(printer: Arc<dyn Printer>, store: ContentStore) -> Self {
         Global {
             graph: Graph::new(),
             interner: Interner::new(),
-            store: ContentStore::new(),
+            store,
             bindings: BindingLayer::new(),
             func_registry: DashMap::new(),
             definer: DashMap::new(),
@@ -521,7 +534,7 @@ impl Global {
                 if let Some(record) = this.bindings.get(&StepId::Resolve(id)) {
                     if !record.dirty {
                         if let Some(key) = record.content_key {
-                            if let Some(entry) = this.store.resolve_get(&key) {
+                            if let Some(entry) = this.store.resolve_get(&key, &this.interner) {
                                 debug!("CoreContext::resolve_one trusting clean binding for {:?}", id);
                                 span.cache_hit(key);
                                 span.set_fingerprint(|| Some(entry.fingerprint));
@@ -555,7 +568,7 @@ impl Global {
                     let err = ResolveError::ParseError(path_str, e);
                     let fp = Fingerprint::of_err(&err, &sctx);
                     let key = Self::resolve_key(&sctx, fq, parse_fp, &[]);
-                    let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(err), fingerprint: fp });
+                    let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(err), fingerprint: fp }, &this.interner);
                     span.cache_miss(key);
                     span.set_fingerprint(|| Some(entry.fingerprint));
                     return this.commit_resolve(id, key, entry);
@@ -577,7 +590,7 @@ impl Global {
                     this.graph.replace_dependencies(StepId::Resolve(id), [parse_step]);
                     let fp = Fingerprint::of_err(&e, &sctx);
                     let key = Self::resolve_key(&sctx, fq, parse_fp, &[]);
-                    let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(e), fingerprint: fp });
+                    let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(e), fingerprint: fp }, &this.interner);
                     span.cache_miss(key);
                     span.set_fingerprint(|| Some(entry.fingerprint));
                     return this.commit_resolve(id, key, entry);
@@ -654,20 +667,20 @@ impl Global {
                     return Err((err, None));
                 }
                 let key = Self::resolve_key(&sctx, fq, parse_fp, &deps);
-                if let Some(entry) = this.store.resolve_get(&key) {
+                if let Some(entry) = this.store.resolve_get(&key, &this.interner) {
                     span.cache_hit(key);
                     span.set_fingerprint(|| Some(entry.fingerprint));
                     return this.commit_resolve(id, key, entry);
                 }
                 let fp = Fingerprint::of_err(&err, &sctx);
-                let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(err), fingerprint: fp });
+                let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(err), fingerprint: fp }, &this.interner);
                 span.cache_miss(key);
                 span.set_fingerprint(|| Some(entry.fingerprint));
                 return this.commit_resolve(id, key, entry);
             }
 
             let key = Self::resolve_key(&sctx, fq, parse_fp, &deps);
-            if let Some(entry) = this.store.resolve_get(&key) {
+            if let Some(entry) = this.store.resolve_get(&key, &this.interner) {
                 debug!("CoreContext::resolve_one cache hit for {:?}", id);
                 span.cache_hit(key);
                 span.set_fingerprint(|| Some(entry.fingerprint));
@@ -726,7 +739,7 @@ impl Global {
                     ResolveEntry { answer: Err(e), fingerprint }
                 }
             };
-            let entry = this.store.resolve_insert(key, entry);
+            let entry = this.store.resolve_insert(key, entry, &this.interner);
             span.cache_miss(key);
             span.set_fingerprint(|| Some(entry.fingerprint));
             this.commit_resolve(id, key, entry)
@@ -810,7 +823,7 @@ impl Global {
                 if let Some(record) = self.bindings.get(&step) {
                     if !record.dirty {
                         if let Some(bound_key) = record.content_key {
-                            if let Some(answer) = self.store.mono_get(&bound_key) {
+                            if let Some(answer) = self.store.mono_get(&bound_key, &self.interner) {
                                 span.cache_hit(bound_key);
                                 span.set_fingerprint(|| Some(record.fingerprint));
                                 let (data, needed) = answer?;
@@ -859,7 +872,7 @@ impl Global {
             let preimage = MonoCacheKey { func_fp, func_loc: key.func_loc, ty: key.ty, is_entry };
             let cache_key = preimage.content_key(&sctx);
 
-            let answer: MonoAnswer = match self.store.mono_get(&cache_key) {
+            let answer: MonoAnswer = match self.store.mono_get(&cache_key, &self.interner) {
                 Some(hit) => {
                     span.cache_hit(cache_key);
                     hit
@@ -880,7 +893,7 @@ impl Global {
                         Ok(computed) => computed,
                         Err(payload) => return Err(TypeError::Panicked(panic_message(payload))),
                     };
-                    let stored = self.store.mono_insert(cache_key, computed);
+                    let stored = self.store.mono_insert(cache_key, computed, &self.interner);
                     span.cache_miss(cache_key);
                     stored
                 }
