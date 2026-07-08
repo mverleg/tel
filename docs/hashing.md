@@ -60,8 +60,11 @@ needed for the second:
   At 64 bits: ~10⁻⁶ for 10⁷ values, ~10⁻⁴ for 10⁸ — not "cosmic ray" territory, and cache
   keys accumulate. At 128 bits it is negligible for any n we can store.
 
-Concretely: **content keys are 128-bit** (they identify a value among all values ever seen),
-while **result fingerprints are 64-bit** — their collision domain is only the historical
+Concretely: **content keys are 128-bit** (they identify a value among all values ever seen).
+The **content digest** of a source file is 128-bit for the same reason: it is the entire
+variable part of a path-free parse key's preimage, so it is compared in that same global
+keyspace of all distinct file contents — a 64-bit digest would cap the parse key's entropy.
+Meanwhile **result fingerprints are 64-bit** — their collision domain is only the historical
 outputs of one logical query (bounded by edit count, Σ n²/2⁶⁵, negligible), because results
 are stored *under* content keys and a fingerprint can only collide meaningfully within the
 same dependency slot of the same dependent. This holds only while result fingerprints are

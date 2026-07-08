@@ -12,22 +12,22 @@ New dependencies need explicit approval first (project rule).
   work): `src/monitor.rs` (`FileMonitor` trait, `DiskMonitor` + `MockMonitor`
   backends, batching `ChangeStream`) plus the `Compiler::run_watch_loop`
   driver. Design notes in [plans/daemon.md](plans/daemon.md).
-* **xxh3 hashing** — needs `xxhash-rust` (already a qcompiler dependency,
-  same rationale). Swap point is the single `StableHasher` in
-  `src/keys.rs`, currently `DefaultHasher`-backed: xxh3-128 for content
-  keys, xxh3-64 for fingerprints per [../docs/hashing.md](../docs/hashing.md).
-  Not urgent while caches are in-memory only, but a prerequisite for
-  persistence (DefaultHasher output is not guaranteed stable across
-  toolchains) — and it unblocks golden-fingerprint tests, which were
-  deliberately deferred for that reason.
-* **Persistence** — roadmap Phase 3: LMDB + postcard content store, then
-  memory/disk tiering. Keys are already portable-by-construction
-  (schema hash included) except for the hasher above, which must land first.
+* ~~**xxh3 hashing**~~ — done 2026-07-06 (`xxhash-rust` approved): the
+  single `StableHasher` in `src/keys.rs` is xxh3 now (xxh3-128 content
+  keys/digests, xxh3-64 fingerprints), `SCHEMA_VERSION` bumped to 2. Stable
+  output unblocked the golden-fingerprint tests (now checked in).
+* ~~**Persistence**~~ — done 2026-07-06 (`heed` + `postcard` approved),
+  roadmap Phase 3 item 12: LMDB write-through content store (`src/disk.rs`)
+  holding Sym-free portable entries (`src/portable.rs`), opened by the
+  daemon via `Compiler::with_disk_cache` under `<root>/out/cache`. Still
+  open: memory/disk tiering + eviction (item 13).
 
 ## Not gated, just not done
 
-* **Roadmap Phase 3 remainder** — pluggable source backends (abstract the
-  leaf read away from `tokio::fs`), query flavors
+* **Roadmap Phase 3 remainder** — memory/disk cache tiering + eviction
+  (item 13; the disk store is append-only, no eviction yet), pluggable
+  source backends (abstract the leaf read away from `tokio::fs`), query
+  flavors
   ([plans/flavors.md](plans/flavors.md)).
 * **Fast mode vs IDE mode** — roadmap item 11, plan in
   [plans/fast-mode.md](plans/fast-mode.md). Note Step 5 already made

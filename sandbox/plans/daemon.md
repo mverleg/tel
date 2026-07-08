@@ -5,9 +5,12 @@ Status: **direction decided 2026-07-05; implemented 2026-07-06** as the
 `sandbox/src/monitor.rs`: one daemon per `tel.toml` root, ad-file discovery
 with token auth, spawn-on-demand, tonic/gRPC
 (Handshake/Compile/Watch/Shutdown), exact-version self-replacement,
-`--no-daemon` and no-marker fallbacks running in-process. Still future: IDE
-point queries, broadcast diagnostics, client-spawned execution, persistence
-(roadmap Phase 3). Decisions: one daemon per workspace root (marker file,
+`--no-daemon` and no-marker fallbacks running in-process. Persistence
+landed 2026-07-06 (roadmap item 12): the daemon opens an LMDB content-store
+tier under `<root>/out/cache` via `Compiler::with_disk_cache`, degrading to
+memory-only if it can't. Still future: IDE point queries, broadcast
+diagnostics, client-spawned execution, cache tiering/eviction (item 13).
+Decisions: one daemon per workspace root (marker file,
 innermost wins); tonic/gRPC transport with per-request diagnostic streams;
 exact-version handshake, client wins; `--no-daemon` stays as a cold
 in-process path; daemon compiles, spawned children execute. Related:
@@ -108,12 +111,16 @@ The engine stays a library; the CLI keeps an in-process path (today's
 an honest thin host rather than the only way in.
 
 - Default: **no persistent cache** — cold per invocation, warm within it.
-- If a warm-but-daemonless mode ever matters: sharing the future LMDB store
-  is safe by construction — content-store entries are valid forever (keys
-  chain through content fingerprints + schema hash), so concurrent writers
-  can only duplicate work, never corrupt; LMDB itself is single-writer/
-  MVCC-readers across processes. Read-only open is the conservative first
-  step. No design work needed now.
+  `Compiler::new` (what the in-process path uses) never opens the disk tier;
+  `Compiler::with_disk_cache` is the opt-in constructor the daemon uses.
+- The LMDB store now exists (roadmap item 12, `sandbox/src/disk.rs`), and
+  sharing it from a warm-but-daemonless mode is safe by construction —
+  content-store entries are valid forever (keys chain through content
+  fingerprints + schema hash), so concurrent writers can only duplicate
+  work, never corrupt; on-disk `NO_OVERWRITE` keeps the first write, and
+  LMDB is single-writer/MVCC-readers across processes. Read-only open
+  remains the conservative option if a non-daemon warm mode is ever wired
+  up; nothing forces it today.
 - Corollary: the daemon's exclusivity is *not* protecting the store (the
   store protects itself); it is the single warm home of the in-memory
   layer, the file monitor, and IDE sessions.
@@ -169,6 +176,13 @@ without the daemon via `Compiler::run_watch_loop`.
   reports canonical paths. The daemon makes this systematic (it controls
   both the entry path and the watch root); a stricter fix (canonicalize at
   intern) is deferred until it bites.
+- **Cache-write feedback guard**: the persistent cache lives *inside* the
+  watched root (`<root>/out/cache`), so the daemon's own LMDB writes surface
+  as file events. The `Watch` handler filters batch paths under `cache_dir`
+  before `invalidate` — without it, every compile's write-through would
+  provoke another (no-op, but wasteful) wave. The loop would still
+  terminate (a spurious wave computes and writes nothing new), but it would
+  wake clients needlessly.
 
 ## Open questions
 

@@ -33,7 +33,7 @@ start with [plans/roadmap.md](plans/roadmap.md).
 - [x] Cache computation steps (parse/resolve/mono answers are content-cached, keys chained through dep answer fingerprints; exec deliberately stays uncached — its value is its side effects)
 - [x] Cache IO steps (read stays fused with parse: the cached IO answer is the parse-level result; the read itself re-runs each compile to derive the lookup digest)
 - [x] Early cutoff via result fingerprints (a formatting-only edit re-parses one file and recomputes nothing above it — Scenario B; errors are fingerprinted answers too, so dependents of stably-failing steps are cached as well)
-- [ ] Store cache in LMDB (with postcard)
+- [x] Store cache in LMDB (with postcard) (`src/disk.rs`: content-store write-through under `<root>/out/cache`, opened by the daemon via `Compiler::with_disk_cache`; answers are Sym-free portable entries (`src/portable.rs`) so they revive in any process; format+schema versioned with wipe-on-mismatch, corruption is a miss. `--no-daemon` stays cold. Eviction/tiering still open.)
 - [x] Include schema hash in file cache
 - [x] Incremental compile starting from main (a `Compiler` is a persistent, droppable process — no more `Box::leak`; each run is a demand-driven pull from the entry point, and re-resolves replace their graph edges so restructured imports leave no zombies)
 - [x] Incremental compile starting from leafs (explicit `invalidate(path)` + `run_watch`: reverse-edge cone marking, dirty cleared only on successful whole-record commit, `catch_unwind` keeps panicking nodes dirty)
@@ -86,7 +86,7 @@ Each step appends one JSON line to the trace file (default
 
 ```json
 {"event":"step","seq":9,"kind":"resolve","step":"examples/fibonacci/fib.telsb::fib",
- "key":"68b7bd85c6f1ead8","cache":"hit","age_us":375,"fp":"c0c55e56f8646064",
+ "key":"80a61e3e09ba3c98a4fa357671cc45ca","cache":"hit","age_us":375,"fp":"c0c55e56f8646064",
  "t_us":778,"dur_us":73}
 ```
 

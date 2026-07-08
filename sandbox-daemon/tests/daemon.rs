@@ -131,6 +131,47 @@ fn run_without_marker_falls_back_to_in_process() {
     assert!(read_only_ad(runtime.path()).is_none(), "no root, no daemon");
 }
 
+/// The daemon persists its content store under `<root>/out/cache`, so its
+/// work warms a later process. We prove it without adding RPC surface: run
+/// through the daemon, shut it down (flushing the cache writer on
+/// `Compiler` drop), then open an in-process `Compiler::with_disk_cache` on
+/// the same cache dir and assert it recomputes nothing — the daemon's
+/// writes are exactly the reusable cache.
+#[tokio::test(flavor = "multi_thread")]
+async fn daemon_persists_a_reusable_cache() {
+    let project = TempDir::new().unwrap();
+    let runtime = TempDir::new().unwrap();
+    let root = project.path().canonicalize().unwrap();
+    let (main, _hot) = hot_cold_project(&root);
+    let entry = main.canonicalize().unwrap();
+
+    let out = telsb(runtime.path()).arg("run").arg(&entry).output().unwrap();
+    assert!(out.status.success(), "run failed: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "112");
+    let ad = read_only_ad(runtime.path()).expect("run must have advertised a daemon");
+    let mut guard = KillGuard(Some(ad.pid));
+
+    // Shut down so the daemon drops its Compiler and flushes the writer.
+    let out = telsb(runtime.path()).arg("shutdown").arg(&root).output().unwrap();
+    assert!(out.status.success(), "shutdown failed: {}", String::from_utf8_lossy(&out.stderr));
+    wait_until("daemon process exit", || !Path::new(&format!("/proc/{}", ad.pid)).exists());
+    guard.0 = None;
+
+    let cache_dir = sandbox::default_cache_dir(&root);
+    assert!(cache_dir.join("data.mdb").exists(), "the daemon must have written an LMDB store");
+
+    // Warmth probe: a fresh in-process compiler over the same cache dir must
+    // serve everything the daemon computed.
+    let printer: std::sync::Arc<dyn sandbox::Printer> = std::sync::Arc::new(sandbox::NoopPrinter);
+    let mut probe = sandbox::Compiler::with_disk_cache(printer, &cache_dir).unwrap();
+    probe.run(entry.to_str().unwrap(), false).await.unwrap();
+    assert_eq!(
+        (probe.computed_parse_count(), probe.computed_resolve_count(), probe.computed_mono_count()),
+        (0, 0, 0),
+        "the daemon's persisted cache must warm a later process completely",
+    );
+}
+
 // ---------------------------------------------------------------------------
 // In-process protocol tests
 // ---------------------------------------------------------------------------

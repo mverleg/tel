@@ -125,8 +125,17 @@ dropping it reclaims everything).
 
 ## Phase 3 — Persistence & scale
 
-12. **Store cache in LMDB (with postcard)** `[readme]` — persist the content
-    store across runs (types already derive serde).
+12. **Store cache in LMDB (with postcard)** `[readme]` — **done 2026-07-06.**
+    The content store has an append-only LMDB tier (`src/disk.rs`, via
+    `heed`) holding postcard-encoded **Sym-free portable entries**
+    (`src/portable.rs`) — stored answers carry interned ids, so they are
+    rewritten with a per-entry string table and re-interned on load, which
+    makes them valid in any process. Reads are inline (mmap lookups); writes
+    go through one batched writer thread with `NO_OVERWRITE` (disk
+    first-write-wins). A `(format, schema)` stamp wipes the cache on
+    mismatch; corruption is a miss, never a panic. The daemon opens it under
+    `<root>/out/cache` via `Compiler::with_disk_cache`; `--no-daemon` stays
+    cold and hermetic. Prerequisite (xxh3 stable hashing) landed first.
 
 13. **Memory/disk cache tiering** `[qcompiler-gap]` — keep hottest entries in
     memory, spill everything to disk (LRU or similar).

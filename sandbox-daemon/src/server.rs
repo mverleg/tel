@@ -68,6 +68,11 @@ enum Stance {
 
 struct DaemonState {
     root: PathBuf,
+    /// The persistent cache directory under `root`. Watch events beneath it
+    /// are the compiler's own cache writes (the cache lives inside the
+    /// watched tree), so they must be filtered out before `invalidate` —
+    /// otherwise every compile's write-through provokes another wave.
+    cache_dir: PathBuf,
     compiler: tokio::sync::Mutex<Compiler>,
     printer: Arc<RoutingPrinter>,
     shutdown: mpsc::Sender<()>,
@@ -140,9 +145,18 @@ impl SandboxDaemon for DaemonService {
                 }
             }
             while let Some(batch) = events.next_batch().await {
+                // Drop the compiler's own cache writes: they live under
+                // `root` (so the OS reports them) but announcing them would
+                // dirty nothing and spin an extra wave per compile.
+                let relevant: Vec<_> = batch.iter()
+                    .filter(|p| !p.starts_with(&state.cache_dir))
+                    .collect();
+                if relevant.is_empty() {
+                    continue;
+                }
                 // Lock per wave: Compile requests interleave between waves.
                 let mut compiler = state.compiler.lock().await;
-                for changed in &batch {
+                for changed in relevant {
                     match changed.to_str() {
                         Some(changed) => compiler.invalidate(changed),
                         None => warn!("ignoring non-UTF8 changed path {:?}", changed),
@@ -177,9 +191,21 @@ pub async fn serve(root: &std::path::Path, ad_file: &std::path::Path) -> Result<
     // The compiler's printer and the state's routing handle must be one
     // object: run_streaming redirects exactly the printer the compiler holds.
     let printer = Arc::new(RoutingPrinter { target: std::sync::Mutex::new(None) });
+    let cache_dir = sandbox::default_cache_dir(&root);
+    // The daemon is the persistent-cache's primary consumer (plans/daemon.md).
+    // Degrade, don't die: an unusable cache dir means memory-only, same as
+    // `--no-daemon`, rather than a dead daemon.
+    let compiler = match Compiler::with_disk_cache(printer.clone(), &cache_dir) {
+        Ok(compiler) => compiler,
+        Err(e) => {
+            warn!("disk cache at {} unavailable ({}); running memory-only", cache_dir.display(), e);
+            Compiler::new(printer.clone())
+        }
+    };
     let state = Arc::new(DaemonState {
         root: root.clone(),
-        compiler: tokio::sync::Mutex::new(Compiler::new(printer.clone())),
+        cache_dir,
+        compiler: tokio::sync::Mutex::new(compiler),
         printer,
         shutdown: shutdown_tx,
         version: fingerprint.clone(),
