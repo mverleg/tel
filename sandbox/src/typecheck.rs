@@ -45,7 +45,7 @@ enum TExpr {
     If { cond: Box<TExpr>, then_branch: Box<TExpr>, else_branch: Box<TExpr> },
     Print(Box<TExpr>),
     Return(Box<TExpr>),
-    Panic { source_location: String },
+    Panic { source_location: String, frame: u32, node: u32 },
     Call { target: MonoId, args: Vec<Box<TExpr>> },
     Arg(u8),
     Sequence(Vec<TExpr>),
@@ -262,9 +262,9 @@ impl<'a> Checker<'a> {
                 let never = self.fresh();
                 Ok((TExpr::Return(Box::new(te)), never))
             }
-            Expr::Panic { source_location } => {
+            Expr::Panic { source_location, frame, node } => {
                 let never = self.fresh();
-                Ok((TExpr::Panic { source_location: source_location.clone() }, never))
+                Ok((TExpr::Panic { source_location: source_location.clone(), frame: *frame, node: *node }, never))
             }
             Expr::Call { func, args } => {
                 // All arguments share the callee's single type parameter.
@@ -327,7 +327,7 @@ impl<'a> Checker<'a> {
             },
             TExpr::Print(e) => MExpr::Print(Box::new(self.lower(*e)?)),
             TExpr::Return(e) => MExpr::Return(Box::new(self.lower(*e)?)),
-            TExpr::Panic { source_location } => MExpr::Panic { source_location },
+            TExpr::Panic { source_location, frame, node } => MExpr::Panic { source_location, frame, node },
             TExpr::Call { target, args } => MExpr::Call {
                 func: target,
                 args: args.into_iter()

@@ -123,7 +123,7 @@ enum PExpr {
     If { cond: Box<PExpr>, then_branch: Box<PExpr>, else_branch: Box<PExpr> },
     Print(Box<PExpr>),
     Return(Box<PExpr>),
-    Panic { source_location: String },
+    Panic { source_location: String, frame: u32, node: u32 },
     Call { func: PFq, args: Vec<Box<PExpr>> },
     Arg(u8),
     Sequence(Vec<PExpr>),
@@ -165,7 +165,7 @@ enum PMExpr {
     If { cond: Box<PMExpr>, then_branch: Box<PMExpr>, else_branch: Box<PMExpr> },
     Print(Box<PMExpr>),
     Return(Box<PMExpr>),
-    Panic { source_location: String },
+    Panic { source_location: String, frame: u32, node: u32 },
     Call { func: PMonoId, args: Vec<Box<PMExpr>> },
     Arg(u8),
     Sequence(Vec<PMExpr>),
@@ -200,7 +200,7 @@ fn expr_to_portable(expr: &Expr, w: &mut PortableWriter<'_>) -> PExpr {
         },
         Expr::Print(inner) => PExpr::Print(Box::new(expr_to_portable(inner, w))),
         Expr::Return(inner) => PExpr::Return(Box::new(expr_to_portable(inner, w))),
-        Expr::Panic { source_location } => PExpr::Panic { source_location: source_location.clone() },
+        Expr::Panic { source_location, frame, node } => PExpr::Panic { source_location: source_location.clone(), frame: *frame, node: *node },
         Expr::Call { func, args } => PExpr::Call {
             func: w.fq(&func.0),
             args: args.iter().map(|a| Box::new(expr_to_portable(a, w))).collect(),
@@ -228,7 +228,7 @@ fn mexpr_to_portable(expr: &MExpr, w: &mut PortableWriter<'_>) -> PMExpr {
         },
         MExpr::Print(inner) => PMExpr::Print(Box::new(mexpr_to_portable(inner, w))),
         MExpr::Return(inner) => PMExpr::Return(Box::new(mexpr_to_portable(inner, w))),
-        MExpr::Panic { source_location } => PMExpr::Panic { source_location: source_location.clone() },
+        MExpr::Panic { source_location, frame, node } => PMExpr::Panic { source_location: source_location.clone(), frame: *frame, node: *node },
         MExpr::Call { func, args } => PMExpr::Call {
             func: mono_id_to_portable(func, w),
             args: args.iter().map(|a| Box::new(mexpr_to_portable(a, w))).collect(),
@@ -300,7 +300,7 @@ fn expr_from_portable(expr: &PExpr, r: &PortableReader) -> Option<Expr> {
         },
         PExpr::Print(inner) => Expr::Print(Box::new(expr_from_portable(inner, r)?)),
         PExpr::Return(inner) => Expr::Return(Box::new(expr_from_portable(inner, r)?)),
-        PExpr::Panic { source_location } => Expr::Panic { source_location: source_location.clone() },
+        PExpr::Panic { source_location, frame, node } => Expr::Panic { source_location: source_location.clone(), frame: *frame, node: *node },
         PExpr::Call { func, args } => Expr::Call {
             func: FuncId(r.fq(func)?),
             args: args.iter().map(|a| expr_from_portable(a, r).map(Box::new)).collect::<Option<Vec<_>>>()?,
@@ -328,7 +328,7 @@ fn mexpr_from_portable(expr: &PMExpr, r: &PortableReader) -> Option<MExpr> {
         },
         PMExpr::Print(inner) => MExpr::Print(Box::new(mexpr_from_portable(inner, r)?)),
         PMExpr::Return(inner) => MExpr::Return(Box::new(mexpr_from_portable(inner, r)?)),
-        PMExpr::Panic { source_location } => MExpr::Panic { source_location: source_location.clone() },
+        PMExpr::Panic { source_location, frame, node } => MExpr::Panic { source_location: source_location.clone(), frame: *frame, node: *node },
         PMExpr::Call { func, args } => MExpr::Call {
             func: mono_id_from_portable(func, r)?,
             args: args.iter().map(|a| mexpr_from_portable(a, r).map(Box::new)).collect::<Option<Vec<_>>>()?,
@@ -404,7 +404,7 @@ mod tests {
                 then_branch: Box::new(Expr::Print(Box::new(Expr::Number { value: 5, ty: None }))),
                 else_branch: Box::new(Expr::Return(Box::new(Expr::Number { value: 6, ty: None }))),
             },
-            Expr::Panic { source_location: "a.telsb::f".to_string() },
+            Expr::Panic { source_location: "a.telsb::f".to_string(), frame: 2, node: 7 },
             Expr::Call {
                 func: FuncId(FQ::intern(interner, "lib/util.telsb", "helper")),
                 args: vec![Box::new(Expr::Arg(2))],
@@ -429,7 +429,7 @@ mod tests {
                 then_branch: Box::new(MExpr::Print(Box::new(MExpr::Number(Value::I64(5))))),
                 else_branch: Box::new(MExpr::Return(Box::new(MExpr::Number(Value::I64(6))))),
             },
-            MExpr::Panic { source_location: "a.telsb::f".to_string() },
+            MExpr::Panic { source_location: "a.telsb::f".to_string(), frame: 2, node: 7 },
             MExpr::Call {
                 func: MonoId { func_loc: FQ::intern(interner, "lib/util.telsb", "helper"), ty: Ty::I64 },
                 args: vec![Box::new(MExpr::Arg(2))],

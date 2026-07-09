@@ -106,7 +106,7 @@ impl<'a> Resolver<'a> {
             PreExpr::Print(e) | PreExpr::Return(e) => {
                 Self::collect_arg_numbers(e, arg_numbers, max_arg);
             }
-            PreExpr::Panic | PreExpr::Unreachable => {}
+            PreExpr::Panic { .. } | PreExpr::Unreachable { .. } => {}
             PreExpr::Call { args, .. } => {
                 for arg in args {
                     Self::collect_arg_numbers(arg, arg_numbers, max_arg);
@@ -232,11 +232,11 @@ impl<'a> Resolver<'a> {
             // shared across identical files at different paths, so it must be
             // path-free; this step's key pins the FQ, so embedding the path in
             // the *resolve* answer is sound.
-            PreExpr::Panic => {
-                Ok(Expr::Panic { source_location: self.source_location_str() })
+            PreExpr::Panic { frame, node } => {
+                Ok(Expr::Panic { source_location: self.source_location_str(), frame, node })
             }
-            PreExpr::Unreachable => {
-                Err(ResolveError::UnreachableCode { context: self.context_str(), source_location: self.source_location_str() })
+            PreExpr::Unreachable { frame, node } => {
+                Err(ResolveError::UnreachableCode { context: self.context_str(), source_location: self.source_location_str(), frame, node })
             }
             PreExpr::Import(_) => {
                 Err(ResolveError::ImportNotAtTop(self.context_str()))

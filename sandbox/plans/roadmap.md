@@ -115,13 +115,30 @@ dropping it reclaims everything).
       graph, so a file's marking cone includes its function instances.
 
 11. **Fast mode vs IDE mode** `[qcompiler-gap]` — detailed plan:
-    [fast-mode.md](fast-mode.md)
+    [fast-mode.md](fast-mode.md) — **first slice done** (the span sidecar +
+    in-session runtime-panic upgrade).
     - Two versions of queries: metadata-light for fast compile, full
       source-locations for IDE / error messages. Try fast first, retry in IDE
       mode when an error occurs, to get good diagnostics.
-    - Not separate targets — a *flavor* on query keys, with a shared
-      mode-independent core + metadata sidecar; upgrade re-runs only the failing
-      subtree and reuses the shared read cache.
+    - Not separate targets — no `Mode` key at all: a shared mode-independent
+      core + separately-keyed metadata **sidecar** demanded on the error path
+      (fast-mode.md's decision; "mode" is a driver demand policy, not a key
+      dimension).
+    - **Landed:** the tokenizer emits byte spans; parse assigns path-free
+      per-function `(frame, node)` locators to every node (fast path records no
+      spans); `panic`/`unreachable` carry the locator; the span table is a
+      `QueryKind::Spans` sidecar keyed on the source digest, memory-only and
+      never folded into a downstream key (so it can't cascade); a fired `panic`
+      upgrades its coarse file path to `path:line:col` in-session by demanding
+      that one sidecar (`Compiler::cached_spans_count()` proves the happy path
+      builds none). `SCHEMA_VERSION` 2→3. Tests: `tests/spans.rs`.
+    - **Deferred:** `refmap`/`typemap`/`docs` sidecars; the always-on
+      error-recovering parser; the multi-output *record* with per-output
+      fingerprints (fast-mode.md's ideal — this slice uses the 2d
+      "recompute-on-demand" sidecar policy, cheap since there is no AOT
+      backend demanding spans every build); driver-side span rendering for
+      `unreachable` (its `(frame, node)` locator is threaded and ready, but
+      only runtime `panic` is upgraded so far).
 
 ## Phase 3 — Persistence & scale
 

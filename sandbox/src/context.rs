@@ -2,7 +2,7 @@ use crate::common::{Ctx, Interner, Path, FQ};
 use crate::graph::{ExecId, Graph, MonoId, ParseId, ResolveId, StepId};
 use crate::keys::{ContentDigest, ContentKey, Fingerprint, QueryKind, StableCtx, StableHash};
 use crate::store::{BindingLayer, BindingRecord, ContentStore, MonoAnswer, ResolveAnswer, ResolveEntry};
-use crate::types::{ExecuteError, Expr, FuncData, FuncId, MonoFuncData, ParseError, PreExpr, ResolveError, SymbolTable, Ty, TypeError};
+use crate::types::{ExecuteError, Expr, FuncData, FuncId, MonoFuncData, ParseError, PreExpr, ResolveError, SpanTable, SymbolTable, Ty, TypeError};
 use crate::Printer;
 use dashmap::DashMap;
 use log::debug;
@@ -223,6 +223,13 @@ impl Global {
     /// does not grow this count on a subsequent run.
     pub fn cached_parse_count(&self) -> usize {
         self.store.parse_len()
+    }
+
+    /// Number of parse span sidecars built and cached so far. Stays `0` across
+    /// a run with no diagnostics — the happy path never demands one — so a test
+    /// can assert the sidecar is computed only on the error/detail path.
+    pub fn cached_spans_count(&self) -> usize {
+        self.store.spans_len()
     }
 
     /// Number of distinct monomorphised instances cached so far (by resolved
@@ -1069,6 +1076,26 @@ impl MonoContext<'_> {
     }
 }
 
+impl Global {
+    /// Build (or fetch) the parse **span sidecar** for `source`. Keyed on the
+    /// source digest in the `Spans` keyspace, so identical bytes share one
+    /// table and it is cached for the process; produced by re-parsing with
+    /// span recording on (the fast parse recorded none). A parse failure
+    /// yields an empty table — callers only ask for source that already
+    /// compiled, so the locator will be present in practice.
+    fn spans_for(&self, source: &str) -> Arc<SpanTable> {
+        let digest = ContentDigest::of(source);
+        let key = ContentKey::build(QueryKind::Spans, |h| {
+            digest.stable_hash(&StableCtx { interner: &self.interner }, h);
+        });
+        self.store.spans_get_or_build(key, || {
+            crate::parse::parse_with_spans(source)
+                .map(|(_ast, table)| table)
+                .unwrap_or_default()
+        })
+    }
+}
+
 pub struct ExecContext {
     current: ExecId,
     core: Arc<Global>,
@@ -1112,6 +1139,28 @@ impl ExecContext {
 
     pub fn mono(&self, entry: MonoId) -> Result<(), TypeError> {
         self.core.mono_impl(StepId::Exec(self.current.clone()), entry, self.mode)
+    }
+
+    /// Upgrade a coarse panic location (`source_location`, a file path) to
+    /// `path:line:col` by demanding the span sidecar for that file and mapping
+    /// the `(frame, node)` locator through it. This is the in-session
+    /// upgrade-on-error of plans/fast-mode.md ("the runtime story"): the happy
+    /// path computes no sidecar, and only a fired `panic` pays the leaf-cost
+    /// reparse. Degrades to the bare path if the file can't be read or the
+    /// locator isn't in the table (e.g. the source changed since compile), so
+    /// the message is never worse than the pre-sidecar behaviour.
+    pub fn render_panic_location(&self, source_location: &str, frame: u32, node: u32) -> String {
+        let Ok(source) = std::fs::read_to_string(source_location) else {
+            return source_location.to_string();
+        };
+        let table = self.core.spans_for(&source);
+        match table.get(frame, node) {
+            Some(span) => {
+                let (line, col) = crate::types::line_col(&source, span.start);
+                format!("{}:{}:{}", source_location, line, col)
+            }
+            None => source_location.to_string(),
+        }
     }
 }
 

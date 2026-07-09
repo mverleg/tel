@@ -286,6 +286,14 @@ impl Compiler {
         self.core.cached_parse_count()
     }
 
+    /// Number of parse span sidecars built and cached so far. `0` after a clean
+    /// compile — the fast path demands no spans; a fired `panic` (or another
+    /// detail-mode consumer) builds exactly the sidecars it needs
+    /// (plans/fast-mode.md).
+    pub fn cached_spans_count(&self) -> usize {
+        self.core.cached_spans_count()
+    }
+
     /// Number of distinct monomorphised instances cached so far, keyed by
     /// source content + instance. Editing a file adds fresh entries only for
     /// the instances defined in that file; unchanged or reverted files reuse

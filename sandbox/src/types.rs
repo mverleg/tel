@@ -3,6 +3,82 @@ use crate::common::FQ;
 use crate::graph::MonoId;
 use serde::{Deserialize, Serialize};
 
+/// A half-open byte range `[start, end)` into a source file. The layout half of
+/// the identity/layout split (plans/fast-mode.md, approach 2b): spans live only
+/// in the on-demand span sidecar ([`SpanTable`]), never in the core AST, so a
+/// whitespace edit that shifts every offset leaves the fingerprint-stable core
+/// untouched and only the (lazily recomputed) sidecar goes stale.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ByteSpan {
+    pub start: u32,
+    pub end: u32,
+}
+
+/// The parse **span sidecar**: byte spans for every AST node, grouped by
+/// *frame* (a per-file function ordinal — 0 is the file/implicit-`main` body,
+/// 1.. are the source-order `function` definitions) and indexed within a frame
+/// by the node's preorder position. The identical `(frame, node)` locator the
+/// core AST carries (on `Panic`/`Unreachable`) indexes straight into here.
+///
+/// Per-frame numbering (not per-file) is deliberate: a node's locator must not
+/// shift when a *sibling* function is edited, or the resolve→mono early cutoff
+/// (which keys mono on the resolve output fingerprint) would miss for any
+/// function containing a `panic`. Editing one function's body leaves every
+/// other frame's ordinals and node indices bit-identical.
+///
+/// Recomputable from bytes at leaf-query cost, so it is content-addressed and
+/// evicted aggressively (plans/fast-mode.md approach 2d); it feeds no
+/// mid-pipeline key, so it can never cascade into a recompile.
+#[derive(Debug, Clone, Default)]
+pub struct SpanTable {
+    frames: Vec<Vec<ByteSpan>>,
+}
+
+impl SpanTable {
+    pub fn new() -> SpanTable {
+        SpanTable { frames: Vec::new() }
+    }
+
+    /// Record `span` as the next preorder node of `frame`, growing the frame
+    /// list as needed. Callers push in preorder, so the pushed index is the
+    /// node's locator id.
+    pub fn push(&mut self, frame: u32, span: ByteSpan) -> u32 {
+        let f = frame as usize;
+        if self.frames.len() <= f {
+            self.frames.resize_with(f + 1, Vec::new);
+        }
+        let node = self.frames[f].len() as u32;
+        self.frames[f].push(span);
+        node
+    }
+
+    /// The span of node `node` in `frame`, if the locator is in range.
+    pub fn get(&self, frame: u32, node: u32) -> Option<ByteSpan> {
+        self.frames.get(frame as usize)?.get(node as usize).copied()
+    }
+}
+
+/// 1-based `(line, column)` of byte offset `off` in `source`. Column counts
+/// Unicode scalar values (chars), which is enough for the sandbox's ASCII
+/// programs and avoids depending on any grapheme library.
+pub fn line_col(source: &str, off: u32) -> (u32, u32) {
+    let off = (off as usize).min(source.len());
+    let mut line = 1u32;
+    let mut col = 1u32;
+    for (i, ch) in source.char_indices() {
+        if i >= off {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
+}
+
 /// A concrete numeric type. Every value in the language is one of these; there
 /// are no implicit conversions between them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -113,11 +189,13 @@ pub enum PreExpr {
     },
     Print(Box<PreExpr>),
     Return(Box<PreExpr>),
-    /// No source location here: the parse answer is shared across paths (its
-    /// content key hashes the bytes only), so it must embed nothing
-    /// path-derived. Resolve — whose key pins the FQ — attaches the location.
-    Panic,
-    Unreachable,
+    /// A layout-independent locator, not a source location: `(frame, node)`
+    /// indexes the on-demand span sidecar ([`SpanTable`]) and is path-free
+    /// (assigned by preorder position within the enclosing function), so the
+    /// parse answer stays shareable across identical files at different paths.
+    /// Resolve — whose key pins the FQ — attaches the concrete file path.
+    Panic { frame: u32, node: u32 },
+    Unreachable { frame: u32, node: u32 },
     Import(String),
     FunctionDef {
         name: String,
@@ -174,7 +252,10 @@ pub enum Expr {
     },
     Print(Box<Expr>),
     Return(Box<Expr>),
-    Panic { source_location: String },
+    /// `source_location` is the coarse fallback (the file path, as before);
+    /// `(frame, node)` is the layout-independent locator into the span sidecar
+    /// that upgrades it to `path:line:col` on demand (plans/fast-mode.md).
+    Panic { source_location: String, frame: u32, node: u32 },
     Call {
         func: FuncId,
         args: Vec<Box<Expr>>,
@@ -209,7 +290,7 @@ pub enum MExpr {
     },
     Print(Box<MExpr>),
     Return(Box<MExpr>),
-    Panic { source_location: String },
+    Panic { source_location: String, frame: u32, node: u32 },
     Call {
         func: MonoId,
         args: Vec<Box<MExpr>>,
@@ -315,7 +396,7 @@ pub enum ResolveError {
     FunctionOverload { loc: String, existing_arity: usize, new_arity: usize },
     ArityMismatch { context: String, func_name: String, expected: usize, got: usize },
     ArityGap { context: String, func_name: String, max_arg: usize },
-    UnreachableCode { context: String, source_location: String },
+    UnreachableCode { context: String, source_location: String, frame: u32, node: u32 },
     CyclicDependency { cycle: Vec<String> },
     IoError(String, String),
     ParseError(String, ParseError),
@@ -343,7 +424,7 @@ impl fmt::Display for ResolveError {
             ResolveError::FunctionOverload { loc, existing_arity, new_arity } => write!(f, "Function overloading not allowed: {} has arity {} but trying to define with arity {}", loc, existing_arity, new_arity),
             ResolveError::ArityMismatch { context, func_name, expected, got } => write!(f, "Function '{}' in {} expects {} arguments, but {} were provided", func_name, context, expected, got),
             ResolveError::ArityGap { context, func_name, max_arg } => write!(f, "Function '{}' in {} has gaps in argument numbers (highest arg is {} but not all args 1..{} are used)", func_name, context, max_arg, max_arg),
-            ResolveError::UnreachableCode { context, source_location } => write!(f, "Unreachable code in {} at {}", context, source_location),
+            ResolveError::UnreachableCode { context, source_location, .. } => write!(f, "Unreachable code in {} at {}", context, source_location),
             ResolveError::CyclicDependency { cycle } => {
                 writeln!(f, "Cyclic dependency detected\n")?;
                 writeln!(f, "Cycle:")?;
@@ -397,7 +478,16 @@ impl std::error::Error for TypeError {}
 pub enum ExecuteError {
     DivisionByZero,
     ArgNotProvided(u8),
-    Panic { source_location: String },
+    /// A source-level `(panic)`. `source_location` starts as the coarse file
+    /// path and is upgraded in-session to `path:line:col` by the driver, which
+    /// demands the span sidecar for `(frame, node)` (plans/fast-mode.md, "the
+    /// runtime story"). The locator is kept so the upgrade can happen after the
+    /// interpreter has unwound.
+    Panic { source_location: String, frame: u32, node: u32 },
+    /// An internal invariant failure (not a source-level panic), e.g. a
+    /// monomorphised instance the resolver should have produced is missing.
+    /// Distinct from `Panic` so it is never sent through span rendering.
+    Internal(String),
     ResolveError(Box<ResolveError>),
     Type(TypeError),
 }
@@ -407,7 +497,8 @@ impl fmt::Display for ExecuteError {
         match self {
             ExecuteError::DivisionByZero => write!(f, "Division by zero"),
             ExecuteError::ArgNotProvided(n) => write!(f, "Argument {} not provided", n),
-            ExecuteError::Panic { source_location } => write!(f, "panic at {}", source_location),
+            ExecuteError::Panic { source_location, .. } => write!(f, "panic at {}", source_location),
+            ExecuteError::Internal(msg) => write!(f, "{}", msg),
             ExecuteError::ResolveError(e) => write!(f, "{}", e),
             ExecuteError::Type(e) => write!(f, "{}", e),
         }

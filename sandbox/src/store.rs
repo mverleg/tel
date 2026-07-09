@@ -24,7 +24,7 @@ use crate::common::{Interner, FQ};
 use crate::disk::DiskCache;
 use crate::graph::StepId;
 use crate::keys::{ContentDigest, ContentKey, Fingerprint};
-use crate::types::{Expr, FuncData, MonoFuncData, ParseError, PreExpr, ResolveError, SymbolTable, TypeError};
+use crate::types::{Expr, FuncData, MonoFuncData, ParseError, PreExpr, ResolveError, SpanTable, SymbolTable, TypeError};
 use async_lazy::Cache;
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
@@ -76,6 +76,13 @@ pub struct ContentStore {
     /// first-write-wins semantics suffices; deterministic `TypeError`s are
     /// answers and are stored like successes.
     mono: DashMap<ContentKey, MonoAnswer>,
+    /// Parse **span sidecars** (plans/fast-mode.md), keyed on the same source
+    /// digest as the core parse answer but in the `Spans` keyspace. Memory-only
+    /// and *not* written through to disk: a span table is recomputable from
+    /// bytes at leaf-query cost, so it is cheaper to rebuild than to persist,
+    /// and it feeds no downstream key — losing it can never serve a stale
+    /// answer. `Arc` so a lookup hands out a cheap clone.
+    spans: DashMap<ContentKey, Arc<SpanTable>>,
     /// Optional persistent tier (src/disk.rs). Read order is always memory →
     /// disk → compute; every fresh compute (and only the *winning* insert of
     /// a race) is written through. `None` is the cold-and-hermetic default —
@@ -89,6 +96,7 @@ impl ContentStore {
             parse: Cache::new(),
             resolve: DashMap::new(),
             mono: DashMap::new(),
+            spans: DashMap::new(),
             disk: None,
         }
     }
@@ -179,9 +187,25 @@ impl ContentStore {
         }
     }
 
+    /// Get the span sidecar for `key`, building it with `build` on first
+    /// demand. Memory-only and idempotent — the builder is a pure function of
+    /// the bytes `key` hashes, so a race merely recomputes an equal table and
+    /// first-write-wins keeps one.
+    pub fn spans_get_or_build(&self, key: ContentKey, build: impl FnOnce() -> SpanTable) -> Arc<SpanTable> {
+        if let Some(hit) = self.spans.get(&key) {
+            return hit.clone();
+        }
+        self.spans.entry(key).or_insert_with(|| Arc::new(build())).clone()
+    }
+
     /// Number of distinct parse answers stored (by content key).
     pub fn parse_len(&self) -> usize {
         self.parse.len()
+    }
+
+    /// Number of span sidecars built and cached (by content key).
+    pub fn spans_len(&self) -> usize {
+        self.spans.len()
     }
 
     /// Number of distinct resolve answers stored (by content key).

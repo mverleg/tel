@@ -119,8 +119,8 @@ impl<'a> Interpreter<'a> {
                 let val = self.eval_value(expr)?;
                 Ok(EvalResult::Return(val))
             }
-            MExpr::Panic { source_location } => {
-                Err(ExecuteError::Panic { source_location: source_location.clone() })
+            MExpr::Panic { source_location, frame, node } => {
+                Err(ExecuteError::Panic { source_location: source_location.clone(), frame: *frame, node: *node })
             }
             MExpr::Call { func, args } => {
                 let mut arg_vals = Vec::new();
@@ -129,10 +129,9 @@ impl<'a> Interpreter<'a> {
                 }
 
                 let func_data = self.mono_registry.get(func)
-                    .ok_or_else(|| ExecuteError::Panic {
-                        source_location: format!("Monomorphised function not found: {}::{} @ {}",
-                            func.func_loc.path_str(self.interner), func.func_loc.name_str(self.interner), func.ty)
-                    })?;
+                    .ok_or_else(|| ExecuteError::Internal(
+                        format!("Monomorphised function not found: {}::{} @ {}",
+                            func.func_loc.path_str(self.interner), func.func_loc.name_str(self.interner), func.ty)))?;
                 debug_assert_eq!(func_data.key, *func);
                 debug_assert_eq!(arg_vals.len(), func_data.arity, "resolver checked call arity");
                 let result = self.call_function(&func_data.ast, arg_vals)?;
@@ -203,7 +202,19 @@ pub async fn execute(ctx: &ExecContext, path: ExecId) -> Result<(), ExecuteError
         .expect("entry instance was just monomorphised")
         .ast.clone();
     let mut interpreter = Interpreter::new(ctx.mono_registry(), ctx.printer(), ctx.interner());
-    interpreter.eval(&my_ast)?;
+    if let Err(e) = interpreter.eval(&my_ast) {
+        // Upgrade a fired `panic` from its coarse file path to a span-accurate
+        // `path:line:col` now that the wave has unwound — demanding the span
+        // sidecar only on this error path keeps the happy path span-free
+        // (plans/fast-mode.md).
+        return Err(match e {
+            ExecuteError::Panic { source_location, frame, node } => {
+                let source_location = ctx.render_panic_location(&source_location, frame, node);
+                ExecuteError::Panic { source_location, frame, node }
+            }
+            other => other,
+        });
+    }
     debug!("execute: completed successfully");
     Ok(())
 }

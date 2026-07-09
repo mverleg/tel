@@ -29,8 +29,10 @@ use xxhash_rust::xxh3::Xxh3;
 /// `StableHash` encoding. Old entries are then unreachable (superseded garbage,
 /// not hazards): a cold cache, never a stale one.
 /// History: 2 — `StableHasher` swapped `DefaultHasher` → xxh3, keys widened
-/// to 128 bits.
-pub const SCHEMA_VERSION: u64 = 2;
+/// to 128 bits. 3 — `Panic`/`Unreachable` carry a `(frame, node)` span-sidecar
+/// locator (plans/fast-mode.md), so the parse/resolve/mono answer encodings
+/// changed.
+pub const SCHEMA_VERSION: u64 = 3;
 
 /// The query kind tag. Folding it into every content key puts each phase in a
 /// disjoint keyspace (docs/keys-and-invalidation.md "Per-Phase Keyspaces"): a
@@ -42,6 +44,11 @@ pub enum QueryKind {
     Resolve = 2,
     Mono = 3,
     Exec = 4,
+    /// The parse **span sidecar** (plans/fast-mode.md): a separate keyspace so
+    /// its entries never alias a core parse answer. Keyed on the same source
+    /// digest as `Parse`, computed on demand, and — by design — folded into no
+    /// downstream key, so it can never cascade a recompile.
+    Spans = 5,
 }
 
 /// Context for stable hashing: carries whatever is needed to map process-local
@@ -535,13 +542,19 @@ impl StableHash for PreExpr {
                 out.write_u32(7);
                 inner.stable_hash(ctx, out);
             }
-            // Fieldless by design (nothing path-derived in the shared parse
-            // answer); the tags alone distinguish them.
-            PreExpr::Panic => {
+            // The `(frame, node)` locator is path-free (a preorder position
+            // within the enclosing function), so the parse answer stays shared
+            // across identical files at different paths; it is structural, so
+            // whitespace edits leave it — and the fingerprint — unchanged.
+            PreExpr::Panic { frame, node } => {
                 out.write_u32(8);
+                out.write_u32(*frame);
+                out.write_u32(*node);
             }
-            PreExpr::Unreachable => {
+            PreExpr::Unreachable { frame, node } => {
                 out.write_u32(9);
+                out.write_u32(*frame);
+                out.write_u32(*node);
             }
             PreExpr::Import(name) => {
                 out.write_u32(10);
@@ -611,9 +624,11 @@ impl StableHash for Expr {
                 out.write_u32(7);
                 inner.stable_hash(ctx, out);
             }
-            Expr::Panic { source_location } => {
+            Expr::Panic { source_location, frame, node } => {
                 out.write_u32(8);
                 source_location.stable_hash(ctx, out);
+                out.write_u32(*frame);
+                out.write_u32(*node);
             }
             Expr::Call { func, args } => {
                 out.write_u32(9);
@@ -673,9 +688,11 @@ impl StableHash for MExpr {
                 out.write_u32(7);
                 inner.stable_hash(ctx, out);
             }
-            MExpr::Panic { source_location } => {
+            MExpr::Panic { source_location, frame, node } => {
                 out.write_u32(8);
                 source_location.stable_hash(ctx, out);
+                out.write_u32(*frame);
+                out.write_u32(*node);
             }
             MExpr::Call { func, args } => {
                 out.write_u32(9);
@@ -813,10 +830,12 @@ impl StableHash for crate::types::ResolveError {
                 func_name.stable_hash(ctx, out);
                 out.write_len(*max_arg);
             }
-            UnreachableCode { context, source_location } => {
+            UnreachableCode { context, source_location, frame, node } => {
                 out.write_u32(12);
                 context.stable_hash(ctx, out);
                 source_location.stable_hash(ctx, out);
+                out.write_u32(*frame);
+                out.write_u32(*node);
             }
             CyclicDependency { cycle } => {
                 out.write_u32(13);
@@ -1049,7 +1068,7 @@ mod tests {
         let err_fp = Fingerprint::of_err(&err, &c);
 
         assert_eq!(format!("{:032x}", digest.0), "4af01ba2c8396b3e6b01ec9d7a01ef6a");
-        assert_eq!(format!("{:032x}", key.0), "80a61e3e09ba3c98a4fa357671cc45ca");
+        assert_eq!(format!("{:032x}", key.0), "9abc57e2dfa6c36622c7cf88f3fdc8a0");
         assert_eq!(format!("{:016x}", ok_fp.0), "ff75d229ef0e880c");
         assert_eq!(format!("{:016x}", err_fp.0), "b2a5105200850dff");
     }

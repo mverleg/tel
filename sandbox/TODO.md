@@ -30,9 +30,15 @@ New dependencies need explicit approval first (project rule).
   flavors
   ([plans/flavors.md](plans/flavors.md)).
 * **Fast mode vs IDE mode** — roadmap item 11, plan in
-  [plans/fast-mode.md](plans/fast-mode.md). Note Step 5 already made
-  `PreExpr` location-free for cutoff reasons; the metadata sidecar design
-  should build on that split.
+  [plans/fast-mode.md](plans/fast-mode.md). **First slice landed**: the span
+  sidecar (`QueryKind::Spans`, memory-only, keyed on the source digest),
+  path-free per-function `(frame, node)` locators on `panic`/`unreachable`,
+  and the in-session upgrade of a runtime `panic` to `path:line:col`
+  (`tests/spans.rs`). Still open: `refmap`/`typemap`/`docs` sidecars, the
+  always-on error-recovering parser, the multi-output *record* with
+  per-output fingerprints (this slice uses the recompute-on-demand sidecar
+  policy), and driver-side span rendering for `unreachable` (locator is
+  threaded, not yet rendered).
 * **Roadmap Phase 4 hardening** — prevent ctx leak outside scope, lock-free
   during compile, box deep recursive awaits, parse on a threadpool, minor
   cleanups (`context.rs` visibility).
