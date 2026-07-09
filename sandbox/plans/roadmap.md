@@ -132,13 +132,23 @@ dropping it reclaims everything).
       upgrades its coarse file path to `path:line:col` in-session by demanding
       that one sidecar (`Compiler::cached_spans_count()` proves the happy path
       builds none). `SCHEMA_VERSION` 2→3. Tests: `tests/spans.rs`.
+    - **Also landed (exact-node compile-error locators):** every core AST node
+      now carries a structural `(frame, node)` locator on a `{loc, kind}`
+      wrapper (`PreExpr`/`Expr`), not just `panic`/`unreachable`; cached
+      resolve/mono **errors** are wrapped in `Located<E>` (error + optional
+      `SrcLoc`), so a type error or resolve error is upgraded to
+      `path:line:col` at the driver via the same span sidecar, at the exact
+      offending sub-expression. The locator is structural, so a whitespace
+      edit above an error shifts its reported line **without** re-running the
+      type check (asserted by `tests/spans.rs::line_shift_updates_location_without_rechecking`).
+      `SCHEMA_VERSION` 3→4.
     - **Deferred:** `refmap`/`typemap`/`docs` sidecars; the always-on
       error-recovering parser; the multi-output *record* with per-output
       fingerprints (fast-mode.md's ideal — this slice uses the 2d
       "recompute-on-demand" sidecar policy, cheap since there is no AOT
-      backend demanding spans every build); driver-side span rendering for
-      `unreachable` (its `(frame, node)` locator is threaded and ready, but
-      only runtime `panic` is upgraded so far).
+      backend demanding spans every build); threading `Loc` through `TExpr`
+      so `LiteralOutOfRange` (raised in the lowering pass, after `TExpr`
+      drops the locator) can be located too — it renders coarsely for now.
 
 ## Phase 3 — Persistence & scale
 

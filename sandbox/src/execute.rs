@@ -191,12 +191,15 @@ pub async fn execute(ctx: &ExecContext, path: ExecId) -> Result<(), ExecuteError
     let my_main_func = path.main_loc.clone();
     let reesolve_id = ResolveId { func_loc: my_main_func.clone() };
     debug!("execute: resolving {:?}", reesolve_id);
-    ctx.resolve_all(&[reesolve_id]).await?;
+    // A compile error carries a structural locator; upgrade it to
+    // `path:line:col` here, on the error path, via the span sidecar — the happy
+    // path never demands one (plans/fast-mode.md).
+    ctx.resolve_all(&[reesolve_id]).await.map_err(|e| ExecuteError::Compile(ctx.render_located(&e)))?;
     debug!("execute: resolved, now type checking and monomorphising");
     // The entry point is not called by anyone, so its type parameter is just
     // the default numeric type.
     let entry = MonoId { func_loc: my_main_func, ty: Ty::I64 };
-    ctx.mono(entry)?;
+    ctx.mono(entry).map_err(|e| ExecuteError::Compile(ctx.render_located(&e)))?;
     debug!("execute: monomorphised, now evaluating");
     let my_ast = ctx.mono_registry().get(&entry)
         .expect("entry instance was just monomorphised")

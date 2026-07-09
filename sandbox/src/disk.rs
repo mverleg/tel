@@ -324,7 +324,7 @@ mod tests {
     use crate::common::FQ;
     use crate::keys::{Fingerprint, QueryKind, StableCtx};
     use crate::store::ResolveAnswer;
-    use crate::types::{Expr, FuncId, SymbolTable};
+    use crate::types::{Expr, ExprKind, FuncId, Loc, Located, PreExpr, PreExprKind, SymbolTable};
     use tempfile::TempDir;
 
     fn key(n: u64) -> ContentKey {
@@ -332,10 +332,10 @@ mod tests {
     }
 
     fn sample_resolve_entry(interner: &Interner) -> ResolveEntry {
-        let ast = Expr::Call {
+        let ast = Expr::new(Loc::SYNTHETIC, ExprKind::Call {
             func: FuncId(FQ::intern(interner, "lib.telsb", "f")),
-            args: vec![Box::new(Expr::Arg(1))],
-        };
+            args: vec![Box::new(Expr::new(Loc::SYNTHETIC, ExprKind::Arg(1)))],
+        });
         ResolveEntry {
             answer: Ok(ResolveAnswer { ast, table: SymbolTable::new(), funcs: vec![] }),
             fingerprint: Fingerprint::of(&1u64, &StableCtx { interner }),
@@ -351,19 +351,19 @@ mod tests {
         let interner = Interner::new();
 
         let cache = DiskCache::open(dir.path()).unwrap();
-        cache.put_parse(key(1), &Ok(PreExpr::Number { value: 42, ty: None }));
+        cache.put_parse(key(1), &Ok(PreExpr::new(Loc::SYNTHETIC, PreExprKind::Number { value: 42, ty: None })));
         cache.put_resolve(key(2), &sample_resolve_entry(&interner), &interner);
-        cache.put_mono(key(3), &Err(crate::types::TypeError::FunctionNotResolved { context: "f".into() }), &interner);
+        cache.put_mono(key(3), &Err(Located::bare(crate::types::TypeError::FunctionNotResolved { context: "f".into() })), &interner);
         drop(cache);
 
         let cache = DiskCache::open(dir.path()).unwrap();
         let fresh = Interner::new();
         let parse = cache.get_parse(key(1)).expect("parse entry must survive reopen");
-        assert!(matches!(parse, Ok(PreExpr::Number { value: 42, .. })));
+        assert!(matches!(parse, Ok(PreExpr { kind: PreExprKind::Number { value: 42, .. }, .. })));
         let resolve = cache.get_resolve(key(2), &fresh).expect("resolve entry must survive reopen");
         assert_eq!(resolve.fingerprint, sample_resolve_entry(&interner).fingerprint);
         let mono = cache.get_mono(key(3), &fresh).expect("mono entry must survive reopen");
-        assert!(matches!(mono, Err(crate::types::TypeError::FunctionNotResolved { .. })));
+        assert!(matches!(mono, Err(Located { error: crate::types::TypeError::FunctionNotResolved { .. }, .. })));
 
         assert!(cache.get_parse(key(99)).is_none(), "unknown key is a miss");
     }
@@ -374,15 +374,15 @@ mod tests {
     fn first_write_wins() {
         let dir = TempDir::new().unwrap();
         let cache = DiskCache::open(dir.path()).unwrap();
-        cache.put_parse(key(1), &Ok(PreExpr::Number { value: 1, ty: None }));
+        cache.put_parse(key(1), &Ok(PreExpr::new(Loc::SYNTHETIC, PreExprKind::Number { value: 1, ty: None })));
         drop(cache);
         let cache = DiskCache::open(dir.path()).unwrap();
-        cache.put_parse(key(1), &Ok(PreExpr::Number { value: 2, ty: None }));
+        cache.put_parse(key(1), &Ok(PreExpr::new(Loc::SYNTHETIC, PreExprKind::Number { value: 2, ty: None })));
         drop(cache);
 
         let cache = DiskCache::open(dir.path()).unwrap();
         let got = cache.get_parse(key(1)).unwrap();
-        assert!(matches!(got, Ok(PreExpr::Number { value: 1, .. })), "the first write must win");
+        assert!(matches!(got, Ok(PreExpr { kind: PreExprKind::Number { value: 1, .. }, .. })), "the first write must win");
     }
 
     /// A format or schema mismatch wipes the cache on open: old entries are
@@ -394,14 +394,14 @@ mod tests {
             dir.path(),
             FormatStamp { format: CACHE_FORMAT_VERSION, schema: SCHEMA_VERSION - 1 },
         ).unwrap();
-        old.put_parse(key(1), &Ok(PreExpr::Number { value: 42, ty: None }));
+        old.put_parse(key(1), &Ok(PreExpr::new(Loc::SYNTHETIC, PreExprKind::Number { value: 42, ty: None })));
         drop(old);
 
         let cache = DiskCache::open(dir.path()).unwrap();
         assert!(cache.get_parse(key(1)).is_none(), "mismatched-version entries must be wiped");
 
         // And the stamp is updated: a second normal open keeps entries.
-        cache.put_parse(key(2), &Ok(PreExpr::Number { value: 7, ty: None }));
+        cache.put_parse(key(2), &Ok(PreExpr::new(Loc::SYNTHETIC, PreExprKind::Number { value: 7, ty: None })));
         drop(cache);
         let cache = DiskCache::open(dir.path()).unwrap();
         assert!(cache.get_parse(key(2)).is_some(), "same-version reopen must not wipe");

@@ -30,15 +30,20 @@ New dependencies need explicit approval first (project rule).
   flavors
   ([plans/flavors.md](plans/flavors.md)).
 * **Fast mode vs IDE mode** — roadmap item 11, plan in
-  [plans/fast-mode.md](plans/fast-mode.md). **First slice landed**: the span
-  sidecar (`QueryKind::Spans`, memory-only, keyed on the source digest),
-  path-free per-function `(frame, node)` locators on `panic`/`unreachable`,
-  and the in-session upgrade of a runtime `panic` to `path:line:col`
-  (`tests/spans.rs`). Still open: `refmap`/`typemap`/`docs` sidecars, the
-  always-on error-recovering parser, the multi-output *record* with
-  per-output fingerprints (this slice uses the recompute-on-demand sidecar
-  policy), and driver-side span rendering for `unreachable` (locator is
-  threaded, not yet rendered).
+  [plans/fast-mode.md](plans/fast-mode.md). **Landed**: the span sidecar
+  (`QueryKind::Spans`, memory-only, keyed on the source digest); a structural
+  `(frame, node)` locator on **every** core AST node (a `{loc, kind}` wrapper,
+  not just `panic`/`unreachable`); cached resolve/mono errors wrapped in
+  `Located<E>`; and the in-session upgrade of a runtime `panic` **and** of
+  type/resolve compile errors to `path:line:col`, at the exact offending
+  sub-expression, via the sidecar on the error path (`tests/spans.rs`). A
+  whitespace edit above an error shifts its reported line without re-checking
+  types (early cutoff holds). `SCHEMA_VERSION` 3→4. Still open:
+  `refmap`/`typemap`/`docs` sidecars, the always-on error-recovering parser,
+  the multi-output *record* with per-output fingerprints (this slice uses the
+  recompute-on-demand sidecar policy), and threading `Loc` through `TExpr` so
+  `LiteralOutOfRange` (raised after `TExpr` drops the locator) can be located
+  too (coarse for now).
 * **Roadmap Phase 4 hardening** — prevent ctx leak outside scope, lock-free
   during compile, box deep recursive awaits, parse on a threadpool, minor
   cleanups (`context.rs` visibility).

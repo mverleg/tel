@@ -160,8 +160,96 @@ pub enum BinOp {
     Or,
 }
 
+/// A layout-independent node locator: which function (`frame` = per-file
+/// function ordinal, 0 = the implicit file/`main` body) and which preorder
+/// node within it (`node`). It is *structural*, not a byte/line offset, so
+/// reformatting leaves it identical (no recompute); it indexes the on-demand
+/// span sidecar ([`SpanTable`]) to recover `line:col`. Path-free, so the parse
+/// answer stays shareable across identical files at different paths.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Loc {
+    pub frame: u32,
+    pub node: u32,
+}
+
+impl Loc {
+    /// The locator of a synthetic node that has no source (e.g. resolve's
+    /// zero-fill for an empty body): frame 0, node 0.
+    pub const SYNTHETIC: Loc = Loc { frame: 0, node: 0 };
+}
+
+/// A source location carried on a *cached* compile error: the file plus the
+/// layout-free `(frame, node)` locator. The driver upgrades it to
+/// `path:line:col` lazily, via the span sidecar, on the error path — so a
+/// sibling edit that shifts byte offsets yields the *current* line without
+/// re-checking the (unchanged, cached) function that erred.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SrcLoc {
+    pub file: String,
+    pub frame: u32,
+    pub node: u32,
+}
+
+impl SrcLoc {
+    pub fn new(file: String, loc: Loc) -> SrcLoc {
+        SrcLoc { file, frame: loc.frame, node: loc.node }
+    }
+}
+
+/// A compile error together with the source location it points at. The error
+/// enums stay pure (no per-variant location plumbing); the location is separate
+/// metadata a producer attaches when it knows the failing node, and a `None`
+/// covers whole-file errors (IO, cycles) that no single node owns. Cached as
+/// the answer's error, so its rendering (via the span sidecar) stays lazy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Located<E> {
+    pub error: E,
+    pub loc: Option<SrcLoc>,
+}
+
+impl<E> Located<E> {
+    pub fn at(error: E, loc: SrcLoc) -> Located<E> {
+        Located { error, loc: Some(loc) }
+    }
+
+    pub fn bare(error: E) -> Located<E> {
+        Located { error, loc: None }
+    }
+}
+
+impl<E: fmt::Display> fmt::Display for Located<E> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // The coarse form; the driver upgrades `loc` to path:line:col via the
+        // span sidecar before display when it can.
+        self.error.fmt(f)
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for Located<E> {}
+
+impl<E> From<E> for Located<E> {
+    fn from(error: E) -> Located<E> {
+        Located { error, loc: None }
+    }
+}
+
+/// A parsed node: a structural [`Loc`] plus its [`PreExprKind`]. The core AST
+/// carries no byte spans — only the locator — so it is fingerprint-stable
+/// under reformatting (plans/fast-mode.md 2b).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum PreExpr {
+pub struct PreExpr {
+    pub loc: Loc,
+    pub kind: PreExprKind,
+}
+
+impl PreExpr {
+    pub fn new(loc: Loc, kind: PreExprKind) -> PreExpr {
+        PreExpr { loc, kind }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PreExprKind {
     /// `ty` is `Some` only for suffixed literals (`42i32`); unsuffixed
     /// literals stay polymorphic until type inference.
     Number {
@@ -189,13 +277,10 @@ pub enum PreExpr {
     },
     Print(Box<PreExpr>),
     Return(Box<PreExpr>),
-    /// A layout-independent locator, not a source location: `(frame, node)`
-    /// indexes the on-demand span sidecar ([`SpanTable`]) and is path-free
-    /// (assigned by preorder position within the enclosing function), so the
-    /// parse answer stays shareable across identical files at different paths.
-    /// Resolve — whose key pins the FQ — attaches the concrete file path.
-    Panic { frame: u32, node: u32 },
-    Unreachable { frame: u32, node: u32 },
+    /// The location rides on the enclosing [`PreExpr::loc`] (path-free); the
+    /// span sidecar maps it to a byte span, resolve attaches the file path.
+    Panic,
+    Unreachable,
     Import(String),
     FunctionDef {
         name: String,
@@ -225,8 +310,24 @@ pub struct FuncData {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScopeId(pub usize);
 
+/// A resolved node: the same structural [`Loc`] carried over from parse (so it
+/// still indexes the span sidecar), plus its [`ExprKind`]. Copying the parse
+/// locator here is what lets typecheck point a `TypeError` at an exact
+/// sub-expression without re-deriving positions.
 #[derive(Debug, Clone)]
-pub enum Expr {
+pub struct Expr {
+    pub loc: Loc,
+    pub kind: ExprKind,
+}
+
+impl Expr {
+    pub fn new(loc: Loc, kind: ExprKind) -> Expr {
+        Expr { loc, kind }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ExprKind {
     Number {
         value: i64,
         ty: Option<Ty>,
@@ -252,10 +353,10 @@ pub enum Expr {
     },
     Print(Box<Expr>),
     Return(Box<Expr>),
-    /// `source_location` is the coarse fallback (the file path, as before);
-    /// `(frame, node)` is the layout-independent locator into the span sidecar
-    /// that upgrades it to `path:line:col` on demand (plans/fast-mode.md).
-    Panic { source_location: String, frame: u32, node: u32 },
+    /// `source_location` is the coarse fallback (the file path); the
+    /// span-accurate location comes from the enclosing [`Expr::loc`] via the
+    /// sidecar (plans/fast-mode.md).
+    Panic { source_location: String },
     Call {
         func: FuncId,
         args: Vec<Box<Expr>>,
@@ -488,8 +589,13 @@ pub enum ExecuteError {
     /// monomorphised instance the resolver should have produced is missing.
     /// Distinct from `Panic` so it is never sent through span rendering.
     Internal(String),
-    ResolveError(Box<ResolveError>),
-    Type(TypeError),
+    /// A deterministic compile error (resolve or type check) surfaced while
+    /// driving a run, already rendered by the driver to prepend its
+    /// `path:line:col` when the cached error carried a locator
+    /// (plans/fast-mode.md, "upgrade on error"). Held as a rendered string
+    /// because the upgrade consumes the span sidecar, which the driver — not
+    /// `Display` — has access to.
+    Compile(String),
 }
 
 impl fmt::Display for ExecuteError {
@@ -499,22 +605,9 @@ impl fmt::Display for ExecuteError {
             ExecuteError::ArgNotProvided(n) => write!(f, "Argument {} not provided", n),
             ExecuteError::Panic { source_location, .. } => write!(f, "panic at {}", source_location),
             ExecuteError::Internal(msg) => write!(f, "{}", msg),
-            ExecuteError::ResolveError(e) => write!(f, "{}", e),
-            ExecuteError::Type(e) => write!(f, "{}", e),
+            ExecuteError::Compile(msg) => write!(f, "{}", msg),
         }
     }
 }
 
 impl std::error::Error for ExecuteError {}
-
-impl From<ResolveError> for ExecuteError {
-    fn from(err: ResolveError) -> Self {
-        ExecuteError::ResolveError(Box::new(err))
-    }
-}
-
-impl From<TypeError> for ExecuteError {
-    fn from(err: TypeError) -> Self {
-        ExecuteError::Type(err)
-    }
-}

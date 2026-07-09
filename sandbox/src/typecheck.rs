@@ -20,7 +20,7 @@
 use crate::common::Ctx;
 use crate::context::MonoContext;
 use crate::graph::MonoId;
-use crate::types::{Expr, MExpr, MonoFuncData, Trait, Ty, TypeError, Value, VarId};
+use crate::types::{Expr, ExprKind, Loc, Located, MExpr, MonoFuncData, SrcLoc, Trait, Ty, TypeError, Value, VarId};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,7 +61,7 @@ pub fn check_function(
     ctx: &MonoContext,
     key: MonoId,
     is_entry: bool,
-) -> Result<(MonoFuncData, Vec<MonoId>), TypeError> {
+) -> Result<(MonoFuncData, Vec<MonoId>), Located<TypeError>> {
     let func = ctx.func_registry()
         .get(&key.func_loc)
         .map(|f| f.clone())
@@ -71,7 +71,10 @@ pub fn check_function(
     let (body, body_term) = ck.check(&func.ast)?;
     if !is_entry {
         let ret = ck.ret_term;
-        ck.unify(body_term, ret)?;
+        // The return-type constraint spans the whole body; pin it to the body's
+        // root node.
+        let loc = func.ast.loc;
+        ck.unify(body_term, ret).map_err(|e| ck.located(e, loc))?;
     }
     let ast = ck.lower(body)?;
 
@@ -113,6 +116,16 @@ impl<'a> Checker<'a> {
 
     fn context(&self) -> String {
         context_str(self.ctx, self.key)
+    }
+
+    /// Pin a type error to the node it came from, so the driver can upgrade it
+    /// to `path:line:col` via the span sidecar. The file is the checked
+    /// instance's defining file (its FQ path); the locator is structural, so a
+    /// sibling edit that shifts byte offsets leaves it — and the cached,
+    /// unchanged instance it points into — undisturbed.
+    fn located(&self, error: TypeError, loc: Loc) -> Located<TypeError> {
+        let file = self.key.func_loc.path_str(self.ctx.interner()).to_string();
+        Located::at(error, SrcLoc::new(file, loc))
     }
 
     fn fresh(&mut self) -> TermId {
@@ -201,92 +214,93 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
-    fn check(&mut self, expr: &Expr) -> Result<(TExpr, TermId), TypeError> {
-        match expr {
-            Expr::Number { value, ty } => {
+    fn check(&mut self, expr: &Expr) -> Result<(TExpr, TermId), Located<TypeError>> {
+        let loc = expr.loc;
+        match &expr.kind {
+            ExprKind::Number { value, ty } => {
                 let term = match ty {
                     Some(t) => {
-                        self.require_concrete_number(*t)?;
+                        self.require_concrete_number(*t).map_err(|e| self.located(e, loc))?;
                         self.bound(*t)
                     }
                     None => self.fresh(),
                 };
                 Ok((TExpr::Number { value: *value, term }, term))
             }
-            Expr::VarRef(var_id) => {
+            ExprKind::VarRef(var_id) => {
                 let term = *self.vars.get(var_id)
                     .expect("resolver guarantees variables are declared before use");
                 Ok((TExpr::VarRef(*var_id), term))
             }
-            Expr::BinaryOp { op, left, right } => {
+            ExprKind::BinaryOp { op, left, right } => {
                 let (tl, l) = self.check(left)?;
                 let (tr, r) = self.check(right)?;
-                self.unify(l, r)?;
-                self.require_number(l)?;
+                self.unify(l, r).map_err(|e| self.located(e, loc))?;
+                self.require_number(l).map_err(|e| self.located(e, loc))?;
                 Ok((TExpr::BinaryOp { op: *op, left: Box::new(tl), right: Box::new(tr) }, l))
             }
-            Expr::Let { var, value } => {
+            ExprKind::Let { var, value } => {
                 let (tv, t) = self.check(value)?;
                 self.vars.insert(*var, t);
                 Ok((TExpr::Let { var: *var, value: Box::new(tv) }, t))
             }
-            Expr::Set { var, value } => {
+            ExprKind::Set { var, value } => {
                 let (tv, t) = self.check(value)?;
                 let var_term = *self.vars.get(var)
                     .expect("resolver guarantees variables are declared before use");
                 self.unify(var_term, t)?;
                 Ok((TExpr::Set { var: *var, value: Box::new(tv) }, t))
             }
-            Expr::If { cond, then_branch, else_branch } => {
+            ExprKind::If { cond, then_branch, else_branch } => {
                 let (tc, c) = self.check(cond)?;
-                self.require_number(c)?;
+                self.require_number(c).map_err(|e| self.located(e, loc))?;
                 let (tt, t_then) = self.check(then_branch)?;
                 let (te, t_else) = self.check(else_branch)?;
-                self.unify(t_then, t_else)?;
+                self.unify(t_then, t_else).map_err(|e| self.located(e, loc))?;
                 Ok((TExpr::If {
                     cond: Box::new(tc),
                     then_branch: Box::new(tt),
                     else_branch: Box::new(te),
                 }, t_then))
             }
-            Expr::Print(e) => {
+            ExprKind::Print(e) => {
                 let (te, t) = self.check(e)?;
                 Ok((TExpr::Print(Box::new(te)), t))
             }
-            Expr::Return(e) => {
+            ExprKind::Return(e) => {
                 let (te, t) = self.check(e)?;
                 let ret = self.ret_term;
-                self.unify(t, ret)?;
+                self.unify(t, ret).map_err(|e| self.located(e, loc))?;
                 // A return never yields a value in place, so its own type is
                 // unconstrained (like Rust's `!`).
                 let never = self.fresh();
                 Ok((TExpr::Return(Box::new(te)), never))
             }
-            Expr::Panic { source_location, frame, node } => {
+            ExprKind::Panic { source_location } => {
                 let never = self.fresh();
-                Ok((TExpr::Panic { source_location: source_location.clone(), frame: *frame, node: *node }, never))
+                Ok((TExpr::Panic { source_location: source_location.clone(), frame: expr.loc.frame, node: expr.loc.node }, never))
             }
-            Expr::Call { func, args } => {
+            ExprKind::Call { func, args } => {
                 // All arguments share the callee's single type parameter.
                 let unified = self.fresh();
                 let mut targs = Vec::with_capacity(args.len());
                 for arg in args {
                     let (ta, t) = self.check(arg)?;
-                    self.unify(unified, t)?;
+                    self.unify(unified, t).map_err(|e| self.located(e, loc))?;
                     targs.push(Box::new(ta));
                 }
                 // The instantiation type must be concrete here to pick the
                 // instance; a zero-arg or unconstrained call follows the
                 // enclosing instance's type.
                 let inst_ty = self.resolve_or_default(unified);
-                self.require_concrete_number(inst_ty)?;
+                self.require_concrete_number(inst_ty).map_err(|e| self.located(e, loc))?;
                 let target = MonoId { func_loc: func.0, ty: inst_ty };
                 self.needed.push(target);
                 let result = self.bound(inst_ty);
                 Ok((TExpr::Call { target, args: targs }, result))
             }
-            Expr::Arg(n) => Ok((TExpr::Arg(*n), self.arg_term)),
-            Expr::Sequence(exprs) => {
+            ExprKind::Arg(n) => Ok((TExpr::Arg(*n), self.arg_term)),
+            ExprKind::Sequence(exprs) => {
                 let mut texprs = Vec::with_capacity(exprs.len());
                 let mut last_term = self.fresh();
                 for e in exprs {

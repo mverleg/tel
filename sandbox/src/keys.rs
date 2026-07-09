@@ -19,7 +19,7 @@
 //! in-memory maps, where nondeterminism is harmless.
 
 use crate::common::{Interner, Name, Path, Sym, FQ};
-use crate::types::{BinOp, Expr, FuncId, MExpr, MonoFuncData, PreExpr, ScopeId, SymbolTable, Ty, Value, VarId, VarInfo};
+use crate::types::{BinOp, Expr, ExprKind, FuncId, MExpr, MonoFuncData, PreExpr, PreExprKind, ScopeId, SymbolTable, Ty, Value, VarId, VarInfo};
 use xxhash_rust::xxh3::Xxh3;
 
 /// Version of the compiler's data formats and semantics, folded into every
@@ -31,8 +31,12 @@ use xxhash_rust::xxh3::Xxh3;
 /// History: 2 — `StableHasher` swapped `DefaultHasher` → xxh3, keys widened
 /// to 128 bits. 3 — `Panic`/`Unreachable` carry a `(frame, node)` span-sidecar
 /// locator (plans/fast-mode.md), so the parse/resolve/mono answer encodings
-/// changed.
-pub const SCHEMA_VERSION: u64 = 3;
+/// changed. 4 — every node carries a structural `(frame, node)` locator on the
+/// `PreExpr`/`Expr` wrapper (`{loc, kind}`), hashed on all nodes, not just
+/// `Panic`/`Unreachable`; and cached resolve/mono *errors* are wrapped in
+/// `Located<E>` (error + optional `SrcLoc`), so the error-answer encoding and
+/// fingerprint changed too (exact sub-expression error locators).
+pub const SCHEMA_VERSION: u64 = 4;
 
 /// The query kind tag. Folding it into every content key puts each phase in a
 /// disjoint keyspace (docs/keys-and-invalidation.md "Per-Phase Keyspaces"): a
@@ -500,81 +504,86 @@ impl StableHash for crate::graph::MonoId {
     }
 }
 
+// The `(frame, node)` locator is path-free (a function ordinal plus a preorder
+// position within that function), so the parse answer stays shared across
+// identical files at different paths; it is structural, so whitespace edits
+// leave it — and the fingerprint — unchanged, while a structural edit (function
+// insert/delete, node insert) shifts it and invalidates dependents in lockstep.
 impl StableHash for PreExpr {
     fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
+        out.write_u32(self.loc.frame);
+        out.write_u32(self.loc.node);
+        self.kind.stable_hash(ctx, out);
+    }
+}
+
+impl StableHash for PreExprKind {
+    fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
         match self {
-            PreExpr::Number { value, ty } => {
+            PreExprKind::Number { value, ty } => {
                 out.write_u32(0);
                 value.stable_hash(ctx, out);
                 ty.stable_hash(ctx, out);
             }
-            PreExpr::Ident(name) => {
+            PreExprKind::Ident(name) => {
                 out.write_u32(1);
                 name.stable_hash(ctx, out);
             }
-            PreExpr::BinaryOp { op, left, right } => {
+            PreExprKind::BinaryOp { op, left, right } => {
                 out.write_u32(2);
                 op.stable_hash(ctx, out);
                 left.stable_hash(ctx, out);
                 right.stable_hash(ctx, out);
             }
-            PreExpr::Let { name, value } => {
+            PreExprKind::Let { name, value } => {
                 out.write_u32(3);
                 name.stable_hash(ctx, out);
                 value.stable_hash(ctx, out);
             }
-            PreExpr::Set { name, value } => {
+            PreExprKind::Set { name, value } => {
                 out.write_u32(4);
                 name.stable_hash(ctx, out);
                 value.stable_hash(ctx, out);
             }
-            PreExpr::If { cond, then_branch, else_branch } => {
+            PreExprKind::If { cond, then_branch, else_branch } => {
                 out.write_u32(5);
                 cond.stable_hash(ctx, out);
                 then_branch.stable_hash(ctx, out);
                 else_branch.stable_hash(ctx, out);
             }
-            PreExpr::Print(inner) => {
+            PreExprKind::Print(inner) => {
                 out.write_u32(6);
                 inner.stable_hash(ctx, out);
             }
-            PreExpr::Return(inner) => {
+            PreExprKind::Return(inner) => {
                 out.write_u32(7);
                 inner.stable_hash(ctx, out);
             }
-            // The `(frame, node)` locator is path-free (a preorder position
-            // within the enclosing function), so the parse answer stays shared
-            // across identical files at different paths; it is structural, so
-            // whitespace edits leave it — and the fingerprint — unchanged.
-            PreExpr::Panic { frame, node } => {
+            PreExprKind::Panic => {
                 out.write_u32(8);
-                out.write_u32(*frame);
-                out.write_u32(*node);
             }
-            PreExpr::Unreachable { frame, node } => {
+            PreExprKind::Unreachable => {
                 out.write_u32(9);
-                out.write_u32(*frame);
-                out.write_u32(*node);
             }
-            PreExpr::Import(name) => {
+            PreExprKind::Import(name) => {
                 out.write_u32(10);
                 name.stable_hash(ctx, out);
             }
-            PreExpr::FunctionDef { name, body } => {
+            PreExprKind::FunctionDef { name, body } => {
                 out.write_u32(11);
                 name.stable_hash(ctx, out);
                 body.stable_hash(ctx, out);
             }
-            PreExpr::Call { func, args } => {
+            PreExprKind::Call { func, args } => {
                 out.write_u32(12);
                 func.stable_hash(ctx, out);
                 args.stable_hash(ctx, out);
             }
-            PreExpr::Arg(n) => {
+            PreExprKind::Arg(n) => {
                 out.write_u32(13);
                 n.stable_hash(ctx, out);
             }
-            PreExpr::Sequence(items) => {
+            PreExprKind::Sequence(items) => {
                 out.write_u32(14);
                 items.stable_hash(ctx, out);
             }
@@ -584,62 +593,68 @@ impl StableHash for PreExpr {
 
 impl StableHash for Expr {
     fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
+        out.write_u32(self.loc.frame);
+        out.write_u32(self.loc.node);
+        self.kind.stable_hash(ctx, out);
+    }
+}
+
+impl StableHash for ExprKind {
+    fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
         match self {
-            Expr::Number { value, ty } => {
+            ExprKind::Number { value, ty } => {
                 out.write_u32(0);
                 value.stable_hash(ctx, out);
                 ty.stable_hash(ctx, out);
             }
-            Expr::VarRef(var) => {
+            ExprKind::VarRef(var) => {
                 out.write_u32(1);
                 var.stable_hash(ctx, out);
             }
-            Expr::BinaryOp { op, left, right } => {
+            ExprKind::BinaryOp { op, left, right } => {
                 out.write_u32(2);
                 op.stable_hash(ctx, out);
                 left.stable_hash(ctx, out);
                 right.stable_hash(ctx, out);
             }
-            Expr::Let { var, value } => {
+            ExprKind::Let { var, value } => {
                 out.write_u32(3);
                 var.stable_hash(ctx, out);
                 value.stable_hash(ctx, out);
             }
-            Expr::Set { var, value } => {
+            ExprKind::Set { var, value } => {
                 out.write_u32(4);
                 var.stable_hash(ctx, out);
                 value.stable_hash(ctx, out);
             }
-            Expr::If { cond, then_branch, else_branch } => {
+            ExprKind::If { cond, then_branch, else_branch } => {
                 out.write_u32(5);
                 cond.stable_hash(ctx, out);
                 then_branch.stable_hash(ctx, out);
                 else_branch.stable_hash(ctx, out);
             }
-            Expr::Print(inner) => {
+            ExprKind::Print(inner) => {
                 out.write_u32(6);
                 inner.stable_hash(ctx, out);
             }
-            Expr::Return(inner) => {
+            ExprKind::Return(inner) => {
                 out.write_u32(7);
                 inner.stable_hash(ctx, out);
             }
-            Expr::Panic { source_location, frame, node } => {
+            ExprKind::Panic { source_location } => {
                 out.write_u32(8);
                 source_location.stable_hash(ctx, out);
-                out.write_u32(*frame);
-                out.write_u32(*node);
             }
-            Expr::Call { func, args } => {
+            ExprKind::Call { func, args } => {
                 out.write_u32(9);
                 func.stable_hash(ctx, out);
                 args.stable_hash(ctx, out);
             }
-            Expr::Arg(n) => {
+            ExprKind::Arg(n) => {
                 out.write_u32(10);
                 n.stable_hash(ctx, out);
             }
-            Expr::Sequence(items) => {
+            ExprKind::Sequence(items) => {
                 out.write_u32(11);
                 items.stable_hash(ctx, out);
             }
@@ -761,6 +776,31 @@ impl StableHash for crate::types::ParseError {
                 out.write_u32(4);
                 e.stable_hash(ctx, out);
             }
+        }
+    }
+}
+
+impl StableHash for crate::types::SrcLoc {
+    fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
+        self.file.stable_hash(ctx, out);
+        out.write_u32(self.frame);
+        out.write_u32(self.node);
+    }
+}
+
+// A located error is hashed as (error, loc), so a cached error answer's
+// fingerprint moves with the location it points at — consistent with the
+// success path, whose `Expr` already carries `Loc`. The locator is structural,
+// so a whitespace edit leaves the fingerprint unchanged (no cutoff regression).
+impl<E: StableHash> StableHash for crate::types::Located<E> {
+    fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
+        self.error.stable_hash(ctx, out);
+        match &self.loc {
+            Some(loc) => {
+                out.write_u32(1);
+                loc.stable_hash(ctx, out);
+            }
+            None => out.write_u32(0),
         }
     }
 }
@@ -1068,7 +1108,7 @@ mod tests {
         let err_fp = Fingerprint::of_err(&err, &c);
 
         assert_eq!(format!("{:032x}", digest.0), "4af01ba2c8396b3e6b01ec9d7a01ef6a");
-        assert_eq!(format!("{:032x}", key.0), "9abc57e2dfa6c36622c7cf88f3fdc8a0");
+        assert_eq!(format!("{:032x}", key.0), "4a48d23929c5e301e56e9e74dcca3ee1");
         assert_eq!(format!("{:016x}", ok_fp.0), "ff75d229ef0e880c");
         assert_eq!(format!("{:016x}", err_fp.0), "b2a5105200850dff");
     }

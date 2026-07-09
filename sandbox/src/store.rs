@@ -24,14 +24,14 @@ use crate::common::{Interner, FQ};
 use crate::disk::DiskCache;
 use crate::graph::StepId;
 use crate::keys::{ContentDigest, ContentKey, Fingerprint};
-use crate::types::{Expr, FuncData, MonoFuncData, ParseError, PreExpr, ResolveError, SpanTable, SymbolTable, TypeError};
+use crate::types::{Expr, FuncData, Located, MonoFuncData, ParseError, PreExpr, ResolveError, SpanTable, SymbolTable, TypeError};
 use async_lazy::Cache;
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
 
 /// A monomorphisation answer: the checked instance plus the callee instances
 /// it needs (stored so the worklist can keep walking on a cache hit).
-pub type MonoAnswer = Result<(MonoFuncData, Vec<crate::graph::MonoId>), TypeError>;
+pub type MonoAnswer = Result<(MonoFuncData, Vec<crate::graph::MonoId>), Located<TypeError>>;
 
 /// A successful resolution of one file-level unit: the resolved body, its
 /// symbol table, and — because resolving also *defines* things — the functions
@@ -53,7 +53,7 @@ pub struct ResolveAnswer {
 /// like any other.
 #[derive(Debug, Clone)]
 pub struct ResolveEntry {
-    pub answer: Result<ResolveAnswer, ResolveError>,
+    pub answer: Result<ResolveAnswer, Located<ResolveError>>,
     pub fingerprint: Fingerprint,
 }
 
@@ -362,7 +362,7 @@ mod tests {
     fn content_store_caches_errors() {
         let interner = Interner::new();
         let store = ContentStore::new();
-        let err: MonoAnswer = Err(TypeError::FunctionNotResolved { context: "f".to_string() });
+        let err: MonoAnswer = Err(Located::bare(TypeError::FunctionNotResolved { context: "f".to_string() }));
         assert!(store.mono_insert(key(2), err, &interner).is_err());
         assert!(store.mono_get(&key(2), &interner).unwrap().is_err());
         assert_eq!(store.mono_len(), 1);

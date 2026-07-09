@@ -32,7 +32,7 @@ use crate::common::{Interner, Name, Path, Sym, FQ};
 use crate::graph::MonoId;
 use crate::keys::Fingerprint;
 use crate::store::{MonoAnswer, ResolveAnswer, ResolveEntry};
-use crate::types::{BinOp, Expr, FuncData, FuncId, MExpr, MonoFuncData, ResolveError, SymbolTable, Ty, TypeError, Value, VarId};
+use crate::types::{BinOp, Expr, ExprKind, FuncData, FuncId, Loc, Located, MExpr, MonoFuncData, ResolveError, SymbolTable, Ty, TypeError, Value, VarId};
 
 /// One self-contained stored value: the string table all `u32` sym indices
 /// in `value` point into, plus the mirrored value itself.
@@ -113,8 +113,18 @@ struct PFq {
     name: u32,
 }
 
+// Mirrors the core `Expr` wrapper: the structural `(frame, node)` locator rides
+// on the node, the shape in `kind`, so a loaded answer round-trips to the same
+// `StableHash` fingerprint.
 #[derive(Debug, Serialize, Deserialize)]
-enum PExpr {
+struct PExpr {
+    frame: u32,
+    node: u32,
+    kind: PExprKind,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum PExprKind {
     Number { value: i64, ty: Option<Ty> },
     VarRef(VarId),
     BinaryOp { op: BinOp, left: Box<PExpr>, right: Box<PExpr> },
@@ -123,7 +133,7 @@ enum PExpr {
     If { cond: Box<PExpr>, then_branch: Box<PExpr>, else_branch: Box<PExpr> },
     Print(Box<PExpr>),
     Return(Box<PExpr>),
-    Panic { source_location: String, frame: u32, node: u32 },
+    Panic { source_location: String },
     Call { func: PFq, args: Vec<Box<PExpr>> },
     Arg(u8),
     Sequence(Vec<PExpr>),
@@ -145,7 +155,9 @@ pub(crate) struct PResolveAnswer {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct PResolveEntry {
-    answer: Result<PResolveAnswer, ResolveError>,
+    // The error carries a `Located<ResolveError>` — already Sym-free (paths and
+    // context are plain strings), so it round-trips as-is, no mirror needed.
+    answer: Result<PResolveAnswer, Located<ResolveError>>,
     fingerprint: u64,
 }
 
@@ -178,36 +190,37 @@ pub(crate) struct PMonoFuncData {
     ast: PMExpr,
 }
 
-pub(crate) type PMonoAnswer = Result<(PMonoFuncData, Vec<PMonoId>), TypeError>;
+pub(crate) type PMonoAnswer = Result<(PMonoFuncData, Vec<PMonoId>), Located<TypeError>>;
 
 // ---- Conversions: write side -------------------------------------------------
 
 fn expr_to_portable(expr: &Expr, w: &mut PortableWriter<'_>) -> PExpr {
-    match expr {
-        Expr::Number { value, ty } => PExpr::Number { value: *value, ty: *ty },
-        Expr::VarRef(var) => PExpr::VarRef(*var),
-        Expr::BinaryOp { op, left, right } => PExpr::BinaryOp {
+    let kind = match &expr.kind {
+        ExprKind::Number { value, ty } => PExprKind::Number { value: *value, ty: *ty },
+        ExprKind::VarRef(var) => PExprKind::VarRef(*var),
+        ExprKind::BinaryOp { op, left, right } => PExprKind::BinaryOp {
             op: *op,
             left: Box::new(expr_to_portable(left, w)),
             right: Box::new(expr_to_portable(right, w)),
         },
-        Expr::Let { var, value } => PExpr::Let { var: *var, value: Box::new(expr_to_portable(value, w)) },
-        Expr::Set { var, value } => PExpr::Set { var: *var, value: Box::new(expr_to_portable(value, w)) },
-        Expr::If { cond, then_branch, else_branch } => PExpr::If {
+        ExprKind::Let { var, value } => PExprKind::Let { var: *var, value: Box::new(expr_to_portable(value, w)) },
+        ExprKind::Set { var, value } => PExprKind::Set { var: *var, value: Box::new(expr_to_portable(value, w)) },
+        ExprKind::If { cond, then_branch, else_branch } => PExprKind::If {
             cond: Box::new(expr_to_portable(cond, w)),
             then_branch: Box::new(expr_to_portable(then_branch, w)),
             else_branch: Box::new(expr_to_portable(else_branch, w)),
         },
-        Expr::Print(inner) => PExpr::Print(Box::new(expr_to_portable(inner, w))),
-        Expr::Return(inner) => PExpr::Return(Box::new(expr_to_portable(inner, w))),
-        Expr::Panic { source_location, frame, node } => PExpr::Panic { source_location: source_location.clone(), frame: *frame, node: *node },
-        Expr::Call { func, args } => PExpr::Call {
+        ExprKind::Print(inner) => PExprKind::Print(Box::new(expr_to_portable(inner, w))),
+        ExprKind::Return(inner) => PExprKind::Return(Box::new(expr_to_portable(inner, w))),
+        ExprKind::Panic { source_location } => PExprKind::Panic { source_location: source_location.clone() },
+        ExprKind::Call { func, args } => PExprKind::Call {
             func: w.fq(&func.0),
             args: args.iter().map(|a| Box::new(expr_to_portable(a, w))).collect(),
         },
-        Expr::Arg(n) => PExpr::Arg(*n),
-        Expr::Sequence(items) => PExpr::Sequence(items.iter().map(|e| expr_to_portable(e, w)).collect()),
-    }
+        ExprKind::Arg(n) => PExprKind::Arg(*n),
+        ExprKind::Sequence(items) => PExprKind::Sequence(items.iter().map(|e| expr_to_portable(e, w)).collect()),
+    };
+    PExpr { frame: expr.loc.frame, node: expr.loc.node, kind }
 }
 
 fn mexpr_to_portable(expr: &MExpr, w: &mut PortableWriter<'_>) -> PMExpr {
@@ -283,31 +296,32 @@ pub(crate) fn mono_answer_to_portable(answer: &MonoAnswer, interner: &Interner) 
 // ---- Conversions: read side --------------------------------------------------
 
 fn expr_from_portable(expr: &PExpr, r: &PortableReader) -> Option<Expr> {
-    Some(match expr {
-        PExpr::Number { value, ty } => Expr::Number { value: *value, ty: *ty },
-        PExpr::VarRef(var) => Expr::VarRef(*var),
-        PExpr::BinaryOp { op, left, right } => Expr::BinaryOp {
+    let kind = match &expr.kind {
+        PExprKind::Number { value, ty } => ExprKind::Number { value: *value, ty: *ty },
+        PExprKind::VarRef(var) => ExprKind::VarRef(*var),
+        PExprKind::BinaryOp { op, left, right } => ExprKind::BinaryOp {
             op: *op,
             left: Box::new(expr_from_portable(left, r)?),
             right: Box::new(expr_from_portable(right, r)?),
         },
-        PExpr::Let { var, value } => Expr::Let { var: *var, value: Box::new(expr_from_portable(value, r)?) },
-        PExpr::Set { var, value } => Expr::Set { var: *var, value: Box::new(expr_from_portable(value, r)?) },
-        PExpr::If { cond, then_branch, else_branch } => Expr::If {
+        PExprKind::Let { var, value } => ExprKind::Let { var: *var, value: Box::new(expr_from_portable(value, r)?) },
+        PExprKind::Set { var, value } => ExprKind::Set { var: *var, value: Box::new(expr_from_portable(value, r)?) },
+        PExprKind::If { cond, then_branch, else_branch } => ExprKind::If {
             cond: Box::new(expr_from_portable(cond, r)?),
             then_branch: Box::new(expr_from_portable(then_branch, r)?),
             else_branch: Box::new(expr_from_portable(else_branch, r)?),
         },
-        PExpr::Print(inner) => Expr::Print(Box::new(expr_from_portable(inner, r)?)),
-        PExpr::Return(inner) => Expr::Return(Box::new(expr_from_portable(inner, r)?)),
-        PExpr::Panic { source_location, frame, node } => Expr::Panic { source_location: source_location.clone(), frame: *frame, node: *node },
-        PExpr::Call { func, args } => Expr::Call {
+        PExprKind::Print(inner) => ExprKind::Print(Box::new(expr_from_portable(inner, r)?)),
+        PExprKind::Return(inner) => ExprKind::Return(Box::new(expr_from_portable(inner, r)?)),
+        PExprKind::Panic { source_location } => ExprKind::Panic { source_location: source_location.clone() },
+        PExprKind::Call { func, args } => ExprKind::Call {
             func: FuncId(r.fq(func)?),
             args: args.iter().map(|a| expr_from_portable(a, r).map(Box::new)).collect::<Option<Vec<_>>>()?,
         },
-        PExpr::Arg(n) => Expr::Arg(*n),
-        PExpr::Sequence(items) => Expr::Sequence(items.iter().map(|e| expr_from_portable(e, r)).collect::<Option<Vec<_>>>()?),
-    })
+        PExprKind::Arg(n) => ExprKind::Arg(*n),
+        PExprKind::Sequence(items) => ExprKind::Sequence(items.iter().map(|e| expr_from_portable(e, r)).collect::<Option<Vec<_>>>()?),
+    };
+    Some(Expr::new(Loc { frame: expr.frame, node: expr.node }, kind))
 }
 
 fn mexpr_from_portable(expr: &PMExpr, r: &PortableReader) -> Option<MExpr> {
@@ -389,27 +403,30 @@ mod tests {
     /// An `Expr` exercising every variant — the fixture the exhaustive
     /// mirror must carry across unchanged.
     fn every_variant_expr(interner: &Interner) -> Expr {
-        Expr::Sequence(vec![
-            Expr::Number { value: 1, ty: Some(Ty::I32) },
-            Expr::VarRef(VarId(0)),
-            Expr::BinaryOp {
+        // Distinct, non-default locators throughout so the round-trip must
+        // preserve each `(frame, node)`, not just the shape.
+        let e = |frame: u32, node: u32, kind: ExprKind| Expr::new(Loc { frame, node }, kind);
+        e(0, 0, ExprKind::Sequence(vec![
+            e(0, 1, ExprKind::Number { value: 1, ty: Some(Ty::I32) }),
+            e(0, 2, ExprKind::VarRef(VarId(0))),
+            e(0, 3, ExprKind::BinaryOp {
                 op: BinOp::Add,
-                left: Box::new(Expr::Number { value: 2, ty: None }),
-                right: Box::new(Expr::Arg(1)),
-            },
-            Expr::Let { var: VarId(1), value: Box::new(Expr::Number { value: 3, ty: None }) },
-            Expr::Set { var: VarId(1), value: Box::new(Expr::Number { value: 4, ty: None }) },
-            Expr::If {
-                cond: Box::new(Expr::VarRef(VarId(1))),
-                then_branch: Box::new(Expr::Print(Box::new(Expr::Number { value: 5, ty: None }))),
-                else_branch: Box::new(Expr::Return(Box::new(Expr::Number { value: 6, ty: None }))),
-            },
-            Expr::Panic { source_location: "a.telsb::f".to_string(), frame: 2, node: 7 },
-            Expr::Call {
+                left: Box::new(e(0, 4, ExprKind::Number { value: 2, ty: None })),
+                right: Box::new(e(0, 5, ExprKind::Arg(1))),
+            }),
+            e(0, 6, ExprKind::Let { var: VarId(1), value: Box::new(e(0, 7, ExprKind::Number { value: 3, ty: None })) }),
+            e(0, 8, ExprKind::Set { var: VarId(1), value: Box::new(e(0, 9, ExprKind::Number { value: 4, ty: None })) }),
+            e(0, 10, ExprKind::If {
+                cond: Box::new(e(0, 11, ExprKind::VarRef(VarId(1)))),
+                then_branch: Box::new(e(0, 12, ExprKind::Print(Box::new(e(0, 13, ExprKind::Number { value: 5, ty: None }))))),
+                else_branch: Box::new(e(0, 14, ExprKind::Return(Box::new(e(0, 15, ExprKind::Number { value: 6, ty: None }))))),
+            }),
+            e(2, 7, ExprKind::Panic { source_location: "a.telsb::f".to_string() }),
+            e(0, 16, ExprKind::Call {
                 func: FuncId(FQ::intern(interner, "lib/util.telsb", "helper")),
-                args: vec![Box::new(Expr::Arg(2))],
-            },
-        ])
+                args: vec![Box::new(e(0, 17, ExprKind::Arg(2)))],
+            }),
+        ]))
     }
 
     fn every_variant_mexpr(interner: &Interner) -> MExpr {
@@ -487,14 +504,14 @@ mod tests {
     fn resolve_error_entry_roundtrips() {
         let source = Interner::new();
         let entry = ResolveEntry {
-            answer: Err(ResolveError::UndefinedFunction("main".to_string(), "missing".to_string())),
+            answer: Err(Located::bare(ResolveError::UndefinedFunction("main".to_string(), "missing".to_string()))),
             fingerprint: Fingerprint::of(&7u64, &StableCtx { interner: &source }),
         };
         let bytes = postcard::to_allocvec(&resolve_entry_to_portable(&entry, &source)).unwrap();
         let decoded: PortableEntry<PResolveEntry> = postcard::from_bytes(&bytes).unwrap();
         let back = resolve_entry_from_portable(&decoded, &polluted_interner()).unwrap();
         let target_ctx_err = match &back.answer {
-            Err(ResolveError::UndefinedFunction(ctx, name)) => (ctx.clone(), name.clone()),
+            Err(Located { error: ResolveError::UndefinedFunction(ctx, name), .. }) => (ctx.clone(), name.clone()),
             other => panic!("wrong variant after roundtrip: {:?}", other),
         };
         assert_eq!(target_ctx_err, ("main".to_string(), "missing".to_string()));
@@ -530,7 +547,7 @@ mod tests {
             strings: vec![], // truncated table: any index is out of range
             value: PResolveEntry {
                 answer: Ok(PResolveAnswer {
-                    ast: PExpr::Call { func: PFq { path: 0, name: 1 }, args: vec![] },
+                    ast: PExpr { frame: 0, node: 0, kind: PExprKind::Call { func: PFq { path: 0, name: 1 }, args: vec![] } },
                     table: SymbolTable::new(),
                     funcs: vec![],
                 }),

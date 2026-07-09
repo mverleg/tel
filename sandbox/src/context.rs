@@ -2,7 +2,7 @@ use crate::common::{Ctx, Interner, Path, FQ};
 use crate::graph::{ExecId, Graph, MonoId, ParseId, ResolveId, StepId};
 use crate::keys::{ContentDigest, ContentKey, Fingerprint, QueryKind, StableCtx, StableHash};
 use crate::store::{BindingLayer, BindingRecord, ContentStore, MonoAnswer, ResolveAnswer, ResolveEntry};
-use crate::types::{ExecuteError, Expr, FuncData, FuncId, MonoFuncData, ParseError, PreExpr, ResolveError, SpanTable, SymbolTable, Ty, TypeError};
+use crate::types::{ExecuteError, Expr, FuncData, FuncId, Located, MonoFuncData, ParseError, PreExpr, ResolveError, SpanTable, SymbolTable, Ty, TypeError};
 use crate::Printer;
 use dashmap::DashMap;
 use log::debug;
@@ -145,7 +145,7 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
 /// `None` on the error side marks a non-terminal failure — a cycle, a task
 /// join failure, transient IO — which is not an answer: nothing above it may
 /// be keyed or cached (invariant 6 of docs/keys-and-invalidation.md).
-type ResolveOutcome = Result<(Expr, SymbolTable, Fingerprint), (ResolveError, Option<Fingerprint>)>;
+type ResolveOutcome = Result<(Expr, SymbolTable, Fingerprint), (Located<ResolveError>, Option<Fingerprint>)>;
 
 /// Content-key *preimage* of one monomorphised instance: the instance identity
 /// plus the fingerprint of the one thing `check_function` consumes — the
@@ -416,7 +416,7 @@ impl Global {
         result.as_ref().map_err(|e| e.clone())
     }
 
-    async fn resolve_all_impl(this: &Arc<Global>, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId], mode: PullMode) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
+    async fn resolve_all_impl(this: &Arc<Global>, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId], mode: PullMode) -> Result<(Vec<Expr>, SymbolTable), Located<ResolveError>> {
         let (results, table) = Global::resolve_all_fp(this, caller, ancestors, ids, mode).await?;
         Ok((results.into_iter().map(|(expr, _fp)| expr).collect(), table))
     }
@@ -426,7 +426,7 @@ impl Global {
     /// to build its own content key. Fail-fast batch view over
     /// [`Global::resolve_each`]: the first failure (in id order) becomes the
     /// batch's error.
-    async fn resolve_all_fp(this: &Arc<Global>, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId], mode: PullMode) -> Result<(Vec<(Expr, Fingerprint)>, SymbolTable), ResolveError> {
+    async fn resolve_all_fp(this: &Arc<Global>, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId], mode: PullMode) -> Result<(Vec<(Expr, Fingerprint)>, SymbolTable), Located<ResolveError>> {
         let outcomes = Global::resolve_each(this, caller, ancestors, ids, mode).await?;
 
         let mut results = Vec::with_capacity(outcomes.len());
@@ -448,7 +448,7 @@ impl Global {
     ///
     /// The outer `Err` is batch-level and always non-terminal: an import
     /// cycle caught by the pre-flight ancestor check, or a task join failure.
-    async fn resolve_each(this: &Arc<Global>, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId], mode: PullMode) -> Result<Vec<ResolveOutcome>, ResolveError> {
+    async fn resolve_each(this: &Arc<Global>, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId], mode: PullMode) -> Result<Vec<ResolveOutcome>, Located<ResolveError>> {
         debug!("CoreContext::resolve_each x{}: {:?}", ids.len(), ids);
 
         // Deadlock-safe cycle detection (docs/cycle-detection.md): a requested
@@ -459,7 +459,7 @@ impl Global {
             if ancestors.contains(id.func_loc) {
                 return Err(ResolveError::CyclicDependency {
                     cycle: ancestors.cycle_strings(id.func_loc, &this.interner),
-                });
+                }.into());
             }
         }
 
@@ -572,7 +572,7 @@ impl Global {
                     // to key on, nothing may be cached (invariant 6).
                     if matches!(e, ParseError::IoError(_)) {
                         let path_str = fq.path_str(&this.interner).to_string();
-                        return Err((ResolveError::ParseError(path_str, e), None));
+                        return Err((ResolveError::ParseError(path_str, e).into(), None));
                     }
                     // A deterministic parse error is the leaf's terminal
                     // answer; the wrapper is *this* step's answer,
@@ -583,7 +583,7 @@ impl Global {
                     this.graph.replace_dependencies(StepId::Resolve(id), [parse_step]);
                     let parse_fp = Fingerprint::of_err(&e, &sctx);
                     let path_str = fq.path_str(&this.interner).to_string();
-                    let err = ResolveError::ParseError(path_str, e);
+                    let err = Located::bare(ResolveError::ParseError(path_str, e));
                     let fp = Fingerprint::of_err(&err, &sctx);
                     let key = Self::resolve_key(&sctx, fq, parse_fp, &[]);
                     let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(err), fingerprint: fp }, &this.interner);
@@ -606,6 +606,7 @@ impl Global {
                 // means same PreExpr means the same extraction outcome.
                 Err(e) => {
                     this.graph.replace_dependencies(StepId::Resolve(id), [parse_step]);
+                    let e = Located::bare(e);
                     let fp = Fingerprint::of_err(&e, &sctx);
                     let key = Self::resolve_key(&sctx, fq, parse_fp, &[]);
                     let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(e), fingerprint: fp }, &this.interner);
@@ -658,7 +659,7 @@ impl Global {
             // itself cacheable: the preimage pins every dep answer, and the
             // first failing import is determined by them.
             let mut deps: Vec<(FQ, Fingerprint)> = Vec::with_capacity(outcomes.len());
-            let mut first_failure: Option<ResolveError> = None;
+            let mut first_failure: Option<Located<ResolveError>> = None;
             let mut non_terminal = false;
             for (dep_id, outcome) in import_ids.iter().zip(&outcomes) {
                 match outcome {
@@ -730,7 +731,7 @@ impl Global {
             let body_result = match body_outcome {
                 Ok(result) => result,
                 // Non-terminal (invariant 6): propagate uncached, unbound.
-                Err(payload) => return Err((ResolveError::Panicked(panic_message(payload)), None)),
+                Err(payload) => return Err((ResolveError::Panicked(panic_message(payload)).into(), None)),
             };
             let entry = match body_result {
                 Ok((ast, table, registered)) => {
@@ -820,7 +821,7 @@ impl Global {
     /// memoized worklist rather than a recursive query: recursion (including
     /// polymorphic recursion between the i32 and i64 instances of a function)
     /// terminates because there are at most two instances per function.
-    fn mono_impl(&self, caller: StepId, entry: MonoId, mode: PullMode) -> Result<(), TypeError> {
+    fn mono_impl(&self, caller: StepId, entry: MonoId, mode: PullMode) -> Result<(), Located<TypeError>> {
         debug!("CoreContext::mono_impl: entry {:?}", entry);
         self.graph.register_dependency(caller, StepId::Mono(entry));
 
@@ -909,7 +910,7 @@ impl Global {
                         crate::typecheck::check_function(&ctx, key, is_entry)
                     })) {
                         Ok(computed) => computed,
-                        Err(payload) => return Err(TypeError::Panicked(panic_message(payload))),
+                        Err(payload) => return Err(TypeError::Panicked(panic_message(payload)).into()),
                     };
                     let stored = self.store.mono_insert(cache_key, computed, &self.interner);
                     span.cache_miss(cache_key);
@@ -1132,12 +1133,12 @@ impl ExecContext {
         self.core.flavors.opt
     }
 
-    pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), ResolveError> {
+    pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), Located<ResolveError>> {
         // Exec is the root of a resolve tree: no resolutions are in progress yet.
         Global::resolve_all_impl(&self.core, StepId::Exec(self.current.clone()), AncestorPath::empty(), ids, self.mode).await
     }
 
-    pub fn mono(&self, entry: MonoId) -> Result<(), TypeError> {
+    pub fn mono(&self, entry: MonoId) -> Result<(), Located<TypeError>> {
         self.core.mono_impl(StepId::Exec(self.current.clone()), entry, self.mode)
     }
 
@@ -1160,6 +1161,23 @@ impl ExecContext {
                 format!("{}:{}:{}", source_location, line, col)
             }
             None => source_location.to_string(),
+        }
+    }
+
+    /// Render a located compile error (resolve or type check) for display,
+    /// upgrading its structural `(frame, node)` locator to `path:line:col` via
+    /// the span sidecar — the same lazy on-error upgrade as a runtime `panic`
+    /// (plans/fast-mode.md). A locator-less error (whole-file: IO, cycle,
+    /// import placement) renders coarsely, exactly as before. The reparse the
+    /// sidecar costs is paid only here, on the error path.
+    pub fn render_located<E: std::fmt::Display>(&self, located: &Located<E>) -> String {
+        match &located.loc {
+            Some(loc) => format!(
+                "{}: {}",
+                self.render_panic_location(&loc.file, loc.frame, loc.node),
+                located.error,
+            ),
+            None => format!("{}", located.error),
         }
     }
 }

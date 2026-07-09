@@ -1,4 +1,4 @@
-use crate::types::{BinOp, ByteSpan, ParseError, PreExpr, SpanTable, Ty};
+use crate::types::{BinOp, ByteSpan, Loc, ParseError, PreExpr, PreExprKind, SpanTable, Ty};
 
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
@@ -230,25 +230,25 @@ impl Parser {
         let frame = self.current_frame;
         let node = self.alloc(frame);
         let start = self.cur_start();
-        let expr = self.parse_expr_inner(frame, node)?;
+        let kind = self.parse_expr_inner(frame, node)?;
         let end = self.prev_end();
         if let Some(pending) = &mut self.pending {
             pending.push((frame, node, ByteSpan { start, end }));
         }
-        Ok(expr)
+        Ok(PreExpr::new(Loc { frame, node }, kind))
     }
 
-    fn parse_expr_inner(&mut self, frame: u32, node: u32) -> Result<PreExpr, ParseError> {
+    fn parse_expr_inner(&mut self, frame: u32, node: u32) -> Result<PreExprKind, ParseError> {
         match self.peek() {
             Some(Token::Number(n, ty)) => {
                 let (num, num_ty) = (*n, *ty);
                 self.advance();
-                Ok(PreExpr::Number { value: num, ty: num_ty })
+                Ok(PreExprKind::Number { value: num, ty: num_ty })
             }
             Some(Token::Ident(s)) => {
                 let ident = s.clone();
                 self.advance();
-                Ok(PreExpr::Ident(ident))
+                Ok(PreExprKind::Ident(ident))
             }
             Some(Token::LParen) => {
                 self.advance();
@@ -262,7 +262,7 @@ impl Parser {
     /// Parse the body of an S-expression (the `(` already consumed). `frame`
     /// and `node` are the locator of the enclosing expression, so `panic` /
     /// `unreachable` can embed it.
-    fn parse_sexpr(&mut self, _frame: u32, node: u32) -> Result<PreExpr, ParseError> {
+    fn parse_sexpr(&mut self, _frame: u32, _node: u32) -> Result<PreExprKind, ParseError> {
         match self.peek() {
             Some(Token::Ident(op)) => {
                 let op_str = op.clone();
@@ -287,7 +287,7 @@ impl Parser {
                             _ => unreachable!(),
                         };
 
-                        Ok(PreExpr::BinaryOp {
+                        Ok(PreExprKind::BinaryOp {
                             op: bin_op,
                             left,
                             right,
@@ -301,7 +301,7 @@ impl Parser {
                         let value = Box::new(self.parse_expr()?);
                         self.expect(Token::RParen)?;
 
-                        Ok(PreExpr::Let { name, value })
+                        Ok(PreExprKind::Let { name, value })
                     }
                     "set" => {
                         let name = match self.advance() {
@@ -311,7 +311,7 @@ impl Parser {
                         let value = Box::new(self.parse_expr()?);
                         self.expect(Token::RParen)?;
 
-                        Ok(PreExpr::Set { name, value })
+                        Ok(PreExprKind::Set { name, value })
                     }
                     "if" => {
                         let cond = Box::new(self.parse_expr()?);
@@ -319,7 +319,7 @@ impl Parser {
                         let else_branch = Box::new(self.parse_expr()?);
                         self.expect(Token::RParen)?;
 
-                        Ok(PreExpr::If {
+                        Ok(PreExprKind::If {
                             cond,
                             then_branch,
                             else_branch,
@@ -328,25 +328,23 @@ impl Parser {
                     "print" => {
                         let expr = Box::new(self.parse_expr()?);
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::Print(expr))
+                        Ok(PreExprKind::Print(expr))
                     }
                     "return" => {
                         let expr = Box::new(self.parse_expr()?);
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::Return(expr))
+                        Ok(PreExprKind::Return(expr))
                     }
                     "panic" => {
                         self.expect(Token::RParen)?;
-                        // Carries only its layout-independent locator (the
-                        // enclosing expr's `(frame, node)`), which is path-free
-                        // — the parse answer stays shared across identical
-                        // files at different paths; resolve attaches the path,
-                        // the span sidecar maps the locator to a byte span.
-                        Ok(PreExpr::Panic { frame: _frame, node })
+                        // Fieldless: its location rides on the enclosing
+                        // `PreExpr::loc` (path-free), which the span sidecar
+                        // maps to a byte span and resolve pairs with the file.
+                        Ok(PreExprKind::Panic)
                     }
                     "unreachable" => {
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::Unreachable { frame: _frame, node })
+                        Ok(PreExprKind::Unreachable)
                     }
                     "import" => {
                         let path = match self.advance() {
@@ -354,7 +352,7 @@ impl Parser {
                             _ => return Err(ParseError::UnexpectedToken("expected file path".to_string())),
                         };
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::Import(path))
+                        Ok(PreExprKind::Import(path))
                     }
                     "function" => {
                         let name = match self.advance() {
@@ -372,7 +370,7 @@ impl Parser {
                         let body = Box::new(self.parse_expr()?);
                         self.current_frame = saved;
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::FunctionDef { name, body })
+                        Ok(PreExprKind::FunctionDef { name, body })
                     }
                     "call" => {
                         let func = match self.advance() {
@@ -384,7 +382,7 @@ impl Parser {
                             args.push(Box::new(self.parse_expr()?));
                         }
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::Call { func, args })
+                        Ok(PreExprKind::Call { func, args })
                     }
                     "arg" => {
                         let num = match self.advance() {
@@ -394,7 +392,7 @@ impl Parser {
                             _ => return Err(ParseError::UnexpectedToken("expected positive arg number".to_string())),
                         };
                         self.expect(Token::RParen)?;
-                        Ok(PreExpr::Arg(num))
+                        Ok(PreExprKind::Arg(num))
                     }
                     _ => Err(ParseError::UnexpectedToken(format!("unknown operator: {}", op_str))),
                 }
@@ -416,8 +414,8 @@ impl Parser {
             Ok(exprs.into_iter().next().unwrap())
         } else {
             // The wrapping sequence is the frame-0 root; it carries no locator
-            // of its own (nothing references it), so it is not numbered.
-            Ok(PreExpr::Sequence(exprs))
+            // of its own (nothing references it), so it takes a synthetic one.
+            Ok(PreExpr::new(Loc::SYNTHETIC, PreExprKind::Sequence(exprs)))
         }
     }
 

@@ -81,6 +81,90 @@ async fn panic_inside_called_function_reports_its_location() {
     assert!(err.contains(&format!("{}:1:16", path)), "expected {path}:1:16, got: {err}");
 }
 
+/// A type error reports `path:line:col` for the exact offending
+/// sub-expression, upgraded lazily via the span sidecar on the error path —
+/// the same story as a runtime `panic`, but for a compile error.
+#[tokio::test]
+async fn type_mismatch_reports_line_and_column() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let path = main.to_str().unwrap();
+    // The mismatched `(+ 1i32 2i64)` opens at column 8 of line 2.
+    fs::write(&main, "(print 1)\n(print (+ 1i32 2i64))\n").unwrap();
+
+    let mut compiler = compiler();
+    let err = compiler.run(path, false).await.unwrap_err().to_string();
+
+    assert!(err.contains("Type mismatch"), "got: {err}");
+    assert!(err.contains(&format!("{}:2:8", path)), "expected {path}:2:8, got: {err}");
+    assert_eq!(compiler.cached_spans_count(), 1, "sidecar built once, on the error");
+}
+
+/// A resolve error (undefined variable) points at the exact identifier node,
+/// with a real line and column recovered from the sidecar.
+#[tokio::test]
+async fn undefined_variable_reports_line_and_column() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let path = main.to_str().unwrap();
+    // The undefined `x` identifier sits at column 8 of line 2.
+    fs::write(&main, "(print 1)\n(print x)\n").unwrap();
+
+    let mut compiler = compiler();
+    let err = compiler.run(path, false).await.unwrap_err().to_string();
+
+    assert!(err.contains("Undefined variable"), "got: {err}");
+    assert!(err.contains(&format!("{}:2:8", path)), "expected {path}:2:8, got: {err}");
+}
+
+/// The payoff of splitting the structural locator from the byte span: a
+/// whitespace edit *above* a type error shifts its reported line, but the
+/// type check is **not** re-run — the cached error answer is reused (its
+/// locator is structural, so its fingerprint is unchanged), and only the
+/// span sidecar is rebuilt from the current bytes to render the new line.
+#[tokio::test]
+async fn line_shift_updates_location_without_rechecking() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let path = main.to_str().unwrap();
+
+    let mut compiler = compiler();
+
+    fs::write(&main, "(print 1)\n(print (+ 1i32 2i64))\n").unwrap();
+    let err = compiler.run(path, false).await.unwrap_err().to_string();
+    assert!(err.contains(&format!("{}:2:8", path)), "expected line 2, got: {err}");
+    let checks_after_first = compiler.computed_mono_count();
+
+    // Insert a blank line at the top: every byte offset shifts, but no node
+    // structure changes, so the core AST — and the cached type error — are
+    // fingerprint-identical.
+    fs::write(&main, "\n(print 1)\n(print (+ 1i32 2i64))\n").unwrap();
+    let err = compiler.run(path, false).await.unwrap_err().to_string();
+
+    assert!(err.contains(&format!("{}:3:8", path)), "expected line 3 after the shift, got: {err}");
+    assert_eq!(
+        compiler.computed_mono_count(), checks_after_first,
+        "the line shift must not re-run the type check (early cutoff holds)"
+    );
+}
+
+/// The happy path still demands no sidecar even though the located-error
+/// machinery now rides on every resolve/mono answer: locators are structural
+/// data on the core AST, and rendering (the only sidecar consumer) fires only
+/// on the error path.
+#[tokio::test]
+async fn happy_path_still_builds_no_sidecar_with_located_errors() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let path = main.to_str().unwrap();
+    fs::write(&main, "(function id (arg 1))\n(print (call id 7))\n").unwrap();
+
+    let mut compiler = compiler();
+    compiler.run(path, false).await.unwrap();
+
+    assert_eq!(compiler.cached_spans_count(), 0, "no sidecar on the happy path");
+}
+
 /// A whitespace-only edit shifts every byte offset but changes no node
 /// structure, so the core AST is fingerprint-identical: re-running still
 /// pays no sidecar, and the caches above parse are untouched (early cutoff is

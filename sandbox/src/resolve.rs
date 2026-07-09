@@ -1,7 +1,7 @@
 use crate::common::{Name, FQ};
 use crate::context::ResolveContext;
 use crate::graph::ResolveId;
-use crate::types::{Expr, FuncId, PreExpr, ResolveError, ScopeId, SymbolTable, VarId};
+use crate::types::{Expr, ExprKind, FuncId, Loc, Located, PreExpr, PreExprKind, ResolveError, ScopeId, SrcLoc, SymbolTable, VarId};
 use log::debug;
 use std::collections::HashMap;
 use std::path::Path;
@@ -60,6 +60,14 @@ impl<'a> Resolver<'a> {
         self.current_file.to_string_lossy().to_string()
     }
 
+    /// Pin a resolve error to the node it came from, so the driver can upgrade
+    /// it to `path:line:col` via the span sidecar. The locator is structural,
+    /// so a sibling edit that shifts byte offsets does not disturb it (or the
+    /// cached, unchanged function it points into).
+    fn located(&self, error: ResolveError, loc: Loc) -> Located<ResolveError> {
+        Located::at(error, SrcLoc::new(self.source_location_str(), loc))
+    }
+
     fn calculate_arity(expr: &PreExpr, func_name: &str, context: &str) -> Result<usize, ResolveError> {
         let mut max_arg = 0u8;
         let mut arg_numbers = std::collections::HashSet::new();
@@ -84,40 +92,40 @@ impl<'a> Resolver<'a> {
     }
 
     fn collect_arg_numbers(expr: &PreExpr, arg_numbers: &mut std::collections::HashSet<u8>, max_arg: &mut u8) {
-        match expr {
-            PreExpr::Arg(n) => {
+        match &expr.kind {
+            PreExprKind::Arg(n) => {
                 arg_numbers.insert(*n);
                 if *n > *max_arg {
                     *max_arg = *n;
                 }
             }
-            PreExpr::BinaryOp { left, right, .. } => {
+            PreExprKind::BinaryOp { left, right, .. } => {
                 Self::collect_arg_numbers(left, arg_numbers, max_arg);
                 Self::collect_arg_numbers(right, arg_numbers, max_arg);
             }
-            PreExpr::Let { value, .. } | PreExpr::Set { value, .. } => {
+            PreExprKind::Let { value, .. } | PreExprKind::Set { value, .. } => {
                 Self::collect_arg_numbers(value, arg_numbers, max_arg);
             }
-            PreExpr::If { cond, then_branch, else_branch } => {
+            PreExprKind::If { cond, then_branch, else_branch } => {
                 Self::collect_arg_numbers(cond, arg_numbers, max_arg);
                 Self::collect_arg_numbers(then_branch, arg_numbers, max_arg);
                 Self::collect_arg_numbers(else_branch, arg_numbers, max_arg);
             }
-            PreExpr::Print(e) | PreExpr::Return(e) => {
+            PreExprKind::Print(e) | PreExprKind::Return(e) => {
                 Self::collect_arg_numbers(e, arg_numbers, max_arg);
             }
-            PreExpr::Panic { .. } | PreExpr::Unreachable { .. } => {}
-            PreExpr::Call { args, .. } => {
+            PreExprKind::Panic { .. } | PreExprKind::Unreachable { .. } => {}
+            PreExprKind::Call { args, .. } => {
                 for arg in args {
                     Self::collect_arg_numbers(arg, arg_numbers, max_arg);
                 }
             }
-            PreExpr::Sequence(exprs) => {
+            PreExprKind::Sequence(exprs) => {
                 for expr in exprs {
                     Self::collect_arg_numbers(expr, arg_numbers, max_arg);
                 }
             }
-            PreExpr::Number { .. } | PreExpr::Ident(_) | PreExpr::Import(_) | PreExpr::FunctionDef { .. } => {}
+            PreExprKind::Number { .. } | PreExprKind::Ident(_) | PreExprKind::Import(_) | PreExprKind::FunctionDef { .. } => {}
         }
     }
 
@@ -166,40 +174,41 @@ impl<'a> Resolver<'a> {
         Err(ResolveError::UndefinedVariable(self.context_str(), name.to_string()))
     }
 
-    fn resolve_expr(&mut self, pre_expr: PreExpr) -> Result<Expr, ResolveError> {
+    fn resolve_expr(&mut self, pre_expr: PreExpr) -> Result<Expr, Located<ResolveError>> {
         debug!("resolve_expr: {:?} (in_function={})", pre_expr, self.in_function);
-        match pre_expr {
-            PreExpr::Number { value, ty } => Ok(Expr::Number { value, ty }),
-            PreExpr::Ident(name) => {
-                let var_id = self.resolve_var(&name)?;
-                Ok(Expr::VarRef(var_id))
+        let loc = pre_expr.loc;
+        let kind = match pre_expr.kind {
+            PreExprKind::Number { value, ty } => ExprKind::Number { value, ty },
+            PreExprKind::Ident(name) => {
+                let var_id = self.resolve_var(&name).map_err(|e| self.located(e, loc))?;
+                ExprKind::VarRef(var_id)
             }
-            PreExpr::BinaryOp { op, left, right } => {
+            PreExprKind::BinaryOp { op, left, right } => {
                 let resolved_left = Box::new(self.resolve_expr(*left)?);
                 let resolved_right = Box::new(self.resolve_expr(*right)?);
-                Ok(Expr::BinaryOp {
+                ExprKind::BinaryOp {
                     op,
                     left: resolved_left,
                     right: resolved_right,
-                })
+                }
             }
-            PreExpr::Let { name, value } => {
+            PreExprKind::Let { name, value } => {
                 let resolved_value = Box::new(self.resolve_expr(*value)?);
-                let var_id = self.declare_var(name)?;
-                Ok(Expr::Let {
+                let var_id = self.declare_var(name).map_err(|e| self.located(e, loc))?;
+                ExprKind::Let {
                     var: var_id,
                     value: resolved_value,
-                })
+                }
             }
-            PreExpr::Set { name, value } => {
+            PreExprKind::Set { name, value } => {
                 let resolved_value = Box::new(self.resolve_expr(*value)?);
-                let var_id = self.resolve_var(&name)?;
-                Ok(Expr::Set {
+                let var_id = self.resolve_var(&name).map_err(|e| self.located(e, loc))?;
+                ExprKind::Set {
                     var: var_id,
                     value: resolved_value,
-                })
+                }
             }
-            PreExpr::If {
+            PreExprKind::If {
                 cond,
                 then_branch,
                 else_branch,
@@ -214,100 +223,101 @@ impl<'a> Resolver<'a> {
                 let resolved_else = Box::new(self.resolve_expr(*else_branch)?);
                 self.exit_scope();
 
-                Ok(Expr::If {
+                ExprKind::If {
                     cond: resolved_cond,
                     then_branch: resolved_then,
                     else_branch: resolved_else,
-                })
+                }
             }
-            PreExpr::Print(expr) => {
+            PreExprKind::Print(expr) => {
                 let resolved_expr = Box::new(self.resolve_expr(*expr)?);
-                Ok(Expr::Print(resolved_expr))
+                ExprKind::Print(resolved_expr)
             }
-            PreExpr::Return(expr) => {
+            PreExprKind::Return(expr) => {
                 let resolved_expr = Box::new(self.resolve_expr(*expr)?);
-                Ok(Expr::Return(resolved_expr))
+                ExprKind::Return(resolved_expr)
             }
             // The location is attached here, not at parse: the parse answer is
             // shared across identical files at different paths, so it must be
             // path-free; this step's key pins the FQ, so embedding the path in
             // the *resolve* answer is sound.
-            PreExpr::Panic { frame, node } => {
-                Ok(Expr::Panic { source_location: self.source_location_str(), frame, node })
+            PreExprKind::Panic => {
+                ExprKind::Panic { source_location: self.source_location_str() }
             }
-            PreExpr::Unreachable { frame, node } => {
-                Err(ResolveError::UnreachableCode { context: self.context_str(), source_location: self.source_location_str(), frame, node })
+            PreExprKind::Unreachable => {
+                return Err(self.located(ResolveError::UnreachableCode { context: self.context_str(), source_location: self.source_location_str(), frame: loc.frame, node: loc.node }, loc));
             }
-            PreExpr::Import(_) => {
-                Err(ResolveError::ImportNotAtTop(self.context_str()))
+            PreExprKind::Import(_) => {
+                return Err(self.located(ResolveError::ImportNotAtTop(self.context_str()), loc));
             }
-            PreExpr::FunctionDef { .. } => {
-                Err(ResolveError::FunctionDefNotAfterImports(self.context_str()))
+            PreExprKind::FunctionDef { .. } => {
+                return Err(self.located(ResolveError::FunctionDefNotAfterImports(self.context_str()), loc));
             }
-            PreExpr::Call { func, args } => {
+            PreExprKind::Call { func, args } => {
                 let func_id = self.funcs.get(&func)
                     .cloned()
-                    .ok_or_else(|| ResolveError::UndefinedFunction(self.context_str(), func.clone()))?;
+                    .ok_or_else(|| self.located(ResolveError::UndefinedFunction(self.context_str(), func.clone()), loc))?;
 
                 let expected_arity = self.ctx.func_registry()
                     .get(&func_id.0)
                     .map(|f| f.arity)
-                    .ok_or_else(|| ResolveError::UndefinedFunction(self.context_str(), func.clone()))?;
+                    .ok_or_else(|| self.located(ResolveError::UndefinedFunction(self.context_str(), func.clone()), loc))?;
                 let got_arity = args.len();
 
                 if expected_arity != got_arity {
-                    return Err(ResolveError::ArityMismatch {
+                    return Err(self.located(ResolveError::ArityMismatch {
                         context: self.context_str(),
                         func_name: func.clone(),
                         expected: expected_arity,
                         got: got_arity,
-                    });
+                    }, loc));
                 }
 
                 let mut resolved_args = Vec::new();
                 for arg in args {
                     resolved_args.push(Box::new(self.resolve_expr(*arg)?));
                 }
-                Ok(Expr::Call {
+                ExprKind::Call {
                     func: func_id,
                     args: resolved_args,
-                })
+                }
             }
-            PreExpr::Arg(n) => {
+            PreExprKind::Arg(n) => {
                 debug!("Processing Arg({}) in context {:?}, in_function={}", n, self.current_context, self.in_function);
                 if !self.in_function {
                     debug!("ERROR: Arg used outside function - in_function={}", self.in_function);
-                    return Err(ResolveError::ArgOutsideFunction(self.context_str()));
+                    return Err(self.located(ResolveError::ArgOutsideFunction(self.context_str()), loc));
                 }
                 debug!("Arg({}) resolved successfully", n);
-                Ok(Expr::Arg(n))
+                ExprKind::Arg(n)
             }
-            PreExpr::Sequence(exprs) => {
+            PreExprKind::Sequence(exprs) => {
                 let mut resolved_exprs = Vec::new();
                 for expr in exprs {
                     resolved_exprs.push(self.resolve_expr(expr)?);
                 }
-                Ok(Expr::Sequence(resolved_exprs))
+                ExprKind::Sequence(resolved_exprs)
             }
-        }
+        };
+        Ok(Expr::new(loc, kind))
     }
 
     fn extract_function_defs(&self, pre_expr: &PreExpr) -> Result<Vec<(String, PreExpr)>, ResolveError> {
         let mut function_defs = Vec::new();
 
-        match pre_expr {
-            PreExpr::Sequence(exprs) => {
+        match &pre_expr.kind {
+            PreExprKind::Sequence(exprs) => {
                 let mut seen_function_def = false;
                 let mut seen_other = false;
 
                 for expr in exprs {
-                    match expr {
-                        PreExpr::Import(_) => {
+                    match &expr.kind {
+                        PreExprKind::Import(_) => {
                             if seen_function_def || seen_other {
                                 return Err(ResolveError::ImportNotAtTop(self.context_str()));
                             }
                         }
-                        PreExpr::FunctionDef { name, body } => {
+                        PreExprKind::FunctionDef { name, body } => {
                             if seen_other {
                                 return Err(ResolveError::FunctionDefNotAfterImports(self.context_str()));
                             }
@@ -320,7 +330,7 @@ impl<'a> Resolver<'a> {
                     }
                 }
             }
-            PreExpr::FunctionDef { name, body } => {
+            PreExprKind::FunctionDef { name, body } => {
                 function_defs.push((name.clone(), (**body).clone()));
             }
             _ => {}
@@ -329,14 +339,14 @@ impl<'a> Resolver<'a> {
         Ok(function_defs)
     }
 
-    fn process_local_functions(&mut self, pre_ast: &PreExpr) -> Result<(), ResolveError> {
+    fn process_local_functions(&mut self, pre_ast: &PreExpr) -> Result<(), Located<ResolveError>> {
         let function_defs = self.extract_function_defs(pre_ast)?;
         debug!("process_local_functions: found {} function definitions", function_defs.len());
 
         for (func_name, func_body) in function_defs {
             debug!("Processing local function: {}", func_name);
             if self.funcs.contains_key(&func_name) {
-                return Err(ResolveError::FunctionAlreadyDefined(self.context_str(), func_name));
+                return Err(ResolveError::FunctionAlreadyDefined(self.context_str(), func_name).into());
             }
 
             let arity = Self::calculate_arity(&func_body, &func_name, &self.context_str())?;
@@ -370,28 +380,29 @@ impl<'a> Resolver<'a> {
     }
 
 
-    fn resolve_body(&mut self, pre_ast: &PreExpr) -> Result<Expr, ResolveError> {
+    fn resolve_body(&mut self, pre_ast: &PreExpr) -> Result<Expr, Located<ResolveError>> {
         debug!("resolve_body: in_function={}, context={:?}", self.in_function, self.current_context);
-        match pre_ast {
-            PreExpr::Sequence(exprs) => {
+        let loc = pre_ast.loc;
+        match &pre_ast.kind {
+            PreExprKind::Sequence(exprs) => {
                 let mut resolved_exprs = Vec::new();
                 for expr in exprs {
-                    if !matches!(expr, PreExpr::Import(_) | PreExpr::FunctionDef { .. }) {
+                    if !matches!(expr.kind, PreExprKind::Import(_) | PreExprKind::FunctionDef { .. }) {
                         resolved_exprs.push(self.resolve_expr(expr.clone())?);
                     }
                 }
                 if resolved_exprs.is_empty() {
-                    Ok(Expr::Number { value: 0, ty: None })
+                    Ok(Expr::new(loc, ExprKind::Number { value: 0, ty: None }))
                 } else if resolved_exprs.len() == 1 {
                     Ok(resolved_exprs.into_iter().next().unwrap())
                 } else {
-                    Ok(Expr::Sequence(resolved_exprs))
+                    Ok(Expr::new(loc, ExprKind::Sequence(resolved_exprs)))
                 }
             }
-            PreExpr::Import(_) | PreExpr::FunctionDef { .. } => {
-                Ok(Expr::Number { value: 0, ty: None })
+            PreExprKind::Import(_) | PreExprKind::FunctionDef { .. } => {
+                Ok(Expr::new(loc, ExprKind::Number { value: 0, ty: None }))
             }
-            other => self.resolve_expr(other.clone()),
+            other => self.resolve_expr(PreExpr::new(loc, other.clone())),
         }
     }
 }
@@ -406,12 +417,12 @@ impl<'a> Resolver<'a> {
 pub(crate) fn extract_import_names(pre_expr: &PreExpr, context: &str) -> Result<Vec<String>, ResolveError> {
     let mut imports = Vec::new();
 
-    match pre_expr {
-        PreExpr::Sequence(exprs) => {
+    match &pre_expr.kind {
+        PreExprKind::Sequence(exprs) => {
             let mut seen_non_import = false;
             for expr in exprs {
-                match expr {
-                    PreExpr::Import(path) => {
+                match &expr.kind {
+                    PreExprKind::Import(path) => {
                         if seen_non_import {
                             return Err(ResolveError::ImportNotAtTop(context.to_string()));
                         }
@@ -423,7 +434,7 @@ pub(crate) fn extract_import_names(pre_expr: &PreExpr, context: &str) -> Result<
                 }
             }
         }
-        PreExpr::Import(path) => {
+        PreExprKind::Import(path) => {
             imports.push(path.clone());
         }
         _ => {}
@@ -449,7 +460,7 @@ pub(crate) fn extract_import_names(pre_expr: &PreExpr, context: &str) -> Result<
 ///
 /// Returns the resolved body, the symbol table, and the functions this
 /// resolution registered (in registration order).
-pub(crate) fn resolve_body(ctx: &ResolveContext, id: ResolveId, pre_ast: &PreExpr, imports: &[(String, FuncId)]) -> Result<(Expr, SymbolTable, Vec<FQ>), ResolveError> {
+pub(crate) fn resolve_body(ctx: &ResolveContext, id: ResolveId, pre_ast: &PreExpr, imports: &[(String, FuncId)]) -> Result<(Expr, SymbolTable, Vec<FQ>), Located<ResolveError>> {
     let fq = id.func_loc;
     let context = fq.name();
     let context_str = context.resolve(ctx.interner());
@@ -475,7 +486,7 @@ pub(crate) fn resolve_body(ctx: &ResolveContext, id: ResolveId, pre_ast: &PreExp
     ctx.func_registry().insert(func_loc, FuncData {
         loc: func_loc,
         arity,
-        ast: Expr::Number { value: 0, ty: None },
+        ast: Expr::new(Loc::SYNTHETIC, ExprKind::Number { value: 0, ty: None }),
     });
     resolver.registered.push(func_loc);
     resolver.funcs.insert(context_str.to_string(), func_id);
