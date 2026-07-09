@@ -980,6 +980,23 @@ impl Global {
         };
         crate::execute::execute(&ctx, id).await
     }
+
+    /// Lower the program rooted at `id` to a Python script instead of running
+    /// it. Shares exec's front end (resolve + monomorphise) — including the
+    /// per-run rebuild of the positional mono registry — but replaces the
+    /// interpreting backend with the compiling one. Like exec it is uncached:
+    /// the emitted source is the whole value and is returned, not stored.
+    async fn codegen_impl(this: &Arc<Global>, caller: StepId, id: ExecId, mode: PullMode) -> Result<String, crate::codegen::CodegenError> {
+        debug!("CoreContext::codegen_impl: {:?}", id);
+        this.graph.register_dependency(caller, StepId::Exec(id.clone()));
+        this.mono_registry.clear();
+        let ctx = ExecContext {
+            current: id.clone(),
+            core: this.clone(),
+            mode,
+        };
+        crate::codegen::generate_python(&ctx, id).await
+    }
 }
 
 pub struct RootContext {
@@ -1005,6 +1022,10 @@ impl RootContext {
 
     pub async fn execute(&self, id: ExecId, mode: PullMode) -> Result<(), ExecuteError> {
         Global::execute_impl(&self.core, StepId::Root, id, mode).await
+    }
+
+    pub async fn codegen_python(&self, id: ExecId, mode: PullMode) -> Result<String, crate::codegen::CodegenError> {
+        Global::codegen_impl(&self.core, StepId::Root, id, mode).await
     }
 }
 

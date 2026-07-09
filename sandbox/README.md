@@ -13,7 +13,31 @@ The compiler processes programs in four phases:
 1. **Parse** - Tokenize source and build PreExpr AST with string names
 2. **Resolve** - Convert names to unique VarId/FuncId, handle imports, check scoping rules
 3. **Type Check + Monomorphise** - Infer numeric types (i32/i64, `Number` trait bound) and specialise each function per type it is called at
-4. **Execute** - Interpret the monomorphised AST
+4. **Backend** - Consume the monomorphised AST. Two interchangeable backends share the whole front end above:
+   - **Execute** - interpret the AST directly (the default; its value is its side effects).
+   - **Codegen** - lower it to a standalone, executable Python script (`src/codegen.rs`). Emitted purely to illustrate the *shape* of a compiler backend — one `def` per monomorphised `(function, type)` instance, a `#!/usr/bin/env python3` shebang, a tiny runtime prelude for truncating division — not to be a good code generator (it leaves dead assignments and erases i32/i64 wrapping).
+
+## Backends: run it or emit it
+
+```bash
+# Interpret (prints 120):
+cargo run -- examples/factorial/main.telsb
+
+# Emit an executable Python script instead, then run that:
+cargo run --example codegen_python -- examples/factorial/main.telsb /tmp/factorial.py
+/tmp/factorial.py            # -> 120
+```
+
+Or from the library:
+
+```rust
+let python: String = sandbox::codegen_python_file("examples/factorial/main.telsb").await?;
+// or, keeping the cache warm across compiles:
+let python = compiler.codegen_python("examples/factorial/main.telsb").await?;
+```
+
+The two backends are verified to agree in `tests/codegen.rs` (the generated
+Python, when `python3` is on PATH, prints exactly what the interpreter does).
 
 ## Query engine features
 

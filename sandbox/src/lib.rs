@@ -1,3 +1,4 @@
+mod codegen;
 mod execute;
 mod parse;
 mod resolve;
@@ -49,6 +50,7 @@ pub enum Error {
     Parse(String, types::ParseError),
     Resolve(String, types::ResolveError),
     Execute(String, types::ExecuteError),
+    Codegen(String, codegen::CodegenError),
 }
 
 impl fmt::Display for Error {
@@ -58,6 +60,7 @@ impl fmt::Display for Error {
             Error::Parse(path, e) => write!(f, "Parse error in {}: {}", path, e),
             Error::Resolve(name, e) => write!(f, "Resolve error in {}: {}", name, e),
             Error::Execute(name, e) => write!(f, "Execute error in {}: {}", name, e),
+            Error::Codegen(name, e) => write!(f, "Codegen error in {}: {}", name, e),
         }
     }
 }
@@ -262,6 +265,20 @@ impl Compiler {
         Ok(())
     }
 
+    /// Compile `path` to a standalone, executable Python script and return its
+    /// source, reusing anything already cached from previous runs.
+    ///
+    /// Same front end as [`run`](Compiler::run) — parse, resolve, monomorphise,
+    /// all content-cached — but the final phase is the Python backend
+    /// (`src/codegen.rs`) instead of the interpreter, so this produces source
+    /// text and runs none of the program's side effects.
+    pub async fn codegen_python(&mut self, path: &str) -> Result<String, Error> {
+        let ctx = RootContext::new(self.core.clone());
+        let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
+        ctx.codegen_python(exec_id, PullMode::Reconcile).await
+            .map_err(|e| Error::Codegen("main".to_string(), e))
+    }
+
     /// Number of distinct source contents parsed and cached so far. Lets callers
     /// observe cross-run reuse: an unchanged or reverted file leaves this
     /// unchanged on the next [`run`](Compiler::run).
@@ -336,5 +353,12 @@ pub async fn run_file_with_printer(path: &str, show_deps: bool, printer: Arc<dyn
     // Each call builds a fresh, single-shot compiler (no cross-run cache). Use
     // `Compiler` directly to keep the cache alive across runs.
     Compiler::new(printer).run(path, show_deps).await
+}
+
+/// Compile `path` to a standalone Python script and return its source. Builds
+/// a fresh, single-shot compiler (no cross-run cache); the program is never
+/// executed, so no printer is needed.
+pub async fn codegen_python_file(path: &str) -> Result<String, Error> {
+    Compiler::new(Arc::new(NoopPrinter)).codegen_python(path).await
 }
 
