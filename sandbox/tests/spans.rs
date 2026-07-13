@@ -117,6 +117,28 @@ async fn undefined_variable_reports_line_and_column() {
     assert!(err.contains(&format!("{}:2:8", path)), "expected {path}:2:8, got: {err}");
 }
 
+/// An out-of-range literal points at the *literal itself*, not the enclosing
+/// function root. `LiteralOutOfRange` is raised in the lowering pass (after
+/// `TExpr` would otherwise drop the locator); threading `Loc` through
+/// `TExpr::Number` keeps it precise, upgraded via the sidecar like any other
+/// located compile error.
+#[tokio::test]
+async fn literal_out_of_range_reports_line_and_column() {
+    let dir = TempDir::new().unwrap();
+    let main = dir.path().join("main.telsb");
+    let path = main.to_str().unwrap();
+    // `5000000000` is forced to i32 by the `1i32` operand but does not fit; it
+    // opens at column 11 of line 2.
+    fs::write(&main, "(print 1)\n(print (+ 5000000000 1i32))\n").unwrap();
+
+    let mut compiler = compiler();
+    let err = compiler.run(path, false).await.unwrap_err().to_string();
+
+    assert!(err.contains("does not fit"), "got: {err}");
+    assert!(err.contains(&format!("{}:2:11", path)), "expected {path}:2:11, got: {err}");
+    assert_eq!(compiler.cached_spans_count(), 1, "sidecar built once, on the error");
+}
+
 /// The payoff of splitting the structural locator from the byte span: a
 /// whitespace edit *above* a type error shifts its reported line, but the
 /// type check is **not** re-run — the cached error answer is reused (its

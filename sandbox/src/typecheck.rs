@@ -37,7 +37,7 @@ enum Slot {
 /// carry their term, calls already point at a concrete instance. Lowered to
 /// [`MExpr`] once all constraints are collected.
 enum TExpr {
-    Number { value: i64, term: TermId },
+    Number { value: i64, term: TermId, loc: Loc },
     VarRef(VarId),
     BinaryOp { op: crate::types::BinOp, left: Box<TExpr>, right: Box<TExpr> },
     Let { var: VarId, value: Box<TExpr> },
@@ -225,7 +225,7 @@ impl<'a> Checker<'a> {
                     }
                     None => self.fresh(),
                 };
-                Ok((TExpr::Number { value: *value, term }, term))
+                Ok((TExpr::Number { value: *value, term, loc }, term))
             }
             ExprKind::VarRef(var_id) => {
                 let term = *self.vars.get(var_id)
@@ -314,13 +314,18 @@ impl<'a> Checker<'a> {
     }
 
     /// Resolve all remaining terms and produce the monomorphised body.
-    fn lower(&mut self, expr: TExpr) -> Result<MExpr, TypeError> {
+    ///
+    /// Errors are [`Located`]: `LiteralOutOfRange` is pinned to the literal's
+    /// own node (threaded through [`TExpr::Number`]), so it upgrades to
+    /// `path:line:col` at the offending literal via the span sidecar like the
+    /// check-phase errors — not coarsely at the function root.
+    fn lower(&mut self, expr: TExpr) -> Result<MExpr, Located<TypeError>> {
         Ok(match expr {
-            TExpr::Number { value, term } => {
+            TExpr::Number { value, term, loc } => {
                 let ty = self.resolve_or_default(term);
                 let val = match ty {
                     Ty::I32 => Value::I32(i32::try_from(value).map_err(|_| {
-                        TypeError::LiteralOutOfRange { context: self.context(), value, ty }
+                        self.located(TypeError::LiteralOutOfRange { context: self.context(), value, ty }, loc)
                     })?),
                     Ty::I64 => Value::I64(value),
                 };

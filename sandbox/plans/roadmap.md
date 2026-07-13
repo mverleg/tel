@@ -146,9 +146,13 @@ dropping it reclaims everything).
       error-recovering parser; the multi-output *record* with per-output
       fingerprints (fast-mode.md's ideal — this slice uses the 2d
       "recompute-on-demand" sidecar policy, cheap since there is no AOT
-      backend demanding spans every build); threading `Loc` through `TExpr`
-      so `LiteralOutOfRange` (raised in the lowering pass, after `TExpr`
-      drops the locator) can be located too — it renders coarsely for now.
+      backend demanding spans every build).
+    - **Also landed (out-of-range literals):** `Loc` is threaded through
+      `TExpr::Number` so `LiteralOutOfRange` (raised in the lowering pass,
+      after the check-phase locator would otherwise be dropped) is pinned to
+      the offending literal and upgraded to `path:line:col` via the span
+      sidecar like every other located compile error
+      (`tests/spans.rs::literal_out_of_range_reports_line_and_column`).
 
 ## Phase 3 — Persistence & scale
 
@@ -165,11 +169,30 @@ dropping it reclaims everything).
     cold and hermetic. Prerequisite (xxh3 stable hashing) landed first.
 
 13. **Memory/disk cache tiering** `[qcompiler-gap]` — keep hottest entries in
-    memory, spill everything to disk (LRU or similar).
+    memory, spill everything to disk (LRU or similar). **Direction decided
+    2026-07-10** — see [concurrency-and-eviction.md](concurrency-and-eviction.md):
+    unified with parallel queries / `Pending` / input dedup, since all four are
+    properties of the per-kind cache primitive. Borrows never `Arc` (scope
+    safety, item 16); eviction is compaction between waves under `&mut self`;
+    admission control enqueues but does not start user queries over budget;
+    size-aware LRU on one byte budget with per-kind cost weight (`spans`
+    first-out, `mono` stickiest); recency stamped barrier-free (`Relaxed`).
 
-14. **Pluggable source backends** `[qcompiler-gap]` — abstract the leaf read so
-    a source file can come from disk *or* an in-memory / web-IDE buffer, instead
-    of `tokio::fs` directly.
+13b. **External dependencies as sealed leaves** — **direction decided
+    2026-07-10**, see [external-deps.md](external-deps.md). External deps are
+    immutable by contract, so they skip per-compile read+hash, watcher
+    registration, and dirty tracking; keyed on the lockfile-pinned release hash
+    (not bare semver), with a provenance bit (`sealed = AND of inputs`) gating
+    which cones may seal. Entries are cross-project shareable (same `dep@hash` →
+    same content key everywhere), motivating a shared sealed disk tier above the
+    per-root cache. Pairs with item 13 (sealed entries are prime
+    eviction/sharing candidates).
+
+14. **Pluggable source backends** `[qcompiler-gap]` — **descoped 2026-07-10**
+    (no need for now). Was: abstract the leaf read so a source file can come
+    from disk *or* an in-memory / web-IDE buffer, instead of `tokio::fs`
+    directly. (Distinct from item 13b, which is about the immutability contract,
+    not the byte source.)
 
 15. **Query "flavors"** `[qcompiler-gap]` — **mechanism done**, detailed plan:
     [flavors.md](flavors.md). Adopted the *per-query declared* flavor subset
