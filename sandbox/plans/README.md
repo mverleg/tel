@@ -8,11 +8,13 @@ Working plans for the sandbox query engine. Design *analysis* lives in
   priorities, in-code `TODO @mark` markers, and the gap analysis vs `qcompiler`.
   Start here. Scope: *building* the engine.
 - **[swap-to-real-language.md](swap-to-real-language.md)** — the *other half* of
-  the roadmap: taking the matured engine out of the sandbox and making it drive
-  the real Tel front end (`compiler`/`parser`/`ast`/`hir`/`telir`), retiring the
-  toy Lisp and the `qcompiler` prototype. Covers the central obstacle (the
-  engine core is not yet query-kind-generic), the generalize-then-extract
-  strategy, the readiness gate, and the ordered migration phases (S1–S6).
+  the roadmap: making the matured engine drive the real Tel front end
+  (`compiler`/`parser`/`ast`/`hir`/`telir`), retiring the toy Lisp and the
+  `qcompiler` prototype. Records the decision **not** to genericize the engine
+  over query kinds (premature abstraction for a one-language system) and instead
+  to *evolve its concrete kinds in place*, keeping only a light answer-seam;
+  covers the readiness gate, the test-first Rust-agnostic corpus, and the
+  ordered migration phases (S1–S6).
 - **[fast-mode.md](fast-mode.md)** — fast mode vs detail (IDE) mode: whether
   they are separate targets (no — same code path; likely not even a key
   dimension: detail = sidecar queries + driver demand policy), the

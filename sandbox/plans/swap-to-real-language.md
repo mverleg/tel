@@ -51,8 +51,8 @@ pipeline), retiring `qcompiler` as the by-then-obsolete prototype.**
 
 In one line: **the engine is feature-complete for a correct, incremental,
 persistent, single-writer compiler, and is missing (a) concurrency + eviction,
-(b) external deps, and (c) the Phase-4 hardening — plus the generalization work
-this document is about.**
+(b) external deps, and (c) the Phase-4 hardening — before it is evolved in place
+into the real compiler, which is what this document plans.**
 
 ---
 
@@ -73,8 +73,8 @@ The reusable core — the part with no opinion about what a "parse" or a "type" 
 The toy-language-specific part is `parse.rs`, `resolve.rs`, `typecheck.rs`,
 `types.rs`, `execute.rs`, `codegen.rs` — the query *bodies* and their AST types.
 
-**The obstacle: the engine core is not query-kind-generic yet.** It is welded to
-the toy language in exactly the places that matter:
+**The engine core is welded to the concrete query kinds, and we keep it that
+way — on purpose.** The coupling shows up in exactly these places:
 
 - `keys.rs::QueryKind` is a **fixed enum** — `Parse | Resolve | Mono | Exec |
   Spans`.
@@ -82,48 +82,81 @@ the toy language in exactly the places that matter:
   span sidecar) with concrete answer types (`PreExpr`, `ResolveAnswer`,
   `MonoAnswer`, `SpanTable`), not a generic `kind → cache` map.
 - `Error`, the `StepId`/`ExecId` families, and the portable encoding all name
-  the toy phases directly.
+  the phases directly.
 
-This is the single most important thing to understand about the swap: it is
-**not** a clean "extract an engine crate, register real queries against a stable
-API" operation, because that stable, kind-agnostic API does not exist yet.
-Producing it is the bulk of the work.
+**Decision (2026-07-18): do *not* generalize the engine over an abstract set of
+query kinds.** An abstraction earns its tax only when it has more than one
+concrete instantiation, and the engine will only ever host **one** query-kind
+set — the real language's phases. The toy Lisp was always scaffolding, not a
+permanent second client. A generic `<K: QueryKind>` core would pay in threaded
+generics / erased answer types / a harder `portable.rs` / worse compile errors,
+wrapped around the *subtlest* code in the system (invalidation), for zero
+runtime benefit and a plurality that will never exist.
+
+Crucially, the coupling is **shallow**: a fixed enum plus a few concrete
+`ContentStore` fields. The valuable part — the dependency graph, reverse-edge
+invalidation, early cutoff, cycle detection, content keys, the disk tier — is
+already kind-agnostic *in its logic* while naming concrete kinds. Adding a real
+`Lower` kind is one enum variant + one struct field + one match arm, not a
+plugin registry.
+
+So the swap is **not** "extract a generic engine and register real queries
+against a stable API." It is: **evolve the sandbox engine's concrete kinds into
+the real language's kinds, in place.** The mechanism code stays concrete and
+readable; only the query *bodies* and their answer types change.
+
+**The light seam we *do* keep.** "Not generic over kinds" is not the same as
+"the mechanism reaches into AST internals." The graph/cache/invalidation code
+should touch answers only through a tiny surface each concrete answer type
+implements — `content_key()`, `fingerprint()`, `to_portable()`/`from_portable()`
+— rather than pattern-matching AST guts inside the engine. That is a handful of
+trait impls on concrete types, not a parameterized engine: ~90% of the
+architectural cleanliness for ~10% of the abstraction cost, and the invalidation
+code stays concrete.
+
+**The one thing this forecloses** (recorded so it is a choice, not an accident):
+the engine cannot double as a reusable, salsa-like *framework* for third parties
+to build their own incremental compilers. That is not a goal — the goal is Tel.
+If a standalone-framework product ever becomes a goal, revisit; generalization
+is the price of that, and it is not worth paying speculatively now.
 
 ---
 
-## 3. Two strategies
+## 3. Strategy — evolve the kinds in place (chosen)
 
-### Strategy A — Generalize in place, then extract (recommended)
+Per the §2 decision, there is one strategy and it is deliberately the simple one:
+**rename the sandbox crate to what it is becoming (the real Tel compiler) and
+evolve its concrete query kinds into the real language's phases, one kind at a
+time, keeping the graph/cache/invalidation/watch/disk machinery untouched.**
 
-1. Inside the sandbox, refactor `QueryKind`/`ContentStore`/keys/portable so the
-   engine is parametric over an abstract set of query kinds and their answer
-   types (a trait per kind: stable key, fingerprint, portable encode/decode),
-   with the toy Lisp as its *first client* rather than its hardcoded innards.
-2. Prove the generalized engine still passes every existing sandbox test
-   (incremental, invalidation, cache, spans, codegen-agreement, generated
-   project) — the toy language is now an ordinary consumer of the generic core.
-3. Extract the generic core into its own crate (working name `telc-engine` /
-   `qengine`), leaving the toy Lisp behind in `sandbox` as an example consumer
-   and regression suite.
-4. Add a *second* consumer: the real front end.
+1. Keep `context.rs` / `graph.rs` / `store.rs` / `keys.rs` / `disk.rs` /
+   `portable.rs` / `monitor.rs` / `trace.rs` / `flavors.rs` as they are (concrete
+   mechanism). Introduce the *light seam* from §2 (small answer-interface trait
+   impls) so the mechanism stops reaching into AST internals — a refactor that
+   pays for itself immediately by making the body swaps below local.
+2. Replace the toy query bodies with real ones, bottom-up (parse → resolve →
+   typecheck → mono → lower), editing `QueryKind` and `ContentStore` concretely
+   as each real kind lands (add a variant, add a field, add a portable arm).
+3. As each real kind comes up, the toy tests for that phase are replaced by the
+   real-language conformance corpus for it (§5); the machinery tests
+   (invalidation, early cutoff, watch, persistence) are repointed from toy
+   fixtures to small real `.tel` fixtures — they test the mechanism and do not
+   care which language the fixture is in.
 
-**Why recommended.** The toy language stays as a continuously-green,
-fast-to-compile witness that the generic core is correct. Every generalization
-step is validated by an existing test before the real language — big, slow,
-still-changing — is ever in the loop. The risky refactor and the risky new
-client are never entangled.
+**Why this over the alternatives.** Two alternatives were considered and
+rejected:
 
-### Strategy B — Fork the skeleton, re-specialize by hand
+- *Generalize then extract a generic engine* — rejected in §2 as premature
+  abstraction for a one-instantiation system.
+- *Fork the engine next to the real front end and hand-respecialize* — rejected
+  because forking creates two divergent copies of the subtle invalidation code.
+  Evolving in place keeps a single copy that is continuously exercised by
+  whichever tests (toy, then real) are live at the time.
 
-Copy the engine modules next to the real front end and hand-edit the concrete
-types (`PreExpr` → real AST, add a real `Typecheck`/`Monomorphize`/`Lower`
-kind, etc.), keeping only the invalidation/caching/watch machinery.
-
-Faster to first light, but it forks the engine: two divergent copies of the
-subtle invalidation code, and the sandbox tests no longer guard the version that
-ships. Acceptable only if generalization (A.1) proves genuinely intractable —
-which we will not know until we try it, so **do Strategy A and fall back to B
-only on evidence.**
+The toy language is not preserved as a permanent generic-core witness (there is
+no generic core to witness); it is consumed as it is replaced. Its value was
+getting the engine correct *before* the real front end existed — value already
+banked in the shipped Phases 0–3.
 
 ---
 
@@ -137,8 +170,11 @@ far cheaper to get right against the toy language:
   smuggle the context out) must be *enforced by construction*, not by
   convention, before third parties write queries. This is the one Phase-4 item
   that is a true prerequisite, not just polish.
-- [ ] **Generic query-kind core (Strategy A.1–A.2).** The engine is parametric
-  over kinds/answers and the toy language rides on it with all tests green.
+- [ ] **Light answer-seam (§2, §3.1).** The mechanism touches answers only
+  through `content_key()`/`fingerprint()`/portable impls, not by matching AST
+  internals — so each body swap in §3.2 is local. This replaces the
+  (rejected) generic-core refactor: much smaller, and validated by the existing
+  toy tests staying green.
 - [ ] **Concurrency + eviction (item 13).** Real projects are large; an
   unbounded in-memory cache and a single-writer run loop are fine for the toy
   suite but not for a real workspace. Design is decided
@@ -148,9 +184,11 @@ far cheaper to get right against the toy language:
   dependencies; the sealing/provenance model must exist before the real
   language's imports point at packages. Design decided
   ([external-deps.md](external-deps.md)).
-- [ ] **Portable encoding is kind-extensible.** Adding a real query kind must
-  not require touching `portable.rs` by hand for each one — it falls out of the
-  per-kind trait from A.1.
+- [ ] **Portable encoding routes through the seam.** Each answer type carries
+  its own `to_portable()`/`from_portable()` (the seam from §2), so adding a real
+  kind is one concrete arm, not a `portable.rs` rewrite. This is expected work
+  per kind, not a blocking prerequisite — listed here only so the seam lands
+  before the first real kind does.
 
 Deferable past the swap (do in the real crate): lock-free compile (17), boxed
 recursive awaits (18) — though 18 may become *urgent* under the real language's
@@ -213,9 +251,12 @@ and both feed the same "run it across every backend" check.
 
 ## 6. Migration phases (once the gate is green)
 
-**S1 — Extract the generic core crate.** Land Strategy A.3. Sandbox depends on
-the new engine crate; all sandbox tests green; nothing about the real language
-yet. This is a pure, reviewable refactor commit.
+**S1 — Introduce the light seam and rename the crate.** Land the small
+answer-interface refactor from §3.1 (mechanism touches answers only through
+`content_key()`/`fingerprint()`/portable impls) and rename the crate to what it
+is becoming, with the toy Lisp still riding on it. All existing sandbox tests
+stay green; nothing about the real language yet. A pure, reviewable refactor
+commit — much smaller than a generic-core extraction, which §2 rejected.
 
 **S2 — Map the real front end onto query kinds.** Enumerate the real phases and
 assign each a query kind and a stable key:
@@ -256,12 +297,15 @@ incremental/invalidation machinery test on real code, reusing the sandbox test
 located-error wrapping (`Located<E>`) extends to the real error types (and the
 corpus asserts those locations as data).
 
-**S5 — Retire the toy path and `qcompiler`.** Once the real pipeline passes the
-real example suite (`compiler/examples/*.tel`) through the engine: demote the toy
-Lisp to an engine-crate example/test fixture (keep it — it is a fast regression
-witness), and delete `qcompiler`'s dead skeleton, preserving its `README`/`TODO`
-design notes as historical record (or fold the still-relevant bits into
-`docs/`).
+**S5 — Retire the last toy remnants and `qcompiler`.** By here the toy query
+bodies have already been replaced kind-by-kind (§3.2), so most of the Lisp is
+gone; S5 removes whatever toy-only scaffolding is left (the interpret/emit-Python
+demo backend, any remaining `.telsb` fixtures the machinery tests no longer need)
+once the real pipeline passes the real example suite (`compiler/examples/*.tel`),
+and deletes `qcompiler`'s dead skeleton, preserving its `README`/`TODO` design
+notes as historical record (or folding the still-relevant bits into `docs/`). If
+a tiny synthetic fixture is still the fastest way to exercise the machinery
+tests, keep *that* — but it is a fixture, not the toy language.
 
 **S6 — Real backends as flavors.** Only now do target/opt flavors get real
 customers (roadmap item 15's "remaining"): `telir`'s multiple language runtimes
@@ -272,9 +316,11 @@ already exists as the first flavor; real targets slot into the same mechanism.
 
 ## 7. Risks
 
-- **Generalization proves intractable (A.1).** Mitigation: it is the first thing
-  we attempt, gated before any real-language work; failure surfaces early and
-  the fallback (Strategy B) is known.
+- **In-place evolution destabilizes the shipped engine.** Swapping query bodies
+  edits the crate that already works. Mitigation: the mechanism (graph/cache/
+  invalidation) is not touched — only bodies and answer types are; the light
+  seam (§3.1) keeps each swap local; the machinery tests stay green throughout
+  as fixtures move from toy to real.
 - **The real type system doesn't fit the mono/answer shapes** the toy language
   implied (traits, bounds, generic structs are strictly richer). Mitigation: S2
   is a paper mapping before any code; the vertical slice (S3) deliberately
@@ -294,9 +340,10 @@ already exists as the first flavor; real targets slot into the same mechanism.
 
 ## 8. Open questions
 
-- **Crate naming / placement** of the extracted engine (`telc-engine`?
-  `qengine`? absorb into `telc-cache`?) and whether the toy Lisp lives on inside
-  it or in a sibling `examples` crate.
+- **What the evolved crate is renamed to** (`telc`? fold into the existing
+  `compiler`? keep the `sandbox` name through the transition and rename at S5?).
+  No separate engine crate is extracted, so this is a naming/placement call, not
+  an architectural boundary.
 - **Ordering of the real query kinds** — does `telir` lowering sit above or
   beside monomorphization, and where do the multi-language backends attach
   relative to the flavor mechanism.
