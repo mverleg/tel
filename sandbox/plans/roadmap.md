@@ -245,7 +245,9 @@ dropping it reclaims everything).
 
 These are things `qcompiler` covers that the sandbox intentionally does not —
 they are compiler/product features, not query-engine infrastructure (the
-sandbox exists to test the engine):
+sandbox exists to test the engine). The plan for when and how they arrive — by
+swapping the matured engine into the real front end — is
+[swap-to-real-language.md](swap-to-real-language.md):
 
 - **Type-check query** (`type of X`) — the README's "Type Check" future phase.
 - **Monomorphization query** (`monomorph F for (U, T)`).
