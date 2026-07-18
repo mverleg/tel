@@ -160,7 +160,58 @@ error-recovering parser, the multi-output record).
 
 ---
 
-## 5. Migration phases (once the gate is green)
+## 5. Testing workflow — test-first, Rust-agnostic conformance corpus
+
+**Discipline: for each language feature, write the tests first — features,
+feature interactions, edge cases — and only then implement it.** The migration
+phases below (S3–S5) are gated on a *growing conformance corpus*, not just on the
+Rust machinery tests. Two tiers of test exist and must stay separate, because
+only one of them is Rust-agnostic:
+
+- **Engine-machinery tests (stay in Rust).** Caching, invalidation, early
+  cutoff, incrementality, watch, persistence, cycle detection — the existing
+  `sandbox/tests/*.rs`. These test the *engine*, which is Rust and does not
+  port, so they are legitimately coupled to the `Compiler` API. They are not the
+  target of the "Rust-agnostic" goal and should not be contorted to meet it.
+- **Language/feature conformance tests (Rust-agnostic — the focus here).** A
+  corpus of programs plus **declarative expectations as data**, driven by a thin
+  harness rather than hand-written Rust assertions. This is where "lots of tests
+  covering features / interactions / edge cases, written before the impl" lives.
+
+**Build on the convention that already exists.** The real compiler already
+annotates test programs with a header comment — `# tel-test: parse-only`,
+`# tel-test: should-fail` (`compiler/src/examples.rs`), and the sandbox already
+compiles an `examples/` corpus via a `build.rs`-generated harness. Grow that into
+a full expectation vocabulary rather than inventing a parallel mechanism:
+expected stdout, expected error *kind* plus `path:line:col` (the fast-mode
+locators from roadmap item 11 make the location checkable), expected
+success/failure, and which phase to stop at. Keep every expectation as **data**
+(inline `# tel-test:` header or a sidecar `.expected` file) so the same program
+can be replayed against any implementation.
+
+**Why Rust-agnostic pays off here specifically.** A data-driven corpus runs
+against *more than one backend*:
+
+- the sandbox interpreter and the Python codegen backend already cross-check each
+  other (`tests/codegen.rs`) — that is the pattern generalized;
+- after the swap, the same real-language corpus runs across `telir`'s language
+  runtimes (`rust`/`java`/`python`/`typescript`, `telir/run.sh`).
+
+One corpus, many backends, is exactly the **cross-implementation conformance
+suite the swap needs as its acceptance criterion** — the thing that proves the
+real language behaves identically no matter which host it is embedded in (Tel's
+whole USP). Rust-coupled tests could never carry that guarantee across the
+non-Rust runtimes.
+
+**Where it plugs into the migration.** Each real query kind added in S4 is
+preceded by its slice of the corpus (test-first), and a phase is not "done" until
+the real language passes the corpus written for it — the corpus is the
+acceptance gate, superseding "it compiles." The toy Lisp (`.telsb`) and real Tel
+(`.tel`) have different surface syntax, so the *programs* are per-language, but
+the **expectation format, the harness shape, and the discipline are shared** —
+and both feed the same "run it across every backend" check.
+
+## 6. Migration phases (once the gate is green)
 
 **S1 — Extract the generic core crate.** Land Strategy A.3. Sandbox depends on
 the new engine crate; all sandbox tests green; nothing about the real language
@@ -195,11 +246,15 @@ resolve. This is the analogue of the sandbox's Scenario A/B tests, on real
 input.
 
 **S4 — Fill the pipeline upward.** Add resolve, then typecheck, then mono, then
-lower — one kind per commit, each with its own incremental/invalidation test on
-real code, reusing the sandbox test *shapes*. Fast/IDE mode: reuse the span
-sidecar and the error-path `path:line:col` upgrade already built; real errors
-are richer, so the located-error wrapping (`Located<E>`) extends to the real
-error types.
+lower — one kind per commit. Each kind is **preceded by its slice of the
+conformance corpus (§5, test-first)** covering that feature, its interactions
+with earlier features, and its edge cases; the commit lands the impl that turns
+those tests green. Alongside the corpus, each kind carries its own
+incremental/invalidation machinery test on real code, reusing the sandbox test
+*shapes*. Fast/IDE mode: reuse the span sidecar and the error-path
+`path:line:col` upgrade already built; real errors are richer, so the
+located-error wrapping (`Located<E>`) extends to the real error types (and the
+corpus asserts those locations as data).
 
 **S5 — Retire the toy path and `qcompiler`.** Once the real pipeline passes the
 real example suite (`compiler/examples/*.tel`) through the engine: demote the toy
@@ -215,7 +270,7 @@ already exists as the first flavor; real targets slot into the same mechanism.
 
 ---
 
-## 6. Risks
+## 7. Risks
 
 - **Generalization proves intractable (A.1).** Mitigation: it is the first thing
   we attempt, gated before any real-language work; failure surfaces early and
@@ -237,7 +292,7 @@ already exists as the first flavor; real targets slot into the same mechanism.
 
 ---
 
-## 7. Open questions
+## 8. Open questions
 
 - **Crate naming / placement** of the extracted engine (`telc-engine`?
   `qengine`? absorb into `telc-cache`?) and whether the toy Lisp lives on inside
@@ -253,3 +308,10 @@ already exists as the first flavor; real targets slot into the same mechanism.
   swap** or can land in parallel with S2–S3 against real code. Listed as gates
   here on the conservative assumption that getting them right is cheaper against
   the toy suite; revisit if S2 is ready first.
+- **Conformance expectation format (§5).** Inline `# tel-test:` header vs a
+  sidecar `.expected` file per program; how errors are matched (exact
+  `path:line:col` vs error-kind-only, to keep tests robust to message wording);
+  whether feature-*interaction* coverage is hand-written or partly generated
+  (combinatorial), given the toy corpus already has a project generator; and
+  where the corpus + its harness physically live so one runner drives both the
+  engine's example language and the real language across every `telir` backend.
