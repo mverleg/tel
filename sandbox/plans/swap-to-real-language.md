@@ -125,9 +125,10 @@ is the price of that, and it is not worth paying speculatively now.
 ## 3. Strategy — evolve the kinds in place (chosen)
 
 Per the §2 decision, there is one strategy and it is deliberately the simple one:
-**rename the sandbox crate to what it is becoming (the real Tel compiler) and
-evolve its concrete query kinds into the real language's phases, one kind at a
-time, keeping the graph/cache/invalidation/watch/disk machinery untouched.**
+**evolve the sandbox crate's concrete query kinds into the real language's
+phases, one kind at a time, keeping the graph/cache/invalidation/watch/disk
+machinery untouched** (the crate keeps its name until the toy language is gone;
+the rename is deferred to S5, §8).
 
 1. Keep `context.rs` / `graph.rs` / `store.rs` / `keys.rs` / `disk.rs` /
    `portable.rs` / `monitor.rs` / `trace.rs` / `flavors.rs` as they are (concrete
@@ -251,12 +252,13 @@ and both feed the same "run it across every backend" check.
 
 ## 6. Migration phases (once the gate is green)
 
-**S1 — Introduce the light seam and rename the crate.** Land the small
-answer-interface refactor from §3.1 (mechanism touches answers only through
-`content_key()`/`fingerprint()`/portable impls) and rename the crate to what it
-is becoming, with the toy Lisp still riding on it. All existing sandbox tests
-stay green; nothing about the real language yet. A pure, reviewable refactor
-commit — much smaller than a generic-core extraction, which §2 rejected.
+**S1 — Introduce the light seam.** Land the small answer-interface refactor from
+§3.1 (mechanism touches answers only through
+`content_key()`/`fingerprint()`/portable impls), with the toy Lisp still riding
+on it. The crate keeps its `sandbox` name for now — the rename is deferred to S5
+(§8). All existing sandbox tests stay green; nothing about the real language
+yet. A pure, reviewable refactor commit — much smaller than a generic-core
+extraction, which §2 rejected.
 
 **S2 — Map the real front end onto query kinds.** Enumerate the real phases and
 assign each a query kind and a stable key:
@@ -340,10 +342,14 @@ already exists as the first flavor; real targets slot into the same mechanism.
 
 ## 8. Open questions
 
-- **What the evolved crate is renamed to** (`telc`? fold into the existing
-  `compiler`? keep the `sandbox` name through the transition and rename at S5?).
-  No separate engine crate is extracted, so this is a naming/placement call, not
-  an architectural boundary.
+- **Crate rename — timing decided (2026-07-20): defer it.** Keep the `sandbox`
+  name through the transition and let the rename land as one mechanical commit at
+  S5, when the toy language is gone anyway — renaming up front is pure churn
+  (`sandbox-daemon`, Cargo deps, IDE configs) for no functional benefit, and the
+  owner is indifferent to timing ("whatever is easier"). Still loose but
+  low-stakes: the *target* name (`telc`? fold into the existing `compiler`?). No
+  separate engine crate is extracted, so this is a naming/placement call, not an
+  architectural boundary.
 - **Ordering of the real query kinds** — does `telir` lowering sit above or
   beside monomorphization, and where do the multi-language backends attach
   relative to the flavor mechanism.
