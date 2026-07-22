@@ -195,13 +195,29 @@ pub async fn serve(root: &std::path::Path, ad_file: &std::path::Path) -> Result<
     // The daemon is the persistent-cache's primary consumer (plans/daemon.md).
     // Degrade, don't die: an unusable cache dir means memory-only, same as
     // `--no-daemon`, rather than a dead daemon.
-    let compiler = match Compiler::with_disk_cache(printer.clone(), &cache_dir) {
+    let mut compiler = match Compiler::with_disk_cache(printer.clone(), &cache_dir) {
         Ok(compiler) => compiler,
         Err(e) => {
             warn!("disk cache at {} unavailable ({}); running memory-only", cache_dir.display(), e);
             Compiler::new(printer.clone())
         }
     };
+    // Optional in-memory cache budget (plans/concurrency-and-eviction.md
+    // Decision 3). A *soft high-water mark*, not a hard cap: a compile may grow
+    // the cache past it, and once the compile completes the store is GC'd back
+    // down (size-aware LRU, warmth-only — evicted entries re-load from the disk
+    // tier). Unset ⇒ unbounded, the prior behavior. Env-configured so it needs
+    // no schema; bytes, e.g. `TEL_SANDBOX_CACHE_BUDGET=536870912` for 512 MiB.
+    match std::env::var("TEL_SANDBOX_CACHE_BUDGET") {
+        Ok(raw) => match raw.trim().parse::<u64>() {
+            Ok(bytes) => {
+                info!("cache budget: {} bytes (soft, GC'd on compile completion)", bytes);
+                compiler.set_cache_budget(bytes);
+            }
+            Err(_) => warn!("ignoring TEL_SANDBOX_CACHE_BUDGET={raw:?}: not a byte count"),
+        },
+        Err(_) => {} // unset: unbounded
+    }
     let state = Arc::new(DaemonState {
         root: root.clone(),
         cache_dir,

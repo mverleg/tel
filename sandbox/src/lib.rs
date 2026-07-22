@@ -175,12 +175,16 @@ impl Compiler {
         Ok(Compiler { core: Arc::new(core), budget: None })
     }
 
-    /// Set the cache byte budget for admission control
-    /// (plans/concurrency-and-eviction.md Decision 3). From the next wave on,
-    /// a run whose content store exceeds `bytes` compacts down to it *before*
-    /// starting (size-aware LRU, `spans` first-out). Eviction is warmth-only —
-    /// an evicted entry re-loads from disk or recomputes an equal answer — so a
-    /// budget only trades cache warmth for bounded memory, never correctness.
+    /// Set the cache byte budget (plans/concurrency-and-eviction.md Decision 3).
+    ///
+    /// This is a **soft high-water mark, not a hard cap**: a wave may grow the
+    /// cache past `bytes` while it runs (nothing is evicted mid-wave), and *once
+    /// the wave completes* the store is compacted back down to `bytes`
+    /// (size-aware LRU, `spans` first-out). So `bytes` is "the resident size at
+    /// which a completed wave triggers a GC," and the between-wave resident set
+    /// settles at or below it. Eviction is warmth-only — an evicted entry
+    /// re-loads from disk or recomputes an equal answer — so a budget trades
+    /// cache warmth for bounded memory, never correctness.
     pub fn set_cache_budget(&mut self, bytes: u64) {
         self.budget = Some(bytes);
     }
@@ -197,13 +201,14 @@ impl Compiler {
         self.core.cache_bytes()
     }
 
-    /// Admission-control gate (Decision 3): if a budget is set and the store is
-    /// over it, compact down *before* the wave starts. Runs between waves, where
-    /// `&mut self` proves the previous wave joined all its spawned tasks, so
-    /// `Arc::get_mut` reclaims exclusive access to the core. If a clone is
-    /// somehow still live the compaction is skipped — safe, since eviction only
-    /// ever affects warmth.
-    fn gate_on_budget(&mut self) {
+    /// Trim the cache back to the byte budget after a wave (Decision 3): if a
+    /// budget is set and the store is over it, compact down. Called *once the
+    /// wave has completed* — every spawned task is joined and the wave's core
+    /// handle dropped, so `Arc::get_mut` reclaims exclusive access, which is
+    /// exactly the quiescent `&mut Global` window compaction needs. If a clone
+    /// is somehow still live the compaction is skipped — safe, since eviction
+    /// only ever affects warmth.
+    fn compact_to_budget(&mut self) {
         let Some(budget) = self.budget else { return };
         if self.core.cache_bytes() <= budget {
             return;
@@ -291,27 +296,32 @@ impl Compiler {
     }
 
     async fn run_mode(&mut self, path: &str, show_deps: bool, mode: PullMode) -> Result<(), Error> {
-        // Admission control: gate the wave's *start* on the byte budget, so the
-        // compaction happens now (between waves, sole owner) rather than mid-run.
-        self.gate_on_budget();
-        let ctx = RootContext::new(self.core.clone());
-        let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
-        ctx.execute(exec_id, mode).await
-            .map_err(|e| Error::Execute("main".to_string(), e))?;
-
-        // The ancestor-path check makes a cyclic import fail resolution, so a
-        // compile that got this far must have an acyclic resolve graph; the
-        // post-hoc DFS stays as a debug-only verification of that invariant.
-        debug_assert!(
-            ctx.graph().find_resolve_cycle(&exec_id.main_loc).is_none(),
-            "compile succeeded but the resolve graph contains a cycle"
-        );
-
-        if show_deps {
-            print_dependency_tree(&ctx);
-        }
-
-        Ok(())
+        // The wave is scoped so `ctx` (which holds a core handle) drops before
+        // the budget trim below — that drop, plus the join of every spawned
+        // task inside `execute`, is what re-establishes the sole-owner `&mut`
+        // window `compact_to_budget` needs.
+        let outcome = {
+            let ctx = RootContext::new(self.core.clone());
+            let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
+            let result = ctx.execute(exec_id, mode).await
+                .map_err(|e| Error::Execute("main".to_string(), e));
+            if result.is_ok() {
+                // The ancestor-path check makes a cyclic import fail resolution,
+                // so a compile that got this far must have an acyclic resolve
+                // graph; the post-hoc DFS stays as a debug-only verification.
+                debug_assert!(
+                    ctx.graph().find_resolve_cycle(&exec_id.main_loc).is_none(),
+                    "compile succeeded but the resolve graph contains a cycle"
+                );
+                if show_deps {
+                    print_dependency_tree(&ctx);
+                }
+            }
+            result
+        };
+        // Admission control: GC the cache back to budget now the wave is done.
+        self.compact_to_budget();
+        outcome
     }
 
     /// Compile `path` to a standalone, executable Python script and return its
@@ -322,11 +332,14 @@ impl Compiler {
     /// (`src/codegen.rs`) instead of the interpreter, so this produces source
     /// text and runs none of the program's side effects.
     pub async fn codegen_python(&mut self, path: &str) -> Result<String, Error> {
-        self.gate_on_budget();
-        let ctx = RootContext::new(self.core.clone());
-        let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
-        ctx.codegen_python(exec_id, PullMode::Reconcile).await
-            .map_err(|e| Error::Codegen("main".to_string(), e))
+        let outcome = {
+            let ctx = RootContext::new(self.core.clone());
+            let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
+            ctx.codegen_python(exec_id, PullMode::Reconcile).await
+                .map_err(|e| Error::Codegen("main".to_string(), e))
+        };
+        self.compact_to_budget();
+        outcome
     }
 
     /// Number of distinct source contents parsed and cached so far. Lets callers

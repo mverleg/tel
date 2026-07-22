@@ -60,26 +60,26 @@ async fn unbudgeted_second_run_reuses_cache() {
     assert!(!last_output(&out).is_empty());
 }
 
-/// A budget too small to hold anything forces the gate to evict the whole cache
-/// between waves, so the next run recomputes — and (no disk tier) that recompute
-/// is real work, visible in every computed counter. The answer is unchanged:
-/// eviction is warmth-only.
+/// A budget too small to hold anything GCs the whole cache the moment a wave
+/// completes (the budget is a soft high-water mark, GC'd on completion), so the
+/// next run recomputes — and (no disk tier) that recompute is real work, visible
+/// in every computed counter. The answer is unchanged: eviction is warmth-only.
 #[tokio::test]
-async fn tight_budget_evicts_between_waves_forcing_recompute() {
+async fn tight_budget_gcs_on_completion_forcing_recompute() {
     let dir = TempDir::new().unwrap();
     let main = dir.path().join("main.telsb");
     let path = main.to_str().unwrap();
     fs::write(&main, program(1)).unwrap();
 
     let (mut c, out) = recording_compiler();
-    c.set_cache_budget(1); // 1 byte: nothing fits, so the gate clears the store
+    c.set_cache_budget(1); // 1 byte: nothing fits, so the completed wave is GC'd empty
     c.run(path, false).await.unwrap();
     let answer = last_output(&out);
-    assert!(c.cache_bytes() > 1, "the first wave fills the cache past the budget");
+    assert!(c.cache_bytes() <= 1, "the completed wave is GC'd back under budget");
     let (p, r, m) = computed(&c);
 
-    // Second wave: the gate compacts to 1 byte first (evicting all), then the
-    // run recomputes from scratch.
+    // Second wave: the prior wave GC'd its cache on completion, so this one
+    // recomputes from scratch.
     c.run(path, false).await.unwrap();
     assert_eq!(last_output(&out), answer, "eviction is warmth-only: same answer");
     let (p2, r2, m2) = computed(&c);
@@ -89,8 +89,8 @@ async fn tight_budget_evicts_between_waves_forcing_recompute() {
 }
 
 /// The budget bounds the resident set: running many *distinct* programs under a
-/// budget keeps the cache near the budget (each wave trims back to it before
-/// growing), whereas the unbudgeted cache accumulates all of them.
+/// budget leaves the cache at or below the budget after each completed wave,
+/// whereas the unbudgeted cache accumulates all of them.
 #[tokio::test]
 async fn budget_bounds_resident_set_across_distinct_runs() {
     let dir = TempDir::new().unwrap();
@@ -115,8 +115,8 @@ async fn budget_bounds_resident_set_across_distinct_runs() {
         unbudgeted.run(p.to_str().unwrap(), false).await.unwrap();
     }
 
-    // Budgeted at ~3 programs: each wave trims back to budget before adding its
-    // own set, so the resident peak stays near budget + one wave's growth.
+    // Budgeted at ~3 programs: each wave GCs back to budget on completion, so
+    // after the final run the resident set is at or below the budget.
     let (mut budgeted, _) = recording_compiler();
     budgeted.set_cache_budget(per * 3);
     for p in &paths {
@@ -124,15 +124,16 @@ async fn budget_bounds_resident_set_across_distinct_runs() {
     }
 
     assert!(
+        budgeted.cache_bytes() <= per * 3,
+        "a completed budgeted run leaves the resident set ({}) at or below the budget ({})",
+        budgeted.cache_bytes(),
+        per * 3,
+    );
+    assert!(
         budgeted.cache_bytes() < unbudgeted.cache_bytes(),
         "budgeted ({}) must stay below unbudgeted ({})",
         budgeted.cache_bytes(),
         unbudgeted.cache_bytes(),
-    );
-    assert!(
-        budgeted.cache_bytes() <= per * 5,
-        "budgeted resident set ({}) stays near the budget, not unbounded",
-        budgeted.cache_bytes(),
     );
     assert!(
         unbudgeted.cache_bytes() >= per * (n as u64 - 1),
@@ -140,8 +141,9 @@ async fn budget_bounds_resident_set_across_distinct_runs() {
     );
 }
 
-/// Clearing the budget restores unbounded growth: after `clear_cache_budget`,
-/// a subsequent wave does not evict.
+/// Clearing the budget restores unbounded growth: once `clear_cache_budget` is
+/// set, completed waves no longer GC, so entries survive from one run to the
+/// next.
 #[tokio::test]
 async fn clearing_budget_stops_eviction() {
     let dir = TempDir::new().unwrap();
@@ -151,12 +153,14 @@ async fn clearing_budget_stops_eviction() {
 
     let (mut c, _) = recording_compiler();
     c.set_cache_budget(1);
-    c.run(path, false).await.unwrap();
+    c.run(path, false).await.unwrap(); // GC'd empty on completion
     c.clear_cache_budget();
 
-    // With the budget cleared, this run's gate is a no-op; the previous run's
-    // entries survive, so it is a pure cache hit.
+    // First post-clear run repopulates (the budgeted run had GC'd it) and, with
+    // no budget, does not GC on completion...
+    c.run(path, false).await.unwrap();
     let before = computed(&c);
+    // ...so the next run finds those entries resident: a pure cache hit.
     c.run(path, false).await.unwrap();
     assert_eq!(computed(&c), before, "no budget: nothing evicted, nothing recomputed");
 }

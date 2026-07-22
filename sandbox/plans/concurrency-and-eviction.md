@@ -2,7 +2,10 @@
 
 Status: **direction decided 2026-07-10; Phases A–C implemented 2026-07-22
 (primitive + compaction; admission control on serialized `&mut self` runs;
-single-flight for resolve). Phase D not yet started.** Covers roadmap
+single-flight for resolve). Phase D partly done 2026-07-23 (byte budget wired
+into daemon config with GC-on-completion semantics; eviction observability;
+TinyLFU dropped) — per-kind cost-weight tuning remains, bench-gated.** Covers
+roadmap
 [item 13](roadmap.md) (memory/disk cache tiering + eviction) and the two
 concurrency asks that turned out to share one mechanism with it: real
 **parallel queries** with a represented **`Pending`** state, and **input
@@ -266,18 +269,22 @@ inline the tick in the `DashMap` value types and a small metadata slot in
   serialized one-wave-at-a-time model: `Compiler::run(&mut self)` already
   serializes top-level requests, so the caller's ordered `.await`s *are* the
   queue (enqueue-and-wait, never drop) and no separate scheduler task is needed.
-  Each wave entry (`run_mode`, `codegen_python`) calls `gate_on_budget`: if a
-  `Compiler` byte budget (`set_cache_budget`) is set and `cache_bytes()` exceeds
-  it, compact *before* starting — reclaiming `&mut Global` via `Arc::get_mut`,
-  which succeeds precisely because the previous wave joined every spawned task.
-  Default budget is `None` (unbounded, unchanged behavior). Tests
-  (`tests/admission.rs`): a tight budget evicts between waves and forces
-  recompute (warmth-only — answer unchanged); a budget bounds the resident set
-  across distinct runs while the unbudgeted cache accumulates everything;
-  clearing the budget stops eviction. *Note:* this is admission control for the
-  single-`Compiler`, one-wave model; the explicit dequeue loop of Decision 3
-  only becomes necessary if concurrent submitters or multiple compilers are
-  added later.
+  Each wave entry (`run_mode`, `codegen_python`) calls `compact_to_budget` *once
+  the wave completes*: the byte budget (`set_cache_budget`) is a **soft
+  high-water mark, not a hard cap** — a wave may grow the cache past it (nothing
+  evicts mid-wave), and on completion the store is GC'd back down to it. The
+  wave is scoped so its `ctx` (and thus its core handle) drops first;
+  that drop plus the join of every spawned task inside `execute` re-establishes
+  the sole-owner `&mut Global` window `Arc::get_mut` reclaims for compaction.
+  (Completion-triggered rather than next-wave-start-triggered so a daemon's idle
+  footprint stays bounded between requests.) Default budget is `None`
+  (unbounded, unchanged behavior). Tests (`tests/admission.rs`): a tight budget
+  GCs the whole cache on completion and forces recompute (warmth-only — answer
+  unchanged); a completed budgeted run leaves the resident set at or below the
+  budget while the unbudgeted cache accumulates everything; clearing the budget
+  stops the GC. *Note:* this is admission control for the single-`Compiler`,
+  one-wave model; the explicit dequeue loop of Decision 3 only becomes necessary
+  if concurrent submitters or multiple compilers are added later.
 - **Phase C — single-flight for derived kinds. ✅ resolve done (2026-07-22);
   mono deferred with rationale.** Added `async-lazy`
   `Cache::get_or_init_abortable` (+ `ALazy::get_or_init_abortable`, `is_present`,
@@ -302,15 +309,32 @@ inline the tick in the `DashMap` value types and a small metadata slot in
   a separate effort. `Pending` is now *represented* as `is_initializing` at
   content-key granularity (supersedes the `BindingRecord.dirty` note), not as a
   hand-built binding-layer state.
-- **Phase D — policy tuning + observability.** Per-kind cost weights; wire the
-  byte budget into daemon config. **TinyLFU is dropped** (see Decision 6) unless
-  a bench proves hot-dep thrash — and the way to prove it is the eviction trace:
-  the `step-trace` feature already logs per-step cache **hit/miss** (key hash,
-  age, fingerprint, timing); it now also emits an **`evict`** event per compacted
-  entry (kind, key hash, size, age) plus a **`compaction`** summary (evicted
-  count, bytes freed, budget) — so a trace can show whether misses are cold or
-  the result of eviction, and whether a hot dep is being repeatedly evicted and
-  reloaded. That data is the gate for any frequency work.
+- **Phase D — policy tuning + observability. ◐ partly done (2026-07-23).**
+  - ✅ **Byte budget wired into daemon config.** The daemon reads
+    `TEL_SANDBOX_CACHE_BUDGET` (bytes) and calls `set_cache_budget`; unset ⇒
+    unbounded (unchanged). Env-configured (no schema), soft-mark semantics as
+    in Phase B. No default number is imposed — picking one wants bench data.
+  - ✅ **Eviction observability.** The `step-trace` feature already logged
+    per-step cache **hit/miss** (key hash, age, fingerprint, timing); it now
+    also emits an **`evict`** event per compacted entry (kind, key hash, size,
+    age) and a **`compaction`** summary (evicted count, bytes freed, budget) —
+    so a trace can show whether misses are cold or the result of eviction, and
+    whether a hot dep is being repeatedly evicted and reloaded. That data is the
+    gate for any frequency work.
+  - ☐ **Per-kind cost weights** — still the hardcoded constants
+    (`mono 8 / resolve 4 / parse 2 / spans 1`); tuning is bench-gated.
+  - **Measured compute cost (considered 2026-07-23, deferred).** Timing the sync
+    resolve/mono body with two `Instant::now()` calls is *cheap* — a vDSO
+    `clock_gettime` is ~15–25 ns on a TSC clocksource, so ~40 ns per **computed**
+    entry (not per hit), i.e. ~0.004–0.4 % of the compute it measures and
+    negligible in aggregate (~0.04 % at 10k computes/s). The reasons to defer are
+    not cost but *meaning*: one wall-clock sample is noisy (fine for an
+    approximate LRU, per Decision 7, but not precise), and **the disk tier
+    undercuts it** — with disk on, a miss is a uniform LMDB read, not a recompute,
+    so measured compute time overstates true re-acquisition cost (you'd cap it at
+    ~disk-read cost). So if pursued: add `cost_us` to `EntryMeta`, feed it into
+    `keep_priority` in place of the per-kind constant, and gate on the same bench
+    as the weight tuning. **TinyLFU stays dropped** (Decision 6).
 
 ## Invariants preserved
 
