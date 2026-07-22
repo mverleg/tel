@@ -5,8 +5,6 @@ members = [
     "ast",
     "hir",
     "compiler",
-#    "qcompiler",
-    # TODO @mark: enable again
     "cli",
     "testing",
     "telc-cache",

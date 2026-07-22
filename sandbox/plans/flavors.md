@@ -27,7 +27,7 @@ under which the query is answered. Today the sandbox keys are just `file_path`
 (`ParseId`) and `FQ` (`ResolveId`/`ExecId`): **no flavor dimension at all**, so
 only one configuration can be cached at a time.
 
-Candidate flavors floated for Tel (from `qcompiler/README.md`):
+Candidate flavors floated for Tel (from the retired `qcompiler` prototype):
 
 | Candidate | Real nature | Verdict |
 |---|---|---|

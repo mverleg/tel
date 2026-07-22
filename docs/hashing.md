@@ -22,7 +22,7 @@ bit dispersion, which is ahash's design target.
 
 ### Hash as identity (xxh3-128)
 
-The query compiler (`qcompiler`) compares a step's new answer against its previous answer by
+The query compiler compares a step's new answer against its previous answer by
 hash instead of full equality, so it can decide "output unchanged, dependents can reuse their
 cache" without keeping or re-loading the full old value. Here the hash *replaces* the `Eq`
 check: there is no second line of defense. A collision means silently concluding "same",

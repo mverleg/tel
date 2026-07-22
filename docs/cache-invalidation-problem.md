@@ -229,9 +229,9 @@ Cost: content-addressing still requires reading + hashing the file each compile
 also tempers Option 3's "cache grows without bound" con — recurring content
 reuses its slot.
 
-Note: `qcompiler/README.md:16` raises branch-switching as an open question
-("keep old cache? how to detect which is correct quickly?"), framed as storing
-multiple answers per query. Content-addressing dissolves that question for the
+Note: the retired `qcompiler` prototype raised branch-switching as an open
+question ("keep old cache? how to detect which is correct quickly?"), framed as
+storing multiple answers per query. Content-addressing dissolves that question for the
 parse layer: the correct answer is simply the entry whose key matches the
 current content hash; no "detect which is correct" step is needed.
 
@@ -264,8 +264,8 @@ content-addressed parse keys the step's key changes on a blank-line edit, so
 that check alone yields no cutoff. Early cutoff specifically requires the
 Salsa-style "recompute → compare output → mark unchanged-at-revision" step,
 plus keying downstream results on the *output digest* of their inputs rather
-than the input source. `qcompiler/README.md:18` states this behavior as a goal
-("even if a source leaf changed, if that doesn't change the answer... then
+than the input source. The retired `qcompiler` prototype stated this behavior as
+a goal ("even if a source leaf changed, if that doesn't change the answer... then
 dependencies of that aren't executed") but not the mechanism.
 
 **Feasibility for Tel specifically:** the parse AST carries no source spans or
