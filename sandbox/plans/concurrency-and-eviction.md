@@ -1,6 +1,8 @@
 # Concurrency, dedup, and cache eviction — design
 
-Status: **direction decided 2026-07-10; not yet implemented.** Covers roadmap
+Status: **direction decided 2026-07-10; Phase A implemented 2026-07-22
+(primitive + compaction, proven in isolation); Phases B–D not yet started.**
+Covers roadmap
 [item 13](roadmap.md) (memory/disk cache tiering + eviction) and the two
 concurrency asks that turned out to share one mechanism with it: real
 **parallel queries** with a represented **`Pending`** state, and **input
@@ -224,12 +226,17 @@ inline the tick in the `DashMap` value types and a small metadata slot in
 
 ## Phased plan
 
-- **Phase A — primitive + compaction.** Add `Cache::retain(&mut self, …)` to
-  `async-lazy`; add the `EntryMeta` side table + `Relaxed` stamping; add
-  `ContentStore::compact(budget)` doing per-kind size-aware LRU (rebuild parse
-  cache shrunken, `retain` the DashMaps). Prove in isolation: eviction holds the
-  byte budget, an evicted entry re-loads from disk, compaction at `&mut self`
-  drops the cold set, `spans` evicts first.
+- **Phase A — primitive + compaction. ✅ done (2026-07-22).**
+  `async-lazy::Cache::retain(&mut self, keep)` rebuilds the shrunken cache
+  (append-only ⇒ replace-by-shrunken); `ContentStore` grew an `EntryMeta` side
+  table (`{ last_used: AtomicU64, size, kind }`) stamped `Relaxed` on every hit,
+  a `Relaxed` logical clock, and `compact(budget_bytes)` doing size-aware LRU
+  with a per-kind cost weight (`keep_priority` = GDSF value density; parse cache
+  shrinks via `retain`, the DashMaps via `retain`). Proven in isolation
+  (`store::tests` + `async-lazy` `cache::tests`): eviction holds the byte
+  budget, an evicted entry re-loads from disk, compaction drops the cold set,
+  `spans` evicts first. The metadata-location question of Decision 7 was
+  settled the leaning way (uniform side `DashMap`).
 - **Phase B — admission control.** The scheduler queue + "don't start over
   budget → compact first" loop (Decision 3). Test: memory-pressured run enqueues
   and compacts instead of growing unbounded; clients block, never drop.

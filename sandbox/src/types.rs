@@ -56,6 +56,18 @@ impl SpanTable {
     pub fn get(&self, frame: u32, node: u32) -> Option<ByteSpan> {
         self.frames.get(frame as usize)?.get(node as usize).copied()
     }
+
+    /// Approximate in-memory footprint in bytes — the eviction denominator for
+    /// span sidecars (plans/concurrency-and-eviction.md Decision 6). Spans are
+    /// memory-only, so there is no serialized length to reuse; a structural
+    /// estimate (per-frame `Vec` headers + the packed `ByteSpan`s) is enough for
+    /// an approximate size-aware LRU.
+    pub(crate) fn approx_bytes(&self) -> u32 {
+        let spans: usize = self.frames.iter().map(|f| f.len()).sum();
+        let bytes = self.frames.len() * std::mem::size_of::<Vec<ByteSpan>>()
+            + spans * std::mem::size_of::<ByteSpan>();
+        bytes as u32
+    }
 }
 
 /// 1-based `(line, column)` of byte offset `off` in `source`. Column counts

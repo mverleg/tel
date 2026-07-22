@@ -136,6 +136,44 @@ impl<K: Eq + Hash, V, E> Cache<K, V, E> {
     }
 }
 
+impl<K: Eq + Hash + Clone, V, E> Cache<K, V, E> {
+    /// Shrink the cache in place to the entries whose key satisfies `keep`,
+    /// rebuilding the append-only backing so evicted entries actually release
+    /// their memory (the cache is otherwise grow-only — "to shrink, replace by
+    /// a shrunken version").
+    ///
+    /// Takes `&mut self` on purpose: with exclusive access no entry can be
+    /// mid-initialization, so every slot is terminal or empty and may be moved
+    /// or dropped soundly. This is the compaction window
+    /// plans/concurrency-and-eviction.md (Decision 2) relies on — reached only
+    /// between waves, once `run(&mut self)` has joined every spawned task.
+    ///
+    /// A key dropped here is never lost to correctness: the content store is
+    /// content-addressed with a disk tier, so a re-demand re-loads or recomputes
+    /// an equal answer. Eviction affects warmth only.
+    pub fn retain(&mut self, mut keep: impl FnMut(&K) -> bool) {
+        let old_lookup = std::mem::replace(&mut self.lookup, HashMap::new());
+        let old_data = std::mem::replace(&mut self.data, AppendOnlyVec::new());
+        // Move each slot into an `Option` so a survivor can be taken out by its
+        // old index without disturbing the others.
+        let mut slots: Vec<Option<ALazy<V, E>>> = old_data.into_iter().map(Some).collect();
+        // First pass (read-only scan): gather survivors with their old index.
+        let mut survivors: Vec<(K, usize)> = Vec::new();
+        old_lookup.scan(|k, &ix| {
+            if keep(k) {
+                survivors.push((k.clone(), ix));
+            }
+        });
+        // Second pass: move each survivor's value into the fresh backing.
+        for (k, ix) in survivors {
+            if let Some(slot) = slots.get_mut(ix).and_then(Option::take) {
+                let new_ix = self.data.push(slot);
+                let _ = self.lookup.insert(k, new_ix);
+            }
+        }
+    }
+}
+
 impl<K: Eq + Hash, V, E> Default for Cache<K, V, E> {
     fn default() -> Self {
         Self::new()
@@ -239,6 +277,46 @@ mod tests {
         // Each key should be initialized once
         assert_eq!(counter.load(Ordering::SeqCst), 5);
         assert_eq!(cache.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_cache_retain_shrinks_and_keeps_survivors() {
+        let mut cache = Cache::new();
+        for i in 0..6 {
+            cache.get(i, || async move { Ok::<_, ()>(i * 10) }).await;
+        }
+        assert_eq!(cache.len(), 6);
+
+        // Keep the even keys; the odd ones are compacted away.
+        cache.retain(|k| k % 2 == 0);
+        assert_eq!(cache.len(), 3);
+
+        // A survivor keeps its value and does *not* re-run init.
+        let survivor = cache.get(4, || async { Ok::<_, ()>(-1) }).await;
+        assert_eq!(*survivor, Ok(40));
+
+        // An evicted key is simply absent — it recomputes on next demand, and
+        // the fresh slot upholds init-once from here on.
+        let recomputed = cache.get(3, || async { Ok::<_, ()>(999) }).await;
+        assert_eq!(*recomputed, Ok(999));
+        assert_eq!(*cache.get(3, || async { Ok::<_, ()>(-1) }).await, Ok(999));
+        assert_eq!(cache.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn test_cache_retain_all_and_none() {
+        let mut cache = Cache::new();
+        for i in 0..4 {
+            cache.get(i, || async move { Ok::<_, ()>(i) }).await;
+        }
+        cache.retain(|_| true);
+        assert_eq!(cache.len(), 4);
+        cache.retain(|_| false);
+        assert_eq!(cache.len(), 0);
+        assert!(cache.is_empty());
+        // Still usable after being emptied.
+        assert_eq!(*cache.get(7, || async { Ok::<_, ()>(7) }).await, Ok(7));
+        assert_eq!(cache.len(), 1);
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
