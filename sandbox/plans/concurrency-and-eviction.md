@@ -1,10 +1,12 @@
 # Concurrency, dedup, and cache eviction — design
 
-Status: **direction decided 2026-07-10; Phases A–C implemented 2026-07-22
-(primitive + compaction; admission control on serialized `&mut self` runs;
-single-flight for resolve). Phase D partly done 2026-07-23 (byte budget wired
-into daemon config with GC-on-completion semantics; eviction observability;
-TinyLFU dropped) — per-kind cost-weight tuning remains, bench-gated.** Covers
+Status: **✅ done 2026-07-23. Phases A–C implemented 2026-07-22 (primitive +
+compaction; admission control on serialized `&mut self` runs; single-flight for
+resolve). Phase D done 2026-07-23 (byte budget wired into daemon config with
+GC-on-completion semantics; eviction observability; TinyLFU dropped). The only
+open follow-ups — per-kind cost-weight *tuning* and a measured-compute-cost
+signal — are explicitly bench-gated future work, not part of this effort; mono
+single-flight waits until mono parallelizes.** Covers
 roadmap
 [item 13](roadmap.md) (memory/disk cache tiering + eviction) and the two
 concurrency asks that turned out to share one mechanism with it: real
@@ -309,7 +311,8 @@ inline the tick in the `DashMap` value types and a small metadata slot in
   a separate effort. `Pending` is now *represented* as `is_initializing` at
   content-key granularity (supersedes the `BindingRecord.dirty` note), not as a
   hand-built binding-layer state.
-- **Phase D — policy tuning + observability. ◐ partly done (2026-07-23).**
+- **Phase D — policy tuning + observability. ✅ done (2026-07-23);
+  cost-weight tuning deferred (bench-gated).**
   - ✅ **Byte budget wired into daemon config.** The daemon reads
     `TEL_SANDBOX_CACHE_BUDGET` (bytes) and calls `set_cache_budget`; unset ⇒
     unbounded (unchanged). Env-configured (no schema), soft-mark semantics as
@@ -321,8 +324,10 @@ inline the tick in the `DashMap` value types and a small metadata slot in
     so a trace can show whether misses are cold or the result of eviction, and
     whether a hot dep is being repeatedly evicted and reloaded. That data is the
     gate for any frequency work.
-  - ☐ **Per-kind cost weights** — still the hardcoded constants
-    (`mono 8 / resolve 4 / parse 2 / spans 1`); tuning is bench-gated.
+  - ⏸ **Per-kind cost weights (deferred, bench-gated)** — ships with the
+    hardcoded constants (`mono 8 / resolve 4 / parse 2 / spans 1`), which are
+    correct and sufficient; only empirical *tuning* is left, and it needs a
+    bench to tune against.
   - **Measured compute cost (considered 2026-07-23, deferred).** Timing the sync
     resolve/mono body with two `Instant::now()` calls is *cheap* — a vDSO
     `clock_gettime` is ~15–25 ns on a TSC clocksource, so ~40 ns per **computed**
