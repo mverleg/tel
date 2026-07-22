@@ -1,8 +1,8 @@
 # Concurrency, dedup, and cache eviction — design
 
-Status: **direction decided 2026-07-10; Phase A implemented 2026-07-22
-(primitive + compaction, proven in isolation); Phases B–D not yet started.**
-Covers roadmap
+Status: **direction decided 2026-07-10; Phases A–B implemented 2026-07-22
+(primitive + compaction, and admission control on serialized `&mut self`
+runs); Phases C–D not yet started.** Covers roadmap
 [item 13](roadmap.md) (memory/disk cache tiering + eviction) and the two
 concurrency asks that turned out to share one mechanism with it: real
 **parallel queries** with a represented **`Pending`** state, and **input
@@ -237,9 +237,22 @@ inline the tick in the `DashMap` value types and a small metadata slot in
   budget, an evicted entry re-loads from disk, compaction drops the cold set,
   `spans` evicts first. The metadata-location question of Decision 7 was
   settled the leaning way (uniform side `DashMap`).
-- **Phase B — admission control.** The scheduler queue + "don't start over
-  budget → compact first" loop (Decision 3). Test: memory-pressured run enqueues
-  and compacts instead of growing unbounded; clients block, never drop.
+- **Phase B — admission control. ✅ done (2026-07-22).** Realized on today's
+  serialized one-wave-at-a-time model: `Compiler::run(&mut self)` already
+  serializes top-level requests, so the caller's ordered `.await`s *are* the
+  queue (enqueue-and-wait, never drop) and no separate scheduler task is needed.
+  Each wave entry (`run_mode`, `codegen_python`) calls `gate_on_budget`: if a
+  `Compiler` byte budget (`set_cache_budget`) is set and `cache_bytes()` exceeds
+  it, compact *before* starting — reclaiming `&mut Global` via `Arc::get_mut`,
+  which succeeds precisely because the previous wave joined every spawned task.
+  Default budget is `None` (unbounded, unchanged behavior). Tests
+  (`tests/admission.rs`): a tight budget evicts between waves and forces
+  recompute (warmth-only — answer unchanged); a budget bounds the resident set
+  across distinct runs while the unbudgeted cache accumulates everything;
+  clearing the budget stops eviction. *Note:* this is admission control for the
+  single-`Compiler`, one-wave model; the explicit dequeue loop of Decision 3
+  only becomes necessary if concurrent submitters or multiple compilers are
+  added later.
 - **Phase C — single-flight for derived kinds.** Route `resolve`/`mono` through
   the `async-lazy` `Cache` primitive; make them async; keep the existing
   `tokio::spawn` + `Arc<Global>` + owned-results parallelism (Decision 5). Test:

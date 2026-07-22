@@ -127,6 +127,13 @@ fn print_dependency_tree(ctx: &RootContext) {
 /// spawned tasks finish; nothing is leaked.
 pub struct Compiler {
     core: Arc<Global>,
+    /// Optional cache byte budget (plans/concurrency-and-eviction.md Decision 3,
+    /// admission control). `None` (the default) means unbounded — the cache
+    /// only ever grows, as before Phase B. When set, each wave *gates its
+    /// start*: if the store is over budget, it compacts first (never mid-wave),
+    /// so clients see enqueue-and-wait under memory pressure, never a dropped
+    /// request. The serialized `&mut self` runs are themselves the queue.
+    budget: Option<u64>,
 }
 
 impl Compiler {
@@ -143,7 +150,7 @@ impl Compiler {
     /// fragmentation). Present so the setting threads end-to-end and a real
     /// codegen query can later declare it.
     pub fn new_with_flavors(printer: Arc<dyn Printer>, flavors: Flavors) -> Compiler {
-        Compiler { core: Arc::new(Global::new(printer, flavors)) }
+        Compiler { core: Arc::new(Global::new(printer, flavors)), budget: None }
     }
 
     /// The flavor environment this compiler runs under.
@@ -165,7 +172,46 @@ impl Compiler {
     pub fn with_disk_cache(printer: Arc<dyn Printer>, cache_dir: &std::path::Path) -> Result<Compiler, Error> {
         let core = Global::with_disk_cache(printer, cache_dir)
             .map_err(|e| Error::Io(cache_dir.display().to_string(), std::io::Error::other(e)))?;
-        Ok(Compiler { core: Arc::new(core) })
+        Ok(Compiler { core: Arc::new(core), budget: None })
+    }
+
+    /// Set the cache byte budget for admission control
+    /// (plans/concurrency-and-eviction.md Decision 3). From the next wave on,
+    /// a run whose content store exceeds `bytes` compacts down to it *before*
+    /// starting (size-aware LRU, `spans` first-out). Eviction is warmth-only —
+    /// an evicted entry re-loads from disk or recomputes an equal answer — so a
+    /// budget only trades cache warmth for bounded memory, never correctness.
+    pub fn set_cache_budget(&mut self, bytes: u64) {
+        self.budget = Some(bytes);
+    }
+
+    /// Remove the cache byte budget: the cache grows unbounded again (the
+    /// default). Does not evict what is already resident.
+    pub fn clear_cache_budget(&mut self) {
+        self.budget = None;
+    }
+
+    /// Current total recorded size of the content store, in bytes. The quantity
+    /// the budget gate compares against; approximate, like the per-entry sizes.
+    pub fn cache_bytes(&self) -> u64 {
+        self.core.cache_bytes()
+    }
+
+    /// Admission-control gate (Decision 3): if a budget is set and the store is
+    /// over it, compact down *before* the wave starts. Runs between waves, where
+    /// `&mut self` proves the previous wave joined all its spawned tasks, so
+    /// `Arc::get_mut` reclaims exclusive access to the core. If a clone is
+    /// somehow still live the compaction is skipped — safe, since eviction only
+    /// ever affects warmth.
+    fn gate_on_budget(&mut self) {
+        let Some(budget) = self.budget else { return };
+        if self.core.cache_bytes() <= budget {
+            return;
+        }
+        match Arc::get_mut(&mut self.core) {
+            Some(core) => core.compact(budget),
+            None => log::warn!("cache over budget but core still shared; skipping compaction"),
+        }
     }
 
     /// Compile and execute `path`, reusing anything already cached from previous
@@ -245,6 +291,9 @@ impl Compiler {
     }
 
     async fn run_mode(&mut self, path: &str, show_deps: bool, mode: PullMode) -> Result<(), Error> {
+        // Admission control: gate the wave's *start* on the byte budget, so the
+        // compaction happens now (between waves, sole owner) rather than mid-run.
+        self.gate_on_budget();
         let ctx = RootContext::new(self.core.clone());
         let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
         ctx.execute(exec_id, mode).await
@@ -273,6 +322,7 @@ impl Compiler {
     /// (`src/codegen.rs`) instead of the interpreter, so this produces source
     /// text and runs none of the program's side effects.
     pub async fn codegen_python(&mut self, path: &str) -> Result<String, Error> {
+        self.gate_on_budget();
         let ctx = RootContext::new(self.core.clone());
         let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
         ctx.codegen_python(exec_id, PullMode::Reconcile).await

@@ -334,6 +334,14 @@ impl ContentStore {
         self.meta.retain(|k, _| kept.contains(k));
     }
 
+    /// Total recorded size of all live entries, in bytes — the quantity the
+    /// admission-control gate (plans/concurrency-and-eviction.md Decision 3)
+    /// compares against the byte budget. Approximate, like the per-entry sizes
+    /// it sums; read barrier-free.
+    pub fn cache_bytes(&self) -> u64 {
+        self.meta.iter().map(|r| r.value().size as u64).sum()
+    }
+
     /// Number of distinct parse answers stored (by content key).
     pub fn parse_len(&self) -> usize {
         self.parse.len()

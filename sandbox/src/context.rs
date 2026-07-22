@@ -218,6 +218,21 @@ impl Global {
         self.flavors
     }
 
+    /// Total recorded bytes across every content-store table — what the
+    /// admission-control gate compares against the byte budget
+    /// (plans/concurrency-and-eviction.md Decision 3).
+    pub fn cache_bytes(&self) -> u64 {
+        self.store.cache_bytes()
+    }
+
+    /// Compact the content store to `budget_bytes` (size-aware LRU eviction,
+    /// Decision 2 + 6). `&mut self`: reachable only between waves, when the
+    /// `Compiler` is the sole owner and `Arc::get_mut` yields exclusive access —
+    /// which is exactly when no borrow into the tables is live.
+    pub fn compact(&mut self, budget_bytes: u64) {
+        self.store.compact(budget_bytes);
+    }
+
     /// Number of distinct source contents parsed and cached so far (by digest).
     /// Lets callers observe cross-run cache reuse: an unchanged or reverted file
     /// does not grow this count on a subsequent run.
