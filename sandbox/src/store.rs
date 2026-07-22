@@ -367,29 +367,31 @@ impl ContentStore {
     /// via its `retain` rebuild; the `DashMap` tables via `retain`. Eviction is
     /// warmth-only — an evicted entry re-loads from disk or recomputes an equal
     /// answer — so it can never change a result.
-    pub fn compact(&mut self, budget_bytes: u64) {
-        // Snapshot metadata: (key, size, priority). Total first, to bail cheaply
-        // when already under budget.
-        let mut entries: Vec<(ContentKey, u64, u64)> = Vec::with_capacity(self.meta.len());
+    ///
+    /// Returns the entries it evicted — `(key, kind, size)` — so the caller can
+    /// trace them (`step-trace`); empty when nothing was over budget.
+    pub fn compact(&mut self, budget_bytes: u64) -> Vec<(ContentKey, QueryKind, u32)> {
+        // Snapshot metadata: (key, kind, size, priority). Total first, to bail
+        // cheaply when already under budget.
+        let mut entries: Vec<(ContentKey, QueryKind, u32, u64)> = Vec::with_capacity(self.meta.len());
         let mut total: u64 = 0;
         for r in self.meta.iter() {
             let m = r.value();
-            let size = m.size as u64;
             let last = m.last_used.load(Ordering::Relaxed);
-            total = total.saturating_add(size);
-            entries.push((*r.key(), size, keep_priority(last, m.kind, m.size)));
+            total = total.saturating_add(m.size as u64);
+            entries.push((*r.key(), m.kind, m.size, keep_priority(last, m.kind, m.size)));
         }
         if total <= budget_bytes {
-            return;
+            return Vec::new();
         }
 
         // Keep highest-priority entries first, packing until the budget is full.
-        entries.sort_unstable_by(|a, b| b.2.cmp(&a.2));
+        entries.sort_unstable_by(|a, b| b.3.cmp(&a.3));
         let mut kept: HashSet<ContentKey> = HashSet::with_capacity(entries.len());
         let mut used: u64 = 0;
-        for (key, size, _pri) in &entries {
-            if used + size <= budget_bytes {
-                used += size;
+        for (key, _kind, size, _pri) in &entries {
+            if used + *size as u64 <= budget_bytes {
+                used += *size as u64;
                 kept.insert(*key);
             }
         }
@@ -400,6 +402,11 @@ impl ContentStore {
         self.mono.retain(|k, _| kept.contains(k));
         self.spans.retain(|k, _| kept.contains(k));
         self.meta.retain(|k, _| kept.contains(k));
+
+        entries.into_iter()
+            .filter(|(key, _, _, _)| !kept.contains(key))
+            .map(|(key, kind, size, _)| (key, kind, size))
+            .collect()
     }
 
     /// Total recorded size of all live entries, in bytes — the quantity the

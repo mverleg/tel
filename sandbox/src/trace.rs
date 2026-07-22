@@ -102,6 +102,38 @@ mod enabled {
             }
         }
 
+        /// Record that `key` — a `kind` entry of `size` bytes — was dropped by
+        /// compaction. Emits an `evict` line (with the entry's age at eviction)
+        /// and forgets the key's stored insertion instant, so if it is later
+        /// recomputed it is timed as the fresh entry it then is. Pairing this
+        /// with the per-step `hit`/`miss` lines is what lets a trace tell a cold
+        /// miss apart from a re-miss on an evicted-then-reloaded entry.
+        pub fn evict(&self, key: ContentKey, kind: &'static str, size: u32) {
+            let age_us = self.inserts.remove(&key.raw()).map(|(_, at)| at.elapsed().as_micros() as u64);
+            self.emit(json!({
+                "event": "evict",
+                "seq": self.seq.fetch_add(1, Ordering::Relaxed),
+                "kind": kind,
+                "key": format!("{:032x}", key.raw()),
+                "size": size,
+                "age_us": age_us,
+                "t_us": self.epoch.elapsed().as_micros() as u64,
+            }));
+        }
+
+        /// Summary of one compaction pass: how many entries were evicted, how
+        /// many bytes that freed, and the budget it compacted to.
+        pub fn compaction(&self, evicted: usize, bytes_freed: u64, budget: u64) {
+            self.emit(json!({
+                "event": "compaction",
+                "seq": self.seq.fetch_add(1, Ordering::Relaxed),
+                "evicted": evicted,
+                "bytes_freed": bytes_freed,
+                "budget": budget,
+                "t_us": self.epoch.elapsed().as_micros() as u64,
+            }));
+        }
+
         fn emit(&self, line: serde_json::Value) {
             let Some(out) = &self.out else { return };
             let mut w = out.lock().unwrap();
@@ -224,6 +256,12 @@ mod disabled {
         pub fn span(&self, _kind: &'static str, _logical: impl FnOnce() -> String) -> StepSpan {
             StepSpan
         }
+
+        #[inline(always)]
+        pub fn evict(&self, _key: ContentKey, _kind: &'static str, _size: u32) {}
+
+        #[inline(always)]
+        pub fn compaction(&self, _evicted: usize, _bytes_freed: u64, _budget: u64) {}
     }
 
     /// No-op span, see [`StepTrace`].

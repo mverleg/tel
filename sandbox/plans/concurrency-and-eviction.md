@@ -185,6 +185,30 @@ per-entry **size** is the denominator, not just one signal.
   matters mostly **disk-off**; with disk on, a miss is a cheap uniform LMDB read
   that collapses the cost differences, so cost stays a coarse per-kind weight.
 
+  **TinyLFU: decided *not* to build (2026-07-22).** Not now, and possibly never
+  here — gated on a benchmark actually showing recency-only losing hot deps,
+  which we don't have. Reasoning recorded so it isn't re-litigated:
+  - *No evidence.* The whole motivation is speculative until a workload
+    demonstrates thrash. The eviction trace (see below) is the way to find out;
+    build the signal only if the trace shows it.
+  - *The disk tier caps the downside of LRU's mistakes.* A mispredicted eviction
+    costs a re-load, not a recompute, so protecting an expensive hot dep buys
+    much less than it would disk-off.
+  - *It's tuning-heavy with nothing to tune against* (sketch dimensions, decay
+    rate, admission window/threshold) — picking those blind risks a policy worse
+    than the LRU it replaces.
+  - *On the classic halving pass vs. lazy decay:* TinyLFU halves eagerly only
+    because its counters are 4-bit cells in a **shared** Count-Min sketch, where
+    a per-cell generation/timestamp would blow up the memory that is the sketch's
+    entire reason to exist. That constraint does **not** apply here: `EntryMeta`
+    is already a **per-key** side table with `last_used` and a global clock, so
+    if frequency is ever wanted the right first step is a small per-key `freq`
+    field decayed *lazily* by generation-difference (`freq >>= clock_now −
+    freq_stamp`) — no sweep, and it can ride the existing between-waves
+    compaction window rather than a background "active phase." A shared sketch
+    (which additionally remembers *evicted* keys' frequency, for re-admission)
+    is a later escalation only if per-key proves insufficient.
+
 The v1 target is **size-aware LRU on a global byte budget with a per-kind cost
 weight** — the GDSF value density `(reaccess-likelihood × cost) / size`
 approximated by recency.
@@ -278,8 +302,15 @@ inline the tick in the `DashMap` value types and a small metadata slot in
   a separate effort. `Pending` is now *represented* as `is_initializing` at
   content-key granularity (supersedes the `BindingRecord.dirty` note), not as a
   hand-built binding-layer state.
-- **Phase D — policy tuning.** Per-kind cost weights, then TinyLFU admission if
-  benches show hot-dep thrash. Wire the byte budget into daemon config.
+- **Phase D — policy tuning + observability.** Per-kind cost weights; wire the
+  byte budget into daemon config. **TinyLFU is dropped** (see Decision 6) unless
+  a bench proves hot-dep thrash — and the way to prove it is the eviction trace:
+  the `step-trace` feature already logs per-step cache **hit/miss** (key hash,
+  age, fingerprint, timing); it now also emits an **`evict`** event per compacted
+  entry (kind, key hash, size, age) plus a **`compaction`** summary (evicted
+  count, bytes freed, budget) — so a trace can show whether misses are cold or
+  the result of eviction, and whether a hot dep is being repeatedly evicted and
+  reloaded. That data is the gate for any frequency work.
 
 ## Invariants preserved
 

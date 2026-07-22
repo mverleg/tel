@@ -129,6 +129,18 @@ pub struct Global {
     printer: Arc<dyn Printer>,
 }
 
+/// Trace label for a query kind — matches the `kind` strings the step spans
+/// use, so `evict` lines line up with the `step` lines of the same kind.
+fn query_kind_name(kind: QueryKind) -> &'static str {
+    match kind {
+        QueryKind::Parse => "parse",
+        QueryKind::Resolve => "resolve",
+        QueryKind::Mono => "mono",
+        QueryKind::Exec => "exec",
+        QueryKind::Spans => "spans",
+    }
+}
+
 /// Render a caught panic payload for the non-terminal `Panicked` variants.
 fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
     if let Some(s) = payload.downcast_ref::<&str>() {
@@ -229,8 +241,21 @@ impl Global {
     /// Decision 2 + 6). `&mut self`: reachable only between waves, when the
     /// `Compiler` is the sole owner and `Arc::get_mut` yields exclusive access —
     /// which is exactly when no borrow into the tables is live.
+    ///
+    /// Traces each evicted entry and a compaction summary under `step-trace`
+    /// (no-ops otherwise), so an eviction shows up in the same stream as the
+    /// per-step hit/miss lines.
     pub fn compact(&mut self, budget_bytes: u64) {
-        self.store.compact(budget_bytes);
+        let evicted = self.store.compact(budget_bytes);
+        if evicted.is_empty() {
+            return;
+        }
+        let mut freed: u64 = 0;
+        for (key, kind, size) in &evicted {
+            freed += *size as u64;
+            self.trace.evict(*key, query_kind_name(*kind), *size);
+        }
+        self.trace.compaction(evicted.len(), freed, budget_bytes);
     }
 
     /// Number of distinct source contents parsed and cached so far (by digest).
