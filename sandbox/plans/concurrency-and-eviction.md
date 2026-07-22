@@ -1,8 +1,8 @@
 # Concurrency, dedup, and cache eviction — design
 
-Status: **direction decided 2026-07-10; Phases A–B implemented 2026-07-22
-(primitive + compaction, and admission control on serialized `&mut self`
-runs); Phases C–D not yet started.** Covers roadmap
+Status: **direction decided 2026-07-10; Phases A–C implemented 2026-07-22
+(primitive + compaction; admission control on serialized `&mut self` runs;
+single-flight for resolve). Phase D not yet started.** Covers roadmap
 [item 13](roadmap.md) (memory/disk cache tiering + eviction) and the two
 concurrency asks that turned out to share one mechanism with it: real
 **parallel queries** with a represented **`Pending`** state, and **input
@@ -220,7 +220,8 @@ inline the tick in the `DashMap` value types and a small metadata slot in
 - The `BindingRecord.dirty` note in `src/store.rs` that `Pending(owner,
   wakers)` is "deliberately not represented" — it becomes represented, but as
   `ALazy::is_initializing` in the content store (Decision 4), not in the binding
-  layer. Update that note rather than the layer.
+  layer. ✅ note updated (Phase C): resolve now single-flights through the same
+  primitive, so `Pending` is a content-key state for parse and resolve alike.
 - The TODO "`Pending` node state" bullet (concurrent query waves now exist).
 - Roadmap item 13 (eviction) and item 16 (scope leak) fold into this doc.
 
@@ -253,12 +254,30 @@ inline the tick in the `DashMap` value types and a small metadata slot in
   single-`Compiler`, one-wave model; the explicit dequeue loop of Decision 3
   only becomes necessary if concurrent submitters or multiple compilers are
   added later.
-- **Phase C — single-flight for derived kinds.** Route `resolve`/`mono` through
-  the `async-lazy` `Cache` primitive; make them async; keep the existing
-  `tokio::spawn` + `Arc<Global>` + owned-results parallelism (Decision 5). Test:
-  concurrent duplicate demands for one content key compute once (coalesced);
-  panic in a claim reverts it (already `async-lazy`'s behavior) and leaves no
-  poisoned `Pending`.
+- **Phase C — single-flight for derived kinds. ✅ resolve done (2026-07-22);
+  mono deferred with rationale.** Added `async-lazy`
+  `Cache::get_or_init_abortable` (+ `ALazy::get_or_init_abortable`, `is_present`,
+  `Cache::peek`): the claim/await primitive extended with an **abort** outcome
+  so `init` can return a terminal answer (cache + single-flight it) *or* abort
+  (revert the claim, cache nothing) — which is how a non-terminal failure (a
+  caught panic at the recompute boundary) is kept out of the store. The resolve
+  table became `Cache<ContentKey, ResolveEntry, ()>`; `resolve_one` routes its
+  hit peek, terminal-error stores, and body compute through
+  `resolve_peek`/`resolve_store_terminal`/`resolve_get_or_compute`. Concurrent
+  demands for one resolve key now coalesce (owned-results parallelism from
+  Decision 5 unchanged); `computed_resolves` counts real computes, not coalesced
+  waiters. `Cache::len` now counts only *terminal* slots (an aborted claim
+  leaves an empty slot in the append-only backing). Tests: `async-lazy`
+  `cache::tests` (coalesce-once, abort-reverts, waiter-takes-over-after-abort,
+  peek); `tests/single_flight.rs` (diamond import resolves the shared dep once
+  on a multi-threaded runtime); the existing panic-safety test still holds
+  (a panicking resolve aborts the claim, poisons nothing, node stays dirty).
+  *Mono deferred:* it is a serial per-wave worklist with no concurrent duplicate
+  demands (already deduped by `mono_registry` + its queue), so single-flight
+  would add async cost for zero coalescing until mono itself is parallelized —
+  a separate effort. `Pending` is now *represented* as `is_initializing` at
+  content-key granularity (supersedes the `BindingRecord.dirty` note), not as a
+  hand-built binding-layer state.
 - **Phase D — policy tuning.** Per-kind cost weights, then TinyLFU admission if
   benches show hot-dep thrash. Wire the byte budget into daemon config.
 

@@ -64,14 +64,20 @@ impl<K: Eq + Hash, V, E> Cache<K, V, E> {
         }
     }
 
-    /// Get the number of entries in the cache.
+    /// The number of cached terminal entries.
+    ///
+    /// Counts only slots holding an actual value (success or cached error), not
+    /// slots that were claimed and then released — a cancelled, panicked, or
+    /// aborted [`get_or_init_abortable`](Cache::get_or_init_abortable) leaves an
+    /// allocated but empty slot in the append-only backing, and that is not a
+    /// cached answer. O(n) in the slot count; not a hot path.
     pub fn len(&self) -> usize {
-        self.data.len()
+        self.data.iter().filter(|slot| slot.is_present()).count()
     }
 
-    /// Check if the cache is empty.
+    /// Check if the cache holds no terminal entries.
     pub fn is_empty(&self) -> bool {
-        self.data.len() == 0
+        !self.data.iter().any(|slot| slot.is_present())
     }
 }
 
@@ -119,6 +125,41 @@ impl<K: Eq + Hash, V, E> Cache<K, V, E> {
 
         // Initialize the value at this index (or wait if another task is doing it)
         self.data[ix].get_or_init(init).await
+    }
+
+    /// Single-flight get where `init` may **abort** rather than cache a value —
+    /// the keyed analogue of [`ALazy::get_or_init_abortable`]. `Ok(result)` is
+    /// stored terminally; `Err(abort)` reverts the claim (waiters re-claim),
+    /// caches nothing, and returns the abort. Lets a content store single-flight
+    /// terminal answers while leaving non-terminal failures uncached
+    /// (plans/concurrency-and-eviction.md Decision 4).
+    pub async fn get_or_init_abortable<F, Fut, A>(&self, key: K, init: F) -> Result<&Result<V, E>, A>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<Result<V, E>, A>>,
+    {
+        if let Some(ix) = self.lookup.read_async(&key, |_, &ix| ix).await {
+            return self.data[ix].get_or_init_abortable(init).await;
+        }
+        let ix = match self.lookup.entry_async(key).await {
+            scc::hash_map::Entry::Occupied(occupied) => *occupied.get(),
+            scc::hash_map::Entry::Vacant(vacant) => {
+                let new_ix = self.data.push(ALazy::new());
+                vacant.insert_entry(new_ix);
+                new_ix
+            }
+        };
+        self.data[ix].get_or_init_abortable(init).await
+    }
+
+    /// Peek at a key without claiming or initializing it: returns the cached
+    /// terminal value if one is present, else `None` (including while another
+    /// task is mid-initialization). A lock-free fast-path read — the same one
+    /// `get` uses on a hit — so a caller can serve an existing answer without
+    /// entering the single-flight claim.
+    pub fn peek(&self, key: &K) -> Option<&Result<V, E>> {
+        let ix = self.lookup.read(key, |_, &ix| ix)?;
+        self.data[ix].get()
     }
 
     /// Get a cached value with arguments that implement HasId.
@@ -317,6 +358,101 @@ mod tests {
         // Still usable after being emptied.
         assert_eq!(*cache.get(7, || async { Ok::<_, ()>(7) }).await, Ok(7));
         assert_eq!(cache.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_abortable_caches_terminal_reverts_abort() {
+        let cache: Cache<i32, i32, ()> = Cache::new();
+
+        // A terminal answer is cached like `get`.
+        let ok: Result<_, &str> = cache
+            .get_or_init_abortable(1, || async { Ok(Ok::<_, ()>(42)) })
+            .await;
+        assert_eq!(*ok.unwrap(), Ok(42));
+        assert_eq!(cache.len(), 1);
+
+        // An abort caches nothing and hands the abort back.
+        let aborted: Result<_, &str> = cache
+            .get_or_init_abortable(2, || async { Err("nope") })
+            .await;
+        assert_eq!(aborted.err(), Some("nope"));
+        assert!(cache.peek(&2).is_none(), "aborted key left uncached");
+
+        // The same key can succeed on a later attempt (the claim was released).
+        let retry: Result<_, &str> = cache
+            .get_or_init_abortable(2, || async { Ok(Ok::<_, ()>(7)) })
+            .await;
+        assert_eq!(*retry.unwrap(), Ok(7));
+        assert_eq!(cache.peek(&2).map(|r| *r), Some(Ok(7)));
+    }
+
+    #[tokio::test]
+    async fn test_abortable_coalesces_concurrent_demands() {
+        // Two concurrent demands for one key run init exactly once.
+        let cache: Arc<Cache<i32, i32, ()>> = Arc::new(Cache::new());
+        let counter = Arc::new(AtomicUsize::new(0));
+
+        let mut handles = Vec::new();
+        for _ in 0..8 {
+            let cache = cache.clone();
+            let counter = counter.clone();
+            handles.push(tokio::spawn(async move {
+                let r: Result<_, ()> = cache
+                    .get_or_init_abortable(1, || async {
+                        counter.fetch_add(1, Ordering::SeqCst);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                        Ok(Ok::<_, ()>(99))
+                    })
+                    .await;
+                *r.unwrap()
+            }));
+        }
+        for h in handles {
+            assert_eq!(h.await.unwrap(), Ok(99));
+        }
+        assert_eq!(counter.load(Ordering::SeqCst), 1, "init ran once for all demands");
+    }
+
+    #[tokio::test]
+    async fn test_abortable_waiter_takes_over_after_abort() {
+        // A waiter parked behind an aborting claimer re-claims and succeeds.
+        let cache: Arc<Cache<i32, i32, ()>> = Arc::new(Cache::new());
+
+        let leader_cache = cache.clone();
+        let leader = tokio::spawn(async move {
+            let r: Result<_, &str> = leader_cache
+                .get_or_init_abortable(1, || async {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+                    Err("leader aborts")
+                })
+                .await;
+            r.err()
+        });
+
+        // Give the leader time to claim, then park a waiter behind it.
+        tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+        let waiter_cache = cache.clone();
+        let waiter = tokio::spawn(async move {
+            let r: Result<_, &str> = waiter_cache
+                .get_or_init_abortable(1, || async { Ok(Ok::<_, ()>(123)) })
+                .await;
+            *r.unwrap()
+        });
+
+        assert_eq!(leader.await.unwrap(), Some("leader aborts"));
+        let got = tokio::time::timeout(tokio::time::Duration::from_secs(1), waiter)
+            .await
+            .expect("waiter hung after leader aborted")
+            .unwrap();
+        assert_eq!(got, Ok(123));
+    }
+
+    #[tokio::test]
+    async fn test_peek_sees_only_terminal_values() {
+        let cache: Cache<i32, i32, ()> = Cache::new();
+        assert!(cache.peek(&1).is_none());
+        cache.get(1, || async { Ok::<_, ()>(5) }).await;
+        assert_eq!(cache.peek(&1).map(|r| *r), Some(Ok(5)));
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]

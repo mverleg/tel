@@ -567,7 +567,7 @@ impl Global {
                 if let Some(record) = this.bindings.get(&StepId::Resolve(id)) {
                     if !record.dirty {
                         if let Some(key) = record.content_key {
-                            if let Some(entry) = this.store.resolve_get(&key, &this.interner) {
+                            if let Some(entry) = this.store.resolve_peek(key, &this.interner).await {
                                 debug!("CoreContext::resolve_one trusting clean binding for {:?}", id);
                                 span.cache_hit(key);
                                 span.set_fingerprint(|| Some(entry.fingerprint));
@@ -601,7 +601,7 @@ impl Global {
                     let err = Located::bare(ResolveError::ParseError(path_str, e));
                     let fp = Fingerprint::of_err(&err, &sctx);
                     let key = Self::resolve_key(&sctx, fq, parse_fp, &[]);
-                    let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(err), fingerprint: fp }, &this.interner);
+                    let entry = this.store.resolve_store_terminal(key, ResolveEntry { answer: Err(err), fingerprint: fp }, &this.interner).await;
                     span.cache_miss(key);
                     span.set_fingerprint(|| Some(entry.fingerprint));
                     return this.commit_resolve(id, key, entry);
@@ -624,7 +624,7 @@ impl Global {
                     let e = Located::bare(e);
                     let fp = Fingerprint::of_err(&e, &sctx);
                     let key = Self::resolve_key(&sctx, fq, parse_fp, &[]);
-                    let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(e), fingerprint: fp }, &this.interner);
+                    let entry = this.store.resolve_store_terminal(key, ResolveEntry { answer: Err(e), fingerprint: fp }, &this.interner).await;
                     span.cache_miss(key);
                     span.set_fingerprint(|| Some(entry.fingerprint));
                     return this.commit_resolve(id, key, entry);
@@ -701,20 +701,20 @@ impl Global {
                     return Err((err, None));
                 }
                 let key = Self::resolve_key(&sctx, fq, parse_fp, &deps);
-                if let Some(entry) = this.store.resolve_get(&key, &this.interner) {
+                if let Some(entry) = this.store.resolve_peek(key, &this.interner).await {
                     span.cache_hit(key);
                     span.set_fingerprint(|| Some(entry.fingerprint));
                     return this.commit_resolve(id, key, entry);
                 }
                 let fp = Fingerprint::of_err(&err, &sctx);
-                let entry = this.store.resolve_insert(key, ResolveEntry { answer: Err(err), fingerprint: fp }, &this.interner);
+                let entry = this.store.resolve_store_terminal(key, ResolveEntry { answer: Err(err), fingerprint: fp }, &this.interner).await;
                 span.cache_miss(key);
                 span.set_fingerprint(|| Some(entry.fingerprint));
                 return this.commit_resolve(id, key, entry);
             }
 
             let key = Self::resolve_key(&sctx, fq, parse_fp, &deps);
-            if let Some(entry) = this.store.resolve_get(&key, &this.interner) {
+            if let Some(entry) = this.store.resolve_peek(key, &this.interner).await {
                 debug!("CoreContext::resolve_one cache hit for {:?}", id);
                 span.cache_hit(key);
                 span.set_fingerprint(|| Some(entry.fingerprint));
@@ -722,58 +722,71 @@ impl Global {
             }
 
             debug!("CoreContext::resolve_one resolving {:?}", id);
-            this.computed_resolves.fetch_add(1, Ordering::Relaxed);
-            let ctx = ResolveContext { current: id, core: &this };
-            // The recompute boundary (docs/cache-invalidation-problem.md #8):
-            // a panic here is an accident of the run, not an answer. Catching
-            // it *before* the store insert and the binding commit means a
-            // panicking node writes nothing and its binding keeps whatever
-            // state it had — in a marked cone, that is dirty, so the next
-            // pull recomputes the full affected chain. The injected needle is
-            // test support for exactly that property.
-            let body_outcome = {
-                let needle = this.panic_on_resolve.lock().unwrap().clone();
-                catch_unwind(AssertUnwindSafe(|| {
-                    if let Some(needle) = &needle {
-                        let path_str = fq.path_str(&this.interner);
-                        if path_str.contains(needle.as_str()) {
-                            panic!("injected panic resolving {}", path_str);
+            // Single-flight the body compute on the content key (Decision 4):
+            // concurrent demands for one resolution coalesce onto this one run
+            // instead of racing (first-write-wins wasted the loser's work). The
+            // whole recompute — including the panic boundary — lives inside the
+            // claim's `init`, so it runs exactly once per key across demanders,
+            // and `computed_resolves` counts real computes (not coalesced
+            // waiters, not disk hits).
+            let compute = this.store.resolve_get_or_compute(key, &this.interner, || async {
+                this.computed_resolves.fetch_add(1, Ordering::Relaxed);
+                let ctx = ResolveContext { current: id, core: &this };
+                // The recompute boundary (docs/cache-invalidation-problem.md #8):
+                // a panic here is an accident of the run, not an answer. Caught
+                // *inside* `init` and surfaced as an abort, it reverts the claim
+                // (a waiter re-runs) and writes nothing — the binding keeps
+                // whatever state it had (dirty in a marked cone), so the next
+                // pull recomputes the affected chain. The injected needle is
+                // test support for exactly that property.
+                let body_outcome = {
+                    let needle = this.panic_on_resolve.lock().unwrap().clone();
+                    catch_unwind(AssertUnwindSafe(|| {
+                        if let Some(needle) = &needle {
+                            let path_str = fq.path_str(&this.interner);
+                            if path_str.contains(needle.as_str()) {
+                                panic!("injected panic resolving {}", path_str);
+                            }
                         }
+                        crate::resolve::resolve_body(&ctx, id, pre, &import_funcs)
+                    }))
+                };
+                let body_result = match body_outcome {
+                    Ok(result) => result,
+                    // Non-terminal (invariant 6): abort the claim, uncached.
+                    Err(payload) => return Err(panic_message(payload)),
+                };
+                let entry = match body_result {
+                    Ok((ast, table, registered)) => {
+                        let funcs: Vec<(FQ, FuncData)> = registered.into_iter()
+                            .map(|f| {
+                                let data = this.func_registry.get(&f)
+                                    .expect("resolve_body registered this function")
+                                    .clone();
+                                (f, data)
+                            })
+                            .collect();
+                        let answer = ResolveAnswer { ast, table, funcs };
+                        let fingerprint = Fingerprint::of_ok(&answer, &sctx);
+                        ResolveEntry { answer: Ok(answer), fingerprint }
                     }
-                    crate::resolve::resolve_body(&ctx, id, pre, &import_funcs)
-                }))
+                    // Body errors are deterministic in the inputs the key already
+                    // pins (parse answer + import answers), so they are terminal
+                    // answers (invariant 6), fingerprinted like successes.
+                    // Non-deterministic failures cannot come from the synchronous
+                    // body: IO lives in parse, and cycles/joins happen in the dep
+                    // recursion above (uncached).
+                    Err(e) => {
+                        let fingerprint = Fingerprint::of_err(&e, &sctx);
+                        ResolveEntry { answer: Err(e), fingerprint }
+                    }
+                };
+                Ok(entry)
+            }).await;
+            let entry = match compute {
+                Ok(entry) => entry,
+                Err(msg) => return Err((ResolveError::Panicked(msg).into(), None)),
             };
-            let body_result = match body_outcome {
-                Ok(result) => result,
-                // Non-terminal (invariant 6): propagate uncached, unbound.
-                Err(payload) => return Err((ResolveError::Panicked(panic_message(payload)).into(), None)),
-            };
-            let entry = match body_result {
-                Ok((ast, table, registered)) => {
-                    let funcs: Vec<(FQ, FuncData)> = registered.into_iter()
-                        .map(|f| {
-                            let data = this.func_registry.get(&f)
-                                .expect("resolve_body registered this function")
-                                .clone();
-                            (f, data)
-                        })
-                        .collect();
-                    let answer = ResolveAnswer { ast, table, funcs };
-                    let fingerprint = Fingerprint::of_ok(&answer, &sctx);
-                    ResolveEntry { answer: Ok(answer), fingerprint }
-                }
-                // Body errors are deterministic in the inputs the key already
-                // pins (parse answer + import answers), so they are terminal
-                // answers (invariant 6), fingerprinted like successes.
-                // Non-deterministic failures cannot come from the synchronous
-                // body: IO lives in parse, and cycles/joins happen in the dep
-                // recursion above (uncached).
-                Err(e) => {
-                    let fingerprint = Fingerprint::of_err(&e, &sctx);
-                    ResolveEntry { answer: Err(e), fingerprint }
-                }
-            };
-            let entry = this.store.resolve_insert(key, entry, &this.interner);
             span.cache_miss(key);
             span.set_fingerprint(|| Some(entry.fingerprint));
             this.commit_resolve(id, key, entry)

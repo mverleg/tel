@@ -116,10 +116,16 @@ pub struct ContentStore {
     parse: Cache<ContentKey, PreExpr, ParseError>,
     /// Resolve answers. Keyed on `hash(fq, parse fingerprint, import resolve
     /// fingerprints)` — Merkle-over-answers, so a hit is transitively valid by
-    /// construction. First-write-wins like `mono` (concurrent duplicate
-    /// resolutions of the same key compute equal answers; keeping the first
-    /// upholds append-only cheaply).
-    resolve: DashMap<ContentKey, ResolveEntry>,
+    /// construction. Behind an `async-lazy` [`Cache`] for single-flight
+    /// (plans/concurrency-and-eviction.md Decision 4): concurrent demands for
+    /// one content key claim/await a single computation instead of racing —
+    /// content-key coalescing that also *is* the append-only first-write-wins.
+    /// The cache value is the terminal [`ResolveEntry`] (a deterministic
+    /// `ResolveError` lives *inside* it, as `answer: Err(..)`); the `E` slot is
+    /// `()` and unused — non-terminal failures never reach the cache (a caught
+    /// panic aborts the claim via [`Cache::get_or_init_abortable`], caching
+    /// nothing).
+    resolve: Cache<ContentKey, ResolveEntry, ()>,
     /// Mono answers. The mono worklist is synchronous, so a plain map with
     /// first-write-wins semantics suffices; deterministic `TypeError`s are
     /// answers and are stored like successes.
@@ -150,7 +156,7 @@ impl ContentStore {
     pub fn new() -> ContentStore {
         ContentStore {
             parse: Cache::new(),
-            resolve: DashMap::new(),
+            resolve: Cache::new(),
             mono: DashMap::new(),
             spans: DashMap::new(),
             disk: None,
@@ -210,36 +216,92 @@ impl ContentStore {
         answer
     }
 
-    pub fn resolve_get(&self, key: &ContentKey, interner: &Interner) -> Option<ResolveEntry> {
-        if let Some(hit) = self.resolve.get(key) {
-            let entry = hit.clone();
-            self.stamp(*key, QueryKind::Resolve, || resolve_size(&entry, interner));
+    /// Peek at a resolve answer without entering the single-flight claim:
+    /// memory first, then a disk revival (which repopulates memory). Returns
+    /// `None` if absent everywhere — the caller then computes. Used for the
+    /// cache-hit fast paths (a clean watch binding, or a re-demand that already
+    /// has its answer) so a hit never claims.
+    ///
+    /// Implemented via the abortable primitive: the closure serves a disk hit
+    /// as a terminal value (revived into the cache) or *aborts* when absent,
+    /// which reverts the claim and caches nothing — so a peek-miss leaves the
+    /// key pristine for a subsequent compute.
+    pub async fn resolve_peek(&self, key: ContentKey, interner: &Interner) -> Option<ResolveEntry> {
+        // Pure memory peek: a lock-free read, and — crucially — no claim, so a
+        // miss allocates no slot (a peek-abort would otherwise litter the
+        // append-only backing with empty slots on every watch-mode miss).
+        if let Some(res) = self.resolve.peek(&key) {
+            let entry = res.as_ref().expect("resolve cache holds only Ok values").clone();
+            self.stamp(key, QueryKind::Resolve, || resolve_size(&entry, interner));
             return Some(entry);
         }
-        let revived = self.disk.as_ref()?.get_resolve(*key, interner)?;
-        // Populate memory; if a concurrent compute won the race meanwhile,
-        // keep it (equal by determinism — first write wins).
-        let entry = self.resolve.entry(*key).or_insert(revived).clone();
-        self.stamp(*key, QueryKind::Resolve, || resolve_size(&entry, interner));
+        // Memory miss: revive from disk if present, filling the slot terminally
+        // (single-flight; a concurrent winner is kept, equal by determinism).
+        let revived = self.disk.as_ref()?.get_resolve(key, interner)?;
+        let res = self.resolve.get(key, || async move { Ok::<ResolveEntry, ()>(revived) }).await;
+        let entry = res.as_ref().expect("resolve cache holds only Ok values").clone();
+        self.stamp(key, QueryKind::Resolve, || resolve_size(&entry, interner));
         Some(entry)
     }
 
-    /// Insert a resolve entry. Append-only: if the key is already present the
-    /// existing entry wins and is returned (see [`ContentStore::mono_insert`]).
-    /// Only the winning insert reaches disk — losers of the memory race never
-    /// enqueue, extending first-write-wins through the persistent tier.
-    pub fn resolve_insert(&self, key: ContentKey, entry: ResolveEntry, interner: &Interner) -> ResolveEntry {
-        let stored = match self.resolve.entry(key) {
-            Entry::Occupied(existing) => existing.get().clone(),
-            Entry::Vacant(slot) => {
-                if let Some(disk) = &self.disk {
-                    disk.put_resolve(key, &entry, interner);
+    /// Store a *terminal* resolve answer (a deterministic `Ok` or `Err`),
+    /// single-flighted and append-only: concurrent demands for `key` coalesce,
+    /// and if one is already stored it wins (first-write-wins, equal by
+    /// determinism). Only the winning insert reaches disk. Returns the stored
+    /// answer. For the deterministic error/short-circuit paths, which have no
+    /// panic risk of their own.
+    pub async fn resolve_store_terminal(&self, key: ContentKey, entry: ResolveEntry, interner: &Interner) -> ResolveEntry {
+        let outcome = self.resolve.get_or_init_abortable(key, || async move {
+            if let Some(disk) = &self.disk {
+                if let Some(hit) = disk.get_resolve(key, interner) {
+                    return Ok::<_, ()>(Ok::<ResolveEntry, ()>(hit));
                 }
-                slot.insert(entry).clone()
+                disk.put_resolve(key, &entry, interner);
             }
-        };
+            Ok::<_, ()>(Ok::<ResolveEntry, ()>(entry))
+        }).await;
+        let stored = outcome.expect("terminal store never aborts").as_ref()
+            .expect("resolve cache holds only Ok values").clone();
         self.stamp(key, QueryKind::Resolve, || resolve_size(&stored, interner));
         stored
+    }
+
+    /// Single-flight compute-and-store for a resolve body. Concurrent demands
+    /// for `key` share one run of `init`; a disk hit short-circuits it. `init`
+    /// returns the terminal [`ResolveEntry`], or `Err(msg)` to **abort** — a
+    /// caught panic at the recompute boundary, which is non-terminal: the claim
+    /// reverts (a waiter re-runs), nothing is cached, and `Err(msg)` comes back
+    /// so the caller can propagate it uncached (invariant 6). Only a fresh
+    /// compute writes through to disk.
+    pub async fn resolve_get_or_compute<F, Fut>(&self, key: ContentKey, interner: &Interner, init: F) -> Result<ResolveEntry, String>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<ResolveEntry, String>>,
+    {
+        let outcome = self.resolve.get_or_init_abortable(key, || async move {
+            if let Some(disk) = &self.disk {
+                if let Some(hit) = disk.get_resolve(key, interner) {
+                    return Ok(Ok::<ResolveEntry, ()>(hit));
+                }
+            }
+            match init().await {
+                Ok(entry) => {
+                    if let Some(disk) = &self.disk {
+                        disk.put_resolve(key, &entry, interner);
+                    }
+                    Ok(Ok(entry))
+                }
+                Err(abort) => Err(abort),
+            }
+        }).await;
+        match outcome {
+            Ok(res) => {
+                let entry = res.as_ref().expect("resolve cache holds only Ok values").clone();
+                self.stamp(key, QueryKind::Resolve, || resolve_size(&entry, interner));
+                Ok(entry)
+            }
+            Err(abort) => Err(abort),
+        }
     }
 
     pub fn mono_get(&self, key: &ContentKey, interner: &Interner) -> Option<MonoAnswer> {
@@ -259,7 +321,13 @@ impl ContentStore {
     /// changes (both values are pure functions of the key, so a race writes
     /// equal answers; keeping the first upholds the invariant cheaply). Disk
     /// write-through from the winning insert only, like
-    /// [`ContentStore::resolve_insert`].
+    /// [`ContentStore::resolve_store_terminal`].
+    ///
+    /// Still a plain `DashMap` (not single-flighted like resolve): the mono
+    /// worklist is a serial per-wave loop with no concurrent duplicate demands,
+    /// and it already dedups via the `mono_registry` and its queue — so routing
+    /// it through the async claim/await primitive would add async cost for no
+    /// coalescing until mono itself fans out across tasks.
     pub fn mono_insert(&self, key: ContentKey, answer: MonoAnswer, interner: &Interner) -> MonoAnswer {
         let stored = match self.mono.entry(key) {
             Entry::Occupied(existing) => existing.get().clone(),
@@ -328,7 +396,7 @@ impl ContentStore {
 
         // Drop everything not kept, across every table and the metadata itself.
         self.parse.retain(|k| kept.contains(k));
-        self.resolve.retain(|k, _| kept.contains(k));
+        self.resolve.retain(|k| kept.contains(k));
         self.mono.retain(|k, _| kept.contains(k));
         self.spans.retain(|k, _| kept.contains(k));
         self.meta.retain(|k, _| kept.contains(k));
@@ -416,12 +484,15 @@ pub struct BindingRecord {
     /// onto this layer as: no record = `Unknown`, `dirty: true` = `Dirty`
     /// (the record's key/fingerprint are the memo the red-green comparison
     /// runs against), `dirty: false` = `Verified`. `Pending` is deliberately
-    /// not represented here: single-flight for the async leaf lives inside
-    /// the `async-lazy` parse cache, runs on one compiler are serialized
-    /// (`Compiler::run` takes `&mut self`), and duplicate computation of a
-    /// derived step within one wave is benign by determinism (first-write-wins
-    /// in the content store) — so there is no waker machinery to build until
-    /// concurrent waves exist.
+    /// not a *binding-layer* state: it lives in the content store, keyed by
+    /// content key, as `async-lazy`'s `is_initializing` — the parse **and**
+    /// (since plans/concurrency-and-eviction.md Phase C) resolve caches
+    /// single-flight through the same claim/await primitive, so two logical
+    /// positions resolving to the same content key share one in-flight
+    /// computation. Keeping `Pending` at content-key granularity gives strictly
+    /// better dedup than a per-`StepId` waker state could, which is why no waker
+    /// machinery is built here. (Mono is still a serial worklist — no concurrent
+    /// duplicate demands within a wave — so it needs none either.)
     pub dirty: bool,
 }
 

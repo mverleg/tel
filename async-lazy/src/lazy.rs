@@ -56,6 +56,15 @@ impl<T, E> ALazy<T, E> {
         self.state.load(Ordering::Acquire) == INITIALIZING
     }
 
+    /// True once a terminal value (a success or a cached error) is stored.
+    /// Distinguishes a real cached entry from a slot that was claimed and then
+    /// released — a cancelled, panicked, or aborted initializer leaves the slot
+    /// allocated but empty, and such a slot is *not* a cached answer.
+    #[inline]
+    pub fn is_present(&self) -> bool {
+        matches!(self.state.load(Ordering::Acquire), FILLED | FAILED)
+    }
+
     /// Get or initialize the value.
     ///
     /// If the value is already initialized (success or failure), returns it immediately.
@@ -120,6 +129,79 @@ impl<T, E> ALazy<T, E> {
                         INITIALIZING => notified.await,
                         // Terminal, or reverted to EMPTY by a cancelled/panicked
                         // initializer: retry immediately (possibly claiming it ourselves).
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    /// Get or initialize the value, where `init` may **abort** instead of
+    /// producing a terminal answer.
+    ///
+    /// `init` returns `Result<Result<T, E>, A>`:
+    /// - `Ok(result)` is a terminal answer — stored and cached exactly as
+    ///   [`get_or_init`](ALazy::get_or_init) does (a returned inner `Err` is a
+    ///   terminal error and cached like a success).
+    /// - `Err(abort)` means *not an answer*: the claim reverts to empty (as if
+    ///   the initializer had been cancelled), waiters take over, and the abort
+    ///   is handed straight back to this caller. Nothing is cached.
+    ///
+    /// This is what lets a content store distinguish a terminal answer (cache
+    /// it, single-flight it) from a non-terminal failure such as a caught panic
+    /// (revert the claim, leave no poisoned `Pending`) — see
+    /// plans/concurrency-and-eviction.md Decision 4. As with `get_or_init`, a
+    /// panic or cancellation inside `init` also reverts the claim.
+    pub async fn get_or_init_abortable<F, Fut, A>(&self, init: F) -> Result<&Result<T, E>, A>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<Result<T, E>, A>>,
+    {
+        let mut init = Some(init);
+        loop {
+            // Fast path: already terminal.
+            match self.state.load(Ordering::Acquire) {
+                FILLED | FAILED => {
+                    return Ok(unsafe { (*self.value.get()).as_ref().unwrap() });
+                }
+                _ => {}
+            }
+
+            match self
+                .state
+                .compare_exchange(EMPTY, INITIALIZING, Ordering::Acquire, Ordering::Acquire)
+            {
+                Ok(_) => {
+                    // Same revert-on-drop discipline as get_or_init: a cancel or
+                    // panic below releases the claim. An explicit `Err(abort)`
+                    // releases it too, by simply *not* defusing the guard.
+                    let guard = RevertClaimOnDrop { lazy: self };
+                    let outcome = (init.take().expect("claim happens at most once"))().await;
+                    match outcome {
+                        Ok(result) => {
+                            std::mem::forget(guard);
+                            let final_state = match &result {
+                                Ok(_) => FILLED,
+                                Err(_) => FAILED,
+                            };
+                            unsafe {
+                                *self.value.get() = Some(result);
+                            }
+                            self.state.store(final_state, Ordering::Release);
+                            self.notify.notify_waiters();
+                            return Ok(unsafe { (*self.value.get()).as_ref().unwrap() });
+                        }
+                        // Non-terminal: drop `guard` to revert EMPTY + wake
+                        // waiters (one of them re-claims), and hand the abort back.
+                        Err(abort) => return Err(abort),
+                    }
+                }
+                Err(_) => {
+                    let notified = self.notify.notified();
+                    tokio::pin!(notified);
+                    notified.as_mut().enable();
+                    match self.state.load(Ordering::Acquire) {
+                        INITIALIZING => notified.await,
                         _ => {}
                     }
                 }
