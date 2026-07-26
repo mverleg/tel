@@ -24,9 +24,9 @@
 //! codegen only replaces the last phase.
 
 use crate::common::Interner;
-use crate::context::ExecContext;
-use crate::graph::{ExecId, MonoId, ResolveId};
-use crate::types::{BinOp, MExpr, Ty, Value};
+use crate::context::BackendCtx;
+use crate::graph::MonoId;
+use crate::types::{BinOp, MExpr, Value};
 use dashmap::DashMap;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
@@ -52,23 +52,15 @@ impl std::fmt::Display for CodegenError {
 
 impl std::error::Error for CodegenError {}
 
-/// Lower the program rooted at `path` to a standalone Python script.
-///
-/// Runs the exact front end `execute` runs — resolve the entry, then
-/// monomorphise from it, which populates `ctx.mono_registry()` with every
-/// reachable `(function, type)` instance — and then, instead of interpreting,
-/// emits one Python `def` per instance plus a `main()` driver.
-pub async fn generate_python(ctx: &ExecContext, path: ExecId) -> Result<String, CodegenError> {
-    let main_loc = path.main_loc.clone();
-    ctx.resolve_all(&[ResolveId { func_loc: main_loc.clone() }]).await
-        .map_err(|e| CodegenError::Compile(ctx.render_located(&e)))?;
-    // The entry point is called by no one, so — like the interpreter — its
-    // type parameter defaults to the numeric default, i64.
-    let entry = MonoId { func_loc: main_loc, ty: Ty::I64 };
-    ctx.mono(entry).map_err(|e| CodegenError::Compile(ctx.render_located(&e)))?;
-
+/// The Python codegen backend *body* (roadmap item 16): a pure `fn` over a
+/// borrowed [`BackendCtx`]. The shared front end (resolve + monomorphise) has
+/// already run in the async driver (`Global::gather_backend_inputs`),
+/// populating `ctx.mono_registry()` with every reachable `(function, type)`
+/// instance; this emits one Python `def` per instance plus a `main()` driver.
+/// A well-typed program always lowers, so the body cannot fail.
+pub fn generate_python(ctx: &BackendCtx<'_>, entry: MonoId) -> String {
     let gen = PyGen::new(ctx.interner(), ctx.mono_registry(), entry);
-    Ok(gen.emit_module())
+    gen.emit_module()
 }
 
 /// The whole emitter state: the shared interner (to render names for

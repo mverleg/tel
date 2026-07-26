@@ -2,15 +2,14 @@ use crate::types::MExpr;
 use crate::types::MonoFuncData;
 use crate::types::ExecuteError;
 use crate::types::BinOp;
-use crate::types::Ty;
 use crate::types::Value;
 use crate::types::VarId;
 use crate::common::Interner;
 use crate::Printer;
 use log::debug;
 use std::collections::HashMap;
-use crate::context::ExecContext;
-use crate::graph::{ExecId, MonoId, ResolveId};
+use crate::context::BackendCtx;
+use crate::graph::MonoId;
 use dashmap::DashMap;
 
 enum EvalResult {
@@ -182,34 +181,21 @@ impl<'a> Interpreter<'a> {
     }
 }
 
-pub async fn execute(ctx: &ExecContext, path: ExecId) -> Result<(), ExecuteError> {
-    // The backend flavor lands here (roadmap item 15): execute is the
-    // sandbox's codegen-analog, so opt-level is consumed at this level and
-    // never above it. No optimizer branches on it yet — this is the wiring
-    // endpoint a real codegen would read.
-    debug!("execute: starting for {:?} (opt-level {:?})", path, ctx.opt_level());
-    let my_main_func = path.main_loc.clone();
-    let reesolve_id = ResolveId { func_loc: my_main_func.clone() };
-    debug!("execute: resolving {:?}", reesolve_id);
-    // A compile error carries a structural locator; upgrade it to
-    // `path:line:col` here, on the error path, via the span sidecar — the happy
-    // path never demands one (plans/fast-mode.md).
-    ctx.resolve_all(&[reesolve_id]).await.map_err(|e| ExecuteError::Compile(ctx.render_located(&e)))?;
-    debug!("execute: resolved, now type checking and monomorphising");
-    // The entry point is not called by anyone, so its type parameter is just
-    // the default numeric type.
-    let entry = MonoId { func_loc: my_main_func, ty: Ty::I64 };
-    ctx.mono(entry).map_err(|e| ExecuteError::Compile(ctx.render_located(&e)))?;
-    debug!("execute: monomorphised, now evaluating");
+/// The interpreting backend *body* (roadmap item 16): a pure `fn` over a
+/// borrowed [`BackendCtx`]. Every dependency is already monomorphised into
+/// `ctx.mono_registry()` by the async driver (`Global::gather_backend_inputs`),
+/// so this neither pulls nor awaits — it walks the entry instance and produces
+/// side effects directly. The backend flavor (opt-level, roadmap item 15) is
+/// consumed here, the codegen-analog level. A fired `panic` has its coarse file
+/// path upgraded to `path:line:col` here, on the error path, via the span
+/// sidecar (plans/fast-mode.md) — the happy path demands none.
+pub fn interpret(ctx: &BackendCtx<'_>, entry: MonoId) -> Result<(), ExecuteError> {
+    debug!("interpret: starting for {:?} (opt-level {:?})", entry, ctx.opt_level());
     let my_ast = ctx.mono_registry().get(&entry)
         .expect("entry instance was just monomorphised")
         .ast.clone();
     let mut interpreter = Interpreter::new(ctx.mono_registry(), ctx.printer(), ctx.interner());
     if let Err(e) = interpreter.eval(&my_ast) {
-        // Upgrade a fired `panic` from its coarse file path to a span-accurate
-        // `path:line:col` now that the wave has unwound — demanding the span
-        // sidecar only on this error path keeps the happy path span-free
-        // (plans/fast-mode.md).
         return Err(match e {
             ExecuteError::Panic { source_location, frame, node } => {
                 let source_location = ctx.render_panic_location(&source_location, frame, node);
@@ -218,6 +204,6 @@ pub async fn execute(ctx: &ExecContext, path: ExecId) -> Result<(), ExecuteError
             other => other,
         });
     }
-    debug!("execute: completed successfully");
+    debug!("interpret: completed successfully");
     Ok(())
 }

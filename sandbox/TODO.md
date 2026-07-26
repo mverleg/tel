@@ -52,9 +52,30 @@ New dependencies need explicit approval first (project rule).
   sidecars, the always-on error-recovering parser, and the multi-output
   *record* with per-output fingerprints (this slice uses the
   recompute-on-demand sidecar policy).
-* **Roadmap Phase 4 hardening** — prevent ctx leak outside scope, lock-free
-  during compile, box deep recursive awaits, parse on a threadpool, minor
-  cleanups (`context.rs` visibility).
+* **Roadmap Phase 4 hardening** — ~~prevent ctx leak outside scope~~ (done,
+  see below), lock-free during compile, box deep recursive awaits, parse on a
+  threadpool, minor cleanups (`context.rs` visibility).
+  * ~~**Ctx-leak (item 16)**~~ — **done 2026-07-22.** Resolve/mono bodies were
+    already leak-safe (their `ResolveContext<'a>`/`MonoContext<'a>` borrow
+    `&Global` and are sync, so the borrow *is* the enforcement). Exec/codegen
+    were the holdout: the old `ExecContext` merged the driver role (the
+    up-front `resolve_all`+`mono` pulls, which spawn and need the `Arc`) with
+    the body role (sync interpret/emit, read-only), forcing an `Arc<Global>`
+    the body could clone out. Split along that line: `Global::execute_impl`/
+    `codegen_impl` gather deps async via the shared
+    `Global::gather_backend_inputs` (keeps `&Arc<Global>`), then invoke the
+    backend body — `execute::interpret` / `codegen::generate_python` — as a
+    bare **`fn` pointer** over a borrowed `BackendCtx<'a> { core: &'a Global }`.
+    The `fn` has no environment to capture the context into; the borrow stops
+    it outliving the call. Independent of "box deep recursive awaits" (18): the
+    resolve→resolve chain inside `resolve_all_impl` still keeps its own `Arc`;
+    exec's future is never spawned, so its body needs no `'static` handle. All
+    suites green (`tests/codegen.rs`, `tests/spans.rs`).
+  * **Answer-seam (swap-plan §4 gate) — audited 2026-07-22, already satisfied:**
+    `graph.rs`/`store.rs`/`keys.rs` touch answers only through
+    `StableHash::stable_hash`, the stored `fingerprint`, and the free
+    `portable::*` fns; no mechanism code pattern-matches answer internals. No
+    change needed — recorded so it stops reading as an open blocker.
 * **Example binaries carry stale generator copies** — `benchmark_test`,
   `inspect_generated`, `profile_run`, `single_test` each embed a copy of the
   old project generator that emits arity-invalid programs (broken at runtime

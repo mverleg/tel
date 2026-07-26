@@ -11,7 +11,7 @@
 //!
 //! Today the only flavor is [`OptLevel`], and — per plans/flavors.md —
 //! *no front-end query depends on it*: optimization is a backend concern, so
-//! opt-level is threaded to [`crate::context::ExecContext`] (the sandbox's
+//! opt-level is threaded to [`crate::context::BackendCtx`] (the sandbox's
 //! backend-analog; the interpreter stands in for codegen) and enters no
 //! cached key. Parse/resolve/mono keys are opt-invariant by construction —
 //! the wiring stops above them, which is the whole point. When a real

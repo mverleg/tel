@@ -207,8 +207,16 @@ dropping it reclaims everything).
 
 ## Phase 4 — Hardening & performance
 
-16. **Prevent context leak outside scope** `[readme]` — pure fn pointers so a
-    step can't smuggle the context out of its scope.
+16. **Prevent context leak outside scope** `[readme]` — **done 2026-07-22.**
+    Pure fn pointers so a step can't smuggle the context out of its scope.
+    Resolve/mono bodies were already borrow-safe (`ResolveContext<'a>`/
+    `MonoContext<'a>` borrow `&Global`, sync). Exec/codegen now match: the
+    async driver (`Global::gather_backend_inputs`) keeps the `Arc` for the
+    dependency-gathering pulls (the only part that spawns), then invokes the
+    backend body (`execute::interpret` / `codegen::generate_python`) as a bare
+    `fn` pointer over a borrowed `BackendCtx<'a>` — no `Arc` in the body, no
+    environment to capture into. Independent of item 18 (exec's future is never
+    spawned, so it needs no `'static` handle).
 
 17. **Lock-free during compile** `[readme]`.
 

@@ -171,11 +171,17 @@ far cheaper to get right against the toy language:
   smuggle the context out) must be *enforced by construction*, not by
   convention, before third parties write queries. This is the one Phase-4 item
   that is a true prerequisite, not just polish.
-- [ ] **Light answer-seam (§2, §3.1).** The mechanism touches answers only
+- [x] **Light answer-seam (§2, §3.1).** The mechanism touches answers only
   through `content_key()`/`fingerprint()`/portable impls, not by matching AST
   internals — so each body swap in §3.2 is local. This replaces the
   (rejected) generic-core refactor: much smaller, and validated by the existing
-  toy tests staying green.
+  toy tests staying green. **Audit 2026-07-22: already satisfied — no
+  relocation needed.** `graph.rs` names no answer types; `store.rs`/`keys.rs`
+  touch answers only via `StableHash::stable_hash`, the stored `fingerprint`,
+  and the free `portable::*` fns (even eviction sizing delegates to
+  `*_to_portable`/postcard, never to inner fields). The only remaining coupling
+  is concrete *kind naming* (fixed `QueryKind`, per-kind `ContentStore`
+  fields) — the intended §2 coupling, not a seam violation.
 - [ ] **Concurrency + eviction (item 13).** Real projects are large; an
   unbounded in-memory cache and a single-writer run loop are fine for the toy
   suite but not for a real workspace. Design is decided
@@ -303,11 +309,14 @@ corpus asserts those locations as data).
 bodies have already been replaced kind-by-kind (§3.2), so most of the Lisp is
 gone; S5 removes whatever toy-only scaffolding is left (the interpret/emit-Python
 demo backend, any remaining `.telsb` fixtures the machinery tests no longer need)
-once the real pipeline passes the real example suite (`compiler/examples/*.tel`),
-and deletes `qcompiler`'s dead skeleton, preserving its `README`/`TODO` design
-notes as historical record (or folding the still-relevant bits into `docs/`). If
-a tiny synthetic fixture is still the fastest way to exercise the machinery
+once the real pipeline passes the real example suite (`compiler/examples/*.tel`).
+If a tiny synthetic fixture is still the fastest way to exercise the machinery
 tests, keep *that* — but it is a fixture, not the toy language.
+
+`qcompiler`'s dead skeleton was **already deleted on 2026-07-26**, ahead of this
+step: a reconciliation pass confirmed every concept it explored was either
+superseded in the sandbox or already tracked in [roadmap.md](roadmap.md), so its
+`README`/`TODO` were removed rather than preserved (nothing unique was lost).
 
 **S6 — Real backends as flavors.** Only now do target/opt flavors get real
 customers (roadmap item 15's "remaining"): `telir`'s multiple language runtimes
@@ -353,10 +362,13 @@ already exists as the first flavor; real targets slot into the same mechanism.
 - **Ordering of the real query kinds** — does `telir` lowering sit above or
   beside monomorphization, and where do the multi-language backends attach
   relative to the flavor mechanism.
-- **How much of `qcompiler`'s design notes** (`keys-and-invalidation.md`,
-  `execution-and-recovery.md`, `content-addressed-vs-verifying-trace.md` in
-  `docs/`) is already superseded by what shipped in the sandbox vs still
-  authoritative — worth a reconciliation pass before S5 deletes the crate.
+- **~~How much of `qcompiler`'s design notes are superseded~~ — RESOLVED
+  (2026-07-26).** The reconciliation pass ran before deleting the crate:
+  `qcompiler`'s own `README`/`TODO` were fully superseded or already tracked in
+  `roadmap.md`, so they were deleted with the skeleton. The `docs/` design notes
+  (`keys-and-invalidation.md`, `execution-and-recovery.md`,
+  `content-addressed-vs-verifying-trace.md`) are authoritative sandbox
+  documentation and stay.
 - **Whether concurrency/eviction (13) and external deps (13b) truly gate the
   swap** or can land in parallel with S2–S3 against real code. Listed as gates
   here on the conservative assumption that getting them right is cheaper against

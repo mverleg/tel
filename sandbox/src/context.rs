@@ -1014,6 +1014,27 @@ impl Global {
         Ok(())
     }
 
+    /// Gather a backend's inputs — the async, `Arc`-holding, dependency half
+    /// shared by every backend (`execute::interpret`, `codegen::generate_python`).
+    /// Resolves the entry point and monomorphises from it, populating
+    /// `mono_registry` with every reachable `(function, type)` instance. This is
+    /// where the parallel-import spawns happen (inside `resolve_all_impl`, which
+    /// joins before returning) — the *only* part that needs the `Arc`. Returns
+    /// the monomorphised entry id, or an already-rendered `path:line:col`
+    /// compile error (resolve or type check) for the caller to wrap.
+    async fn gather_backend_inputs(this: &Arc<Global>, id: &ExecId, mode: PullMode) -> Result<MonoId, String> {
+        let step = StepId::Exec(id.clone());
+        let main_loc = id.main_loc.clone();
+        Global::resolve_all_impl(this, step.clone(), AncestorPath::empty(), &[ResolveId { func_loc: main_loc.clone() }], mode)
+            .await
+            .map_err(|e| this.render_located(&e))?;
+        // The entry point is called by no one, so its type parameter defaults to
+        // the numeric default, i64.
+        let entry = MonoId { func_loc: main_loc, ty: Ty::I64 };
+        this.mono_impl(step, entry.clone(), mode).map_err(|e| this.render_located(&e))?;
+        Ok(entry)
+    }
+
     /// Execute the program rooted at `id`.
     ///
     /// Exec is deliberately *not* a cached query: its value is its side
@@ -1034,12 +1055,14 @@ impl Global {
         // it here is also why runs on one compiler are serialized
         // (`Compiler::run` takes `&mut self`).
         this.mono_registry.clear();
-        let ctx = ExecContext {
-            current: id.clone(),
-            core: this.clone(),
-            mode,
-        };
-        crate::execute::execute(&ctx, id).await
+        // Dependency gathering is the only async, `Arc`-holding half. The
+        // backend body then runs behind a bare `fn` pointer over a *borrowed*
+        // context (item 16): a `fn` has no environment to capture `ctx` into,
+        // and `BackendCtx` borrows `&Global`, so the body can neither outlive
+        // this call nor stash the context anywhere `'static`.
+        let entry = Global::gather_backend_inputs(this, &id, mode).await.map_err(ExecuteError::Compile)?;
+        let interpret: fn(&BackendCtx<'_>, MonoId) -> Result<(), ExecuteError> = crate::execute::interpret;
+        interpret(&BackendCtx::new(this), entry)
     }
 
     /// Lower the program rooted at `id` to a Python script instead of running
@@ -1051,12 +1074,12 @@ impl Global {
         debug!("CoreContext::codegen_impl: {:?}", id);
         this.graph.register_dependency(caller, StepId::Exec(id.clone()));
         this.mono_registry.clear();
-        let ctx = ExecContext {
-            current: id.clone(),
-            core: this.clone(),
-            mode,
-        };
-        crate::codegen::generate_python(&ctx, id).await
+        // Same driver/body split as `execute_impl`: gather deps async (the only
+        // `Arc`-holding half), then run the codegen body behind a bare `fn`
+        // pointer over a borrowed context (item 16).
+        let entry = Global::gather_backend_inputs(this, &id, mode).await.map_err(crate::codegen::CodegenError::Compile)?;
+        let generate: fn(&BackendCtx<'_>, MonoId) -> String = crate::codegen::generate_python;
+        Ok(generate(&BackendCtx::new(this), entry))
     }
 }
 
@@ -1148,66 +1171,20 @@ impl Global {
                 .unwrap_or_default()
         })
     }
-}
 
-pub struct ExecContext {
-    current: ExecId,
-    core: Arc<Global>,
-    /// The reconciliation stance of the wave this exec drives; threaded into
-    /// every pull it makes.
-    mode: PullMode,
-}
-
-impl ExecContext {
-    pub fn graph(&self) -> &Graph {
-        &self.core.graph
-    }
-
-    pub fn interner(&self) -> &Interner {
-        &self.core.interner
-    }
-
-    pub fn func_registry(&self) -> &DashMap<FQ, FuncData> {
-        &self.core.func_registry
-    }
-
-    pub fn mono_registry(&self) -> &DashMap<MonoId, MonoFuncData> {
-        &self.core.mono_registry
-    }
-
-    pub fn printer(&self) -> &dyn Printer {
-        self.core.printer.as_ref()
-    }
-
-    /// Opt-level of this compile — the backend flavor (roadmap item 15).
-    /// `execute` stands in for codegen; a real optimizer/codegen would branch
-    /// on this. No cached query reads it, so it changes no content key.
-    pub fn opt_level(&self) -> crate::flavors::OptLevel {
-        self.core.flavors.opt
-    }
-
-    pub async fn resolve_all(&self, ids: &[ResolveId]) -> Result<(Vec<Expr>, SymbolTable), Located<ResolveError>> {
-        // Exec is the root of a resolve tree: no resolutions are in progress yet.
-        Global::resolve_all_impl(&self.core, StepId::Exec(self.current.clone()), AncestorPath::empty(), ids, self.mode).await
-    }
-
-    pub fn mono(&self, entry: MonoId) -> Result<(), Located<TypeError>> {
-        self.core.mono_impl(StepId::Exec(self.current.clone()), entry, self.mode)
-    }
-
-    /// Upgrade a coarse panic location (`source_location`, a file path) to
+    /// Upgrade a coarse panic/error location (`source_location`, a file path) to
     /// `path:line:col` by demanding the span sidecar for that file and mapping
-    /// the `(frame, node)` locator through it. This is the in-session
-    /// upgrade-on-error of plans/fast-mode.md ("the runtime story"): the happy
-    /// path computes no sidecar, and only a fired `panic` pays the leaf-cost
-    /// reparse. Degrades to the bare path if the file can't be read or the
-    /// locator isn't in the table (e.g. the source changed since compile), so
-    /// the message is never worse than the pre-sidecar behaviour.
-    pub fn render_panic_location(&self, source_location: &str, frame: u32, node: u32) -> String {
+    /// the `(frame, node)` locator through it (plans/fast-mode.md): the happy
+    /// path computes no sidecar, and only a fired `panic` or a rendered compile
+    /// error pays the leaf-cost reparse. Degrades to the bare path if the file
+    /// can't be read or the locator isn't in the table (e.g. the source changed
+    /// since compile), so the message is never worse than the pre-sidecar
+    /// behaviour. Shared by the async driver's error path and the backend body.
+    fn render_panic_location(&self, source_location: &str, frame: u32, node: u32) -> String {
         let Ok(source) = std::fs::read_to_string(source_location) else {
             return source_location.to_string();
         };
-        let table = self.core.spans_for(&source);
+        let table = self.spans_for(&source);
         match table.get(frame, node) {
             Some(span) => {
                 let (line, col) = crate::types::line_col(&source, span.start);
@@ -1220,10 +1197,10 @@ impl ExecContext {
     /// Render a located compile error (resolve or type check) for display,
     /// upgrading its structural `(frame, node)` locator to `path:line:col` via
     /// the span sidecar — the same lazy on-error upgrade as a runtime `panic`
-    /// (plans/fast-mode.md). A locator-less error (whole-file: IO, cycle,
-    /// import placement) renders coarsely, exactly as before. The reparse the
-    /// sidecar costs is paid only here, on the error path.
-    pub fn render_located<E: std::fmt::Display>(&self, located: &Located<E>) -> String {
+    /// (plans/fast-mode.md). A locator-less error (whole-file: IO, cycle, import
+    /// placement) renders coarsely. Called by the async driver
+    /// (`gather_backend_inputs`) on the resolve/mono error path.
+    fn render_located<E: std::fmt::Display>(&self, located: &Located<E>) -> String {
         match &located.loc {
             Some(loc) => format!(
                 "{}: {}",
@@ -1235,13 +1212,62 @@ impl ExecContext {
     }
 }
 
+/// Context handed to a backend *body* — the interpreter (`execute::interpret`)
+/// or the Python codegen (`codegen::generate_python`) — after the async driver
+/// has gathered every dependency. Deliberately narrow and leak-safe (roadmap
+/// item 16):
+///
+/// * It **borrows** `&Global` instead of holding an `Arc`, so it cannot outlive
+///   its call or be stashed anywhere `'static`.
+/// * The body is invoked as a bare `fn` pointer, so it has no environment to
+///   smuggle this context into.
+/// * It exposes only *reads*: the monomorphised registry the driver already
+///   populated, the interner, printer, opt-level, and the on-error span
+///   upgrade. It cannot pull, await, or spawn — all of that happened in the
+///   async driver (`Global::gather_backend_inputs`) before the body ran.
+pub struct BackendCtx<'a> {
+    core: &'a Global,
+}
+
+impl<'a> BackendCtx<'a> {
+    fn new(core: &'a Global) -> BackendCtx<'a> {
+        BackendCtx { core }
+    }
+
+    pub fn interner(&self) -> &Interner {
+        &self.core.interner
+    }
+
+    pub fn mono_registry(&self) -> &DashMap<MonoId, MonoFuncData> {
+        &self.core.mono_registry
+    }
+
+    pub fn printer(&self) -> &dyn Printer {
+        self.core.printer.as_ref()
+    }
+
+    /// Opt-level of this compile — the backend flavor (roadmap item 15). A real
+    /// optimizer/codegen would branch on this. No cached query reads it, so it
+    /// changes no content key.
+    pub fn opt_level(&self) -> crate::flavors::OptLevel {
+        self.core.flavors.opt
+    }
+
+    /// Upgrade a coarse runtime-panic location to `path:line:col` via the span
+    /// sidecar, on the error path only (plans/fast-mode.md). Delegates to the
+    /// shared `Global` renderer.
+    pub fn render_panic_location(&self, source_location: &str, frame: u32, node: u32) -> String {
+        self.core.render_panic_location(source_location, frame, node)
+    }
+}
+
 // Compile-time assertions to ensure contexts are Send (required for tokio::spawn)
 const _: fn() = || {
     fn assert_send<T: Send>() {}
     assert_send::<RootContext>();
     assert_send::<ResolveContext<'_>>();
     assert_send::<MonoContext<'_>>();
-    assert_send::<ExecContext>();
+    assert_send::<BackendCtx<'_>>();
 };
 
 #[cfg(test)]
