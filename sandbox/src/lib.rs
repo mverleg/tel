@@ -7,6 +7,10 @@ mod types;
 mod graph;
 mod context;
 mod common;
+// Wired into the parse leaf + import resolution in the next slice
+// (plans/external-deps.md); until then its types are constructed only by tests.
+#[allow(dead_code)]
+mod deps;
 mod disk;
 mod flavors;
 mod keys;

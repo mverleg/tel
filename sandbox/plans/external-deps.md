@@ -1,6 +1,12 @@
 # External dependencies as sealed leaves — design
 
-Status: **direction decided 2026-07-10; not yet implemented.** An optimization
+Status: **direction decided 2026-07-10; implementation started 2026-07-26.**
+Slice 1 (foundational) landed: `ContentDigest::sealed` (keys.rs, domain-tagged,
+`SCHEMA_VERSION` 4→5), and a `deps.rs` module with `LeafSource`/`SealedCoord`,
+a JSON `Lockfile`, XDG store-path resolution, and a *temporary* hash-at-lock.
+Not yet wired into the parse leaf or invalidation — see "Sketch of the work".
+
+An optimization
 for external (published, vendored) dependencies: because their source is
 **immutable by contract**, they escape the invalidation machinery entirely — no
 per-compile read+hash, no watcher, no dirty bits — and their entries become
@@ -110,18 +116,42 @@ that lets us skip invalidation — orthogonal, and independently valuable.
 
 ## Sketch of the work
 
-- **Leaf classification** — a `LeafSource` split (`Local { path }` vs
-  `Sealed { coordinate_hash, semver }`); the parse key builder takes the digest
-  from the coordinate for sealed leaves instead of reading+hashing.
+- **Leaf classification** — a `LeafSource` split (`Local` vs
+  `Sealed(SealedCoord)`); the parse key builder takes the digest from the
+  coordinate for sealed leaves instead of reading+hashing. **[Slice 1, done]**
+  `SealedCoord = (release_hash, path_within_package, semver)`;
+  `ContentDigest::sealed` folds `(release_hash, path)`, domain-tagged apart from
+  the local `of()` digest (leading `0` vs `1` byte) so a sealed coordinate can
+  never alias a local file. Cost a `SCHEMA_VERSION` bump (4→5, cold cache).
 - **Provenance bit** — one bit threaded through the graph/binding record;
   leaves seed it, derived steps AND it; sealed steps are excluded from the
-  marking pass and never registered with the monitor.
+  marking pass and never registered with the monitor. **[Slice 3]**
 - **Lockfile leaf** — parse the lockfile (a tracked local leaf) into the set of
   `(package → coordinate_hash)`; resolving an external import maps to a sealed
-  leaf via this table.
+  leaf via this table. **[Slice 1 partial / Slice 2 wiring]** Format is
+  versioned JSON (`{version, packages: {name: {hash, version}}}`, `serde_json`,
+  no new dep); `Lockfile::coord(pkg, path)` returns `Some(SealedCoord)` for a
+  locked package, `None` (→ treat as local sibling) otherwise. Wiring the
+  resolver's import→coordinate lookup and the parse leaf's digest-from-coordinate
+  is Slice 2. Import *surface syntax* is deferred (design-only); for now assume
+  file paths are unique, so a lockfile hit is unambiguous.
 - **Shared sealed disk tier** (later) — a read-through tier above the per-root
   cache, keyed purely on sealed content keys, safe to share across roots by
-  content-addressing.
+  content-addressing. **[Slice 4]**
+
+### Storage & hashing decisions (2026-07-26)
+
+- **Dep source store**: `$XDG_CACHE_HOME/tel/deps/<release-hash>/<path>`
+  (default `~/.cache/tel/deps/…`), honoring `XDG_CACHE_HOME`. Chosen to match Go
+  (`~/.cache/go-build`) and Deno (`~/.cache/deno`): everything here is
+  reconstructible, which is what the XDG cache dir is for. If dep sources ever
+  become authoritative (no re-fetch path), promote *just the source store* to
+  `$XDG_DATA_HOME/tel/store` (Nix/pnpm-style); the answer tier stays in cache.
+  Only a cold-miss parse reads this store — a warm run never touches it.
+- **Release hash**: **temporary** hash-at-lock (`deps::lock_package`) — hashes a
+  package's source tree deterministically (sorted, length-prefixed `(path,
+  bytes)`, xxh3-128 → hex). Stands in for a registry checksum until a real fetch
+  story exists; explicitly a placeholder.
 
 ## Invariants preserved
 

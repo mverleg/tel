@@ -35,8 +35,11 @@ use xxhash_rust::xxh3::Xxh3;
 /// `PreExpr`/`Expr` wrapper (`{loc, kind}`), hashed on all nodes, not just
 /// `Panic`/`Unreachable`; and cached resolve/mono *errors* are wrapped in
 /// `Located<E>` (error + optional `SrcLoc`), so the error-answer encoding and
-/// fingerprint changed too (exact sub-expression error locators).
-pub const SCHEMA_VERSION: u64 = 4;
+/// fingerprint changed too (exact sub-expression error locators). 5 — content
+/// digests carry a leading domain tag (`0` = local source bytes, `1` = sealed
+/// external coordinate; plans/external-deps.md), so the leaf digest encoding —
+/// and every key that folds it — changed.
+pub const SCHEMA_VERSION: u64 = 5;
 
 /// The query kind tag. Folding it into every content key puts each phase in a
 /// disjoint keyspace (docs/keys-and-invalidation.md "Per-Phase Keyspaces"): a
@@ -285,7 +288,37 @@ pub struct ContentDigest(u128);
 impl ContentDigest {
     pub fn of(source: &str) -> ContentDigest {
         let mut h = StableHasher::new();
+        // Domain tag 0: a *local* digest is taken over the source bytes. The
+        // tag keeps this keyspace disjoint from [`ContentDigest::sealed`], so a
+        // sealed coordinate can never alias a local file whose bytes happen to
+        // encode the same way (plans/external-deps.md: sealed and local digest
+        // domains are deliberately separate — a sealed leaf's artifact is never
+        // read to compute a digest, so the two cannot be reconciled anyway).
+        h.write_u8(0);
         h.write_str(source);
+        ContentDigest(h.finish128())
+    }
+
+    /// The digest of a **sealed** (external, immutable-by-contract) leaf, taken
+    /// from its lockfile-recorded coordinate instead of the artifact bytes
+    /// (plans/external-deps.md). A registry checksum pins the *package*; a
+    /// single parse leaf is one *file*, so the coordinate is
+    /// `(release_hash, path within package)` — that pair deterministically
+    /// names immutable bytes without ever reading them.
+    ///
+    /// This is the whole "when the hash is taken" optimization: the release
+    /// hash was computed once, at fetch/lock time, and recorded; here it is
+    /// merely *folded in*, so a sealed leaf's key needs no per-compile
+    /// read+hash. `release_hash` is the raw recorded checksum bytes (whatever
+    /// width the registry used — SHA-256, etc.); folding them through xxh3
+    /// keeps [`ContentDigest`] a `u128` like the local path, so every
+    /// downstream key builder is oblivious to the distinction.
+    pub fn sealed(release_hash: &[u8], path_within_package: &str) -> ContentDigest {
+        let mut h = StableHasher::new();
+        // Domain tag 1: sealed. Disjoint from the local digest domain above.
+        h.write_u8(1);
+        h.write_bytes(release_hash);
+        h.write_str(path_within_package);
         ContentDigest(h.finish128())
     }
 }
@@ -985,6 +1018,28 @@ mod tests {
         assert_ne!(key_for("(print 42)"), key_for("(print 43)"));
     }
 
+    /// A sealed leaf's digest is derived from its `(release_hash, path)`
+    /// coordinate, never from artifact bytes (plans/external-deps.md). Two
+    /// properties matter: it is deterministic in the coordinate, and it lives
+    /// in a domain disjoint from local source digests — so a sealed coordinate
+    /// can never alias a local file, and `dep@hash` yields the same digest in
+    /// any workspace (the cross-project-sharing precondition).
+    #[test]
+    fn sealed_digest_is_coordinate_keyed_and_domain_separated() {
+        let h1: &[u8] = b"\x01\x02\x03\x04";
+        let h2: &[u8] = b"\x09\x09\x09\x09";
+        // Deterministic in the coordinate.
+        assert_eq!(ContentDigest::sealed(h1, "lib.telsb"), ContentDigest::sealed(h1, "lib.telsb"));
+        // A different release hash or a different in-package path is a
+        // different leaf.
+        assert_ne!(ContentDigest::sealed(h1, "lib.telsb"), ContentDigest::sealed(h2, "lib.telsb"));
+        assert_ne!(ContentDigest::sealed(h1, "lib.telsb"), ContentDigest::sealed(h1, "other.telsb"));
+        // Disjoint from the local domain: even if a local file's bytes were
+        // exactly the in-package path string, the leading domain tag keeps the
+        // two apart.
+        assert_ne!(ContentDigest::sealed(b"", "lib.telsb"), ContentDigest::of("lib.telsb"));
+    }
+
     #[test]
     fn schema_version_bump_changes_every_key() {
         let with_schema = |schema: u64| {
@@ -1107,8 +1162,8 @@ mod tests {
         };
         let err_fp = Fingerprint::of_err(&err, &c);
 
-        assert_eq!(format!("{:032x}", digest.0), "4af01ba2c8396b3e6b01ec9d7a01ef6a");
-        assert_eq!(format!("{:032x}", key.0), "4a48d23929c5e301e56e9e74dcca3ee1");
+        assert_eq!(format!("{:032x}", digest.0), "1db960ad8cd1b7f6b58fc8bd00f39642");
+        assert_eq!(format!("{:032x}", key.0), "65f5616b9b28ac11b217e20b562df787");
         assert_eq!(format!("{:016x}", ok_fp.0), "ff75d229ef0e880c");
         assert_eq!(format!("{:016x}", err_fp.0), "b2a5105200850dff");
     }

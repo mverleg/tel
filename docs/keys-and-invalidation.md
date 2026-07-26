@@ -93,6 +93,18 @@ The persistent cache is **never invalidated**. An entry under a content key is v
 by construction — if any input changed, the key would be different. Superseded entries are
 garbage, not hazards; reclaim them with GC/LRU on their own schedule.
 
+**Cutoff is driven by fingerprints (memo), not values (store) — so a reclaimed intermediate
+never blocks it.** Early cutoff propagates on result *fingerprints*, which live in the session
+memo; a step's *value* lives only in the persistent store under its content key, and the two
+have independent lifetimes. In a chain `A → B → C`, if C's output is unchanged, B rebuilds an
+unchanged content key from C's *memoized* fingerprint and reports its own unchanged fingerprint
+up to A — **without B's value being present in the store at all.** A GC'd intermediate value
+therefore cannot stall a cutoff. A value is fetched only when some dependent must actually
+*execute*; if it was reclaimed, that is an ordinary store miss → recompute, and determinism
+(invariants 1–2) guarantees the recompute reproduces the *identical* fingerprint, so nothing
+upstream is disturbed. The only thing that must be present for B to count as clean is B's
+*fingerprint in the memo*: lose that and B is `Unknown` (re-pulled), never falsely clean.
+
 All dirtiness, edges, and "what changed" reasoning live exclusively in the session layer.
 Keeping the two layers from contaminating each other is the core of the design.
 
@@ -185,6 +197,44 @@ fingerprints to have changed — a path the old edges cover. Marking is thus con
 How concurrent targets coordinate over this model, how waves are cancelled and resumed, how
 failures are classified, and how lost dirty events are recovered is covered in
 [execution-and-recovery.md](execution-and-recovery.md).
+
+## Where a step's dependencies come from — recorded edges, not a re-run body
+
+A natural worry when authoring a step: if a step discovers its dependencies *by executing*
+(calling `ctx.parse`, `ctx.resolve`, … inline), how can the engine ever *skip* that execution
+on a cache hit? Building the content key needs the deps' fingerprints, and "the deps" seem to
+be knowable only by running the very body you hoped to skip. This is a false tension: a step is
+authored as **one flat body that pulls dependencies inline**, and each pull records a forward
+edge (plus its reverse). That remembered edge set — not a re-run of the body — is what the next
+run reuses:
+
+* **Cold (no memo record):** nothing to skip. Run the body, discover deps, record edges +
+  fingerprints. You "pay for the body," but only when there was no cached answer to serve
+  anyway.
+* **Warm + clean (push mode):** served from the memo with **zero recursion** — the recorded key
+  and fingerprint are returned without touching deps at all. Re-deriving is never triggered by
+  merely *reading* a clean node.
+* **Warm + dirty:** rebuild the content key from the **recorded** forward edges' current
+  fingerprints (refreshing each recursively). The body runs *only* if that key changed. The
+  recorded edge set is self-correcting: whatever determines the dep set is itself a recorded
+  dep, so if the true deps changed, some recorded fingerprint changed, the key mismatches, and
+  the re-executed body re-discovers the correct deps.
+
+So "you'd have already paid for the body to find out you didn't need it" holds *only* on the
+cold path, where there is no hit to miss. On every warm path the deps come from last run's
+edges, never from re-running the body — and in push mode a clean node is not even walked.
+
+**Corollary — the driver/body split is an implementation artifact, not this model.**
+`parse_impl` already *is* the flat form (grabs its leaf inline, registers the edge, serves clean
+hits from the memo). The explicit "async driver gathers deps, then a restricted sync body
+computes" shape at resolve and the backend (`gather_backend_inputs`, `ResolveContext`,
+`BackendCtx`) is **not** required by content-addressing: the backend body is fenced behind a
+bare `fn` over a borrowed context purely for leak-safety (roadmap item 16), and the backend is
+uncached anyway; resolve builds its key in `resolve_one` ahead of a deliberately non-pulling
+body. That the flat form is viable is shown *within this same crate*: `parse_impl` uses it while
+resolve/backend do not, over the identical memo + recorded-edge machinery. Nothing in this
+document requires the split, and authors need not — and should not — hand-write a deps-up-front
+phase to get correct incrementality; the memo plus recorded edges deliver it for a flat body.
 
 ## Invariants
 
