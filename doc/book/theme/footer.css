@@ -1,0 +1,12 @@
+.tel-footer {
+  margin-top: 4em;
+  padding-top: 1em;
+  border-top: 1px solid var(--searchbar-border-color, #ccc);
+  text-align: center;
+  font-size: 0.9em;
+  opacity: 0.75;
+}
+
+.tel-footer a {
+  color: inherit;
+}

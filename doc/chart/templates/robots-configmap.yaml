@@ -1,0 +1,12 @@
+{{- if .Values.noindex }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-robots
+  labels:
+    app: {{ .Release.Name }}
+data:
+  robots.txt: |
+    User-agent: *
+    Disallow: /
+{{- end }}

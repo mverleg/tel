@@ -1,0 +1,1551 @@
+# =============================================================================
+# json-schema-validator.tel
+#
+# A self-contained JSON document validator and typed decoder, written in Tel.
+#
+# It is meant as a *worked example* of three language features used together in
+# a realistic program rather than in isolation:
+#
+#   * Untagged unions  — the JSON value model, the lexer's token stream, the
+#                        schema node model, and the `Validated`/`Result`/`Option`
+#                        plumbing are all untagged unions whose *type is the tag*.
+#   * Lambdas          — format checks, custom field validators, applicative
+#                        combinators, and every `map`/`keep`/`fold` pipeline.
+#   * Generics         — `Result[T, E]`, `Option[T]`, the `Validated[T]`
+#                        applicative, and the `Decoder[T]` function-type alias
+#                        carry data through the program without losing types.
+#
+# The pipeline is the one a real service would run on an inbound request body:
+#
+#     text ──lex──▶ tokens ──parse──▶ Json ──validate(schema)──▶ errors
+#                                          └──decode──▶ typed Tel record
+#
+# Nothing here is a language built-in: `Result`, `Option`, even the JSON model
+# are ordinary unions over ordinary structs. That is the point of the showcase.
+#
+# -----------------------------------------------------------------------------
+# Assumed standard library surface
+#
+# Tel's stdlib is not finalised, so this file pins the handful of operations it
+# leans on. None of them are exotic; an implementation would provide them all.
+#
+#   Text     .len() .is_empty() .chars()->List[Char] .contains(Text)
+#            .starts_with(Text) .split(Text)->List[Text] .to_text()
+#            Text.from_chars(List[Char])->Text   "a${expr}b" interpolation
+#   Char     .is_digit() .is_alpha() .is_hex_digit() .is_whitespace()
+#            .to_text()  char_from_code(Int64)->Char   char literals written 'x'
+#   List[T]  .len() .is_empty() .get(Int64)->Option[T]  xs[i]  indexing
+#            .map(f) .keep(f) .fold(init,f) .all(f) .any(f) .first()->Option[T]
+#            .contains(T) .append(T)->List[T] .concat(List[T])->List[T]
+#            .reversed() .flat_map(f) .enumerate()->List[(Int64, T)]
+#   Map[K,V] .get(K)->Option[V] .contains_key(K) .keys()->List[K]
+#            .entries()->List[(K, V)] .len()      [k => v] literal, map_of()
+#   Set[T]   set_of(...) set(List[T]) .contains(T) .len()
+#   Real64   + - * / arithmetic, .floor()->Real64, .abs()->Real64,
+#            .to_int64()->Int64, .to_text()->Text,
+#            Real64.parse(Text)->Result[Real64, Text], Real64.from(Int64)
+#   Int64    Int64.parse(Text)->Result[Int64, Text], .to_text()->Text
+#   value    `x is T` — type-test against a union member, yields Bool
+#            .to_text() on Bool and the numeric types
+#   builders ListBuilder[T]() .push(T) .finish()->List[T]
+#            TextBuilder()    .push(Text) .finish()->Text
+#   print(Text)
+# =============================================================================
+
+
+# =============================================================================
+# 1. JSON value model
+#
+# A JSON value is one of six shapes. As an untagged union the *type itself* is
+# the discriminant — there is no wrapping `JsonKind` enum and no `.kind` field.
+# `JNull` is a data-less type: the name `JNull` is simultaneously the type and
+# its sole value, so it needs no fields and no binding when matched.
+# =============================================================================
+
+type   JNull                                   # the literal null; data-less
+struct JBool { value: Bool }
+struct JNum  { value: Real64, is_int: Bool }   # is_int: lexed without '.'/'e'
+struct JStr  { value: Text }
+struct JArr  { items: List[Json] }             # recursive: items are Json again
+struct JObj  { fields: Map[Text, Json] }       # object member order not kept
+
+type Json = JNull | JBool | JNum | JStr | JArr | JObj
+
+# Small constructors so call sites read like data, not like struct literals.
+fn jnull()              -> Json { JNull }
+fn jbool(b: Bool)       -> Json { JBool { value = b } }
+fn jint(n: Int64)       -> Json { JNum { value = Real64.from(n), is_int = true } }
+fn jreal(r: Real64)     -> Json { JNum { value = r, is_int = false } }
+fn jstr(s: Text)        -> Json { JStr { value = s } }
+fn jarr(xs: List[Json]) -> Json { JArr { items = xs } }
+fn jobj(m: Map[Text, Json]) -> Json { JObj { fields = m } }
+
+# A short human name for a value's shape, used in "expected X, found Y" errors.
+# Matching on the *type* recovers which member we hold.
+fn type_name(j: Json) -> Text {
+    match j {
+        JNull        => "null",
+        _: JBool     => "boolean",
+        _: JNum      => "number",
+        _: JStr      => "string",
+        _: JArr      => "array",
+        _: JObj      => "object",
+    }
+}
+
+# Structural equality, needed by `enum` schemas and by `uniqueItems`. Tel gives
+# structural `==` on values, but JSON numbers compare by numeric value (1 and
+# 1.0 are equal) so we cannot lean on derived equality for the JNum case.
+fn json_eq(a: Json, b: Json) -> Bool {
+    match a {
+        JNull    => b is JNull,
+        x: JBool => match b { y: JBool => x.value == y.value, _ => false },
+        x: JNum  => match b { y: JNum  => x.value == y.value, _ => false },
+        x: JStr  => match b { y: JStr  => x.value == y.value, _ => false },
+        x: JArr  => match b {
+            y: JArr => (x.items.len() == y.items.len())
+                       and zip_all(x.items, y.items, \ json_eq(it.0, it.1)),
+            _ => false,
+        },
+        x: JObj  => match b {
+            y: JObj => obj_eq(x, y),
+            _ => false,
+        },
+    }
+}
+
+# Two objects are equal when they have exactly the same keys with equal values.
+fn obj_eq(a: JObj, b: JObj) -> Bool {
+    if a.fields.len() != b.fields.len() { return false }
+    a.fields.entries().all(|entry| {
+        match b.fields.get(entry.0) {
+            some(other) => json_eq(entry.1, other),
+            none        => false,
+        }
+    })
+}
+
+# A tiny generic helper: pairwise-test two equal-length lists with a predicate.
+# `[A, B]` makes it reusable for any element types; the predicate is a lambda.
+fn zip_all[A, B](xs: List[A], ys: List[B], pred: Fn((A, B)) -> Bool) -> Bool {
+    if xs.len() != ys.len() { return false }
+    xs.enumerate().all(|pair| pred((pair.1, ys[pair.0])))
+}
+
+# Another small generic utility used throughout: first element matching a test.
+fn find_first[T](xs: List[T], pred: Fn(T) -> Bool) -> Option[T] {
+    for x in xs {
+        if pred(x) { return some(x) }
+    }
+    none
+}
+
+
+# =============================================================================
+# 2. JSON renderer
+#
+# Turns a `Json` back into compact text. Used to echo parsed input and to show
+# offending values inside validation messages. A `TextBuilder` keeps the
+# repeated concatenation linear instead of O(n^2) copy-update.
+# =============================================================================
+
+fn render(j: Json) -> Text {
+    let uniq out = TextBuilder()
+    render_into(out, j)
+    out.finish()
+}
+
+fn render_into(out: TextBuilder, j: Json) -> () {
+    match j {
+        JNull    => out.push("null"),
+        b: JBool => out.push(if b.value { "true" } else { "false" }),
+        n: JNum  => out.push(render_num(n)),
+        s: JStr  => out.push(render_str(s.value)),
+        a: JArr  => render_arr(out, a),
+        o: JObj  => render_obj(out, o),
+    }
+}
+
+# Integers print without a trailing ".0"; reals print via the numeric formatter.
+fn render_num(n: JNum) -> Text {
+    if n.is_int and (n.value.floor() == n.value) {
+        n.value.to_int64().to_text()
+    } else {
+        n.value.to_text()
+    }
+}
+
+# Minimal JSON string escaping — enough for the characters this validator cares
+# about. A production encoder would also escape control characters by \uXXXX.
+fn render_str(s: Text) -> Text {
+    let uniq out = TextBuilder()
+    out.push("\"")
+    for c in s.chars() {
+        match c {
+            '"'  => out.push("\\\""),
+            '\\' => out.push("\\\\"),
+            '\n' => out.push("\\n"),
+            '\t' => out.push("\\t"),
+            '\r' => out.push("\\r"),
+            _    => out.push(c.to_text()),
+        }
+    }
+    out.push("\"")
+    out.finish()
+}
+
+fn render_arr(out: TextBuilder, a: JArr) -> () {
+    out.push("[")
+    for entry in a.items.enumerate() {
+        if entry.0 > 0 { out.push(",") }
+        render_into(out, entry.1)
+    }
+    out.push("]")
+}
+
+fn render_obj(out: TextBuilder, o: JObj) -> () {
+    out.push("{")
+    for entry in o.fields.entries().enumerate() {
+        if entry.0 > 0 { out.push(",") }
+        out.push(render_str(entry.1.0))
+        out.push(":")
+        render_into(out, entry.1.1)
+    }
+    out.push("}")
+}
+
+
+# =============================================================================
+# 3. Lexer
+#
+# Source text becomes a flat list of `Lexeme`s (a token plus its source offset,
+# so the parser can report *where* a problem is). The token set is, again, an
+# untagged union: punctuation and keywords are data-less types; only the two
+# value-bearing tokens (`TString`, `TNumber`) are structs.
+# =============================================================================
+
+type TLBrace                                   # {
+type TRBrace                                   # }
+type TLBracket                                 # [
+type TRBracket                                 # ]
+type TColon                                    # :
+type TComma                                    # ,
+type TTrue                                     # true
+type TFalse                                    # false
+type TNull                                     # null
+type TEnd                                      # end of input sentinel
+struct TString { value: Text }
+struct TNumber { value: Real64, is_int: Bool }
+
+type Token =
+    TLBrace | TRBrace | TLBracket | TRBracket | TColon | TComma
+    | TTrue | TFalse | TNull | TString | TNumber | TEnd
+
+struct Lexeme { token: Token, pos: Int64 }
+
+# Parse errors carry a byte offset and a message; rendered against the source
+# later so the user sees a caret-style location.
+struct ParseError { pos: Int64, message: Text }
+
+# The lexer walks a `List[Char]` by index. It returns either the full lexeme
+# list (terminated by a `TEnd`) or the first error encountered.
+fn lex(src: Text) -> Result[List[Lexeme], ParseError] {
+    let cs = src.chars()
+    let n  = cs.len()
+    let uniq out = ListBuilder[Lexeme]()
+    let uniq i = 0                              # cursor; uniq => reassignable
+
+    while i < n {
+        let c = cs[i]
+        if c.is_whitespace() {
+            i = i + 1                           # skip insignificant whitespace
+        } else if c == '{' {
+            out.push(Lexeme { token = TLBrace,   pos = i }); i = i + 1
+        } else if c == '}' {
+            out.push(Lexeme { token = TRBrace,   pos = i }); i = i + 1
+        } else if c == '[' {
+            out.push(Lexeme { token = TLBracket, pos = i }); i = i + 1
+        } else if c == ']' {
+            out.push(Lexeme { token = TRBracket, pos = i }); i = i + 1
+        } else if c == ':' {
+            out.push(Lexeme { token = TColon,    pos = i }); i = i + 1
+        } else if c == ',' {
+            out.push(Lexeme { token = TComma,    pos = i }); i = i + 1
+        } else if c == '"' {
+            # A string runs from here to the closing quote; `lex_string`
+            # returns the token and the index just past the closing quote.
+            let (tok, next) = lex_string(cs, i)?
+            out.push(Lexeme { token = tok, pos = i })
+            i = next
+        } else if (c == '-') or c.is_digit() {
+            let (tok, next) = lex_number(cs, i)?
+            out.push(Lexeme { token = tok, pos = i })
+            i = next
+        } else if c.is_alpha() {
+            let (tok, next) = lex_keyword(cs, i)?
+            out.push(Lexeme { token = tok, pos = i })
+            i = next
+        } else {
+            return Err(ParseError {
+                pos = i,
+                message = "unexpected character '${c.to_text()}'",
+            })
+        }
+    }
+
+    out.push(Lexeme { token = TEnd, pos = n })
+    Ok(out.finish())
+}
+
+# Lex a double-quoted string starting at `start` (the opening quote). Handles
+# the JSON escape set. Returns the `TString` token and the index after the
+# closing quote.
+fn lex_string(cs: List[Char], start: Int64) -> Result[(Token, Int64), ParseError] {
+    let n = cs.len()
+    let uniq out = TextBuilder()
+    let uniq i = start + 1                       # step over the opening quote
+
+    while i < n {
+        let c = cs[i]
+        if c == '"' {
+            return Ok((TString { value = out.finish() }, i + 1))
+        } else if c == '\\' {
+            if i + 1 >= n {
+                return Err(ParseError { pos = i, message = "dangling escape" })
+            }
+            let e = cs[i + 1]
+            match e {
+                '"'  => { out.push("\""); i = i + 2 },
+                '\\' => { out.push("\\"); i = i + 2 },
+                '/'  => { out.push("/");  i = i + 2 },
+                'n'  => { out.push("\n"); i = i + 2 },
+                't'  => { out.push("\t"); i = i + 2 },
+                'r'  => { out.push("\r"); i = i + 2 },
+                'u'  => {
+                    # \uXXXX — read four hex digits as a code point.
+                    let (ch, next) = lex_unicode_escape(cs, i + 2)?
+                    out.push(ch)
+                    i = next
+                },
+                _ => return Err(ParseError {
+                    pos = i + 1,
+                    message = "invalid escape '\\${e.to_text()}'",
+                }),
+            }
+        } else {
+            out.push(c.to_text())
+            i = i + 1
+        }
+    }
+
+    Err(ParseError { pos = start, message = "unterminated string" })
+}
+
+# Read exactly four hex digits at `start`, decode them to a character, and
+# return it with the index past the last digit.
+fn lex_unicode_escape(cs: List[Char], start: Int64) -> Result[(Text, Int64), ParseError] {
+    if start + 4 > cs.len() {
+        return Err(ParseError { pos = start, message = "truncated \\u escape" })
+    }
+    let uniq code = 0
+    let uniq k = 0
+    while k < 4 {
+        let c = cs[start + k]
+        if not c.is_hex_digit() {
+            return Err(ParseError {
+                pos = start + k,
+                message = "non-hex digit in \\u escape",
+            })
+        }
+        code = code * 16 + hex_value(c)
+        k = k + 1
+    }
+    Ok((char_from_code(code).to_text(), start + 4))
+}
+
+# JSON numbers: an optional minus, an integer part, an optional fraction, and an
+# optional exponent. We collect the run of number characters, then hand the
+# substring to `Real64.parse`. `is_int` records whether any '.' / 'e' appeared,
+# which the validator's "integer" constraint later relies on.
+fn lex_number(cs: List[Char], start: Int64) -> Result[(Token, Int64), ParseError] {
+    let n = cs.len()
+    let uniq i = start
+    let uniq is_int = true
+
+    if (i < n) and (cs[i] == '-') { i = i + 1 }
+    while (i < n) and cs[i].is_digit() { i = i + 1 }
+    if (i < n) and (cs[i] == '.') {
+        is_int = false
+        i = i + 1
+        while (i < n) and cs[i].is_digit() { i = i + 1 }
+    }
+    if (i < n) and ((cs[i] == 'e') or (cs[i] == 'E')) {
+        is_int = false
+        i = i + 1
+        if (i < n) and ((cs[i] == '+') or (cs[i] == '-')) { i = i + 1 }
+        while (i < n) and cs[i].is_digit() { i = i + 1 }
+    }
+
+    let text = Text.from_chars(slice(cs, start, i))
+    match Real64.parse(text) {
+        Ok(value) => Ok((TNumber { value, is_int }, i)),
+        Err(_)    => Err(ParseError {
+            pos = start,
+            message = "malformed number '${text}'",
+        }),
+    }
+}
+
+# The three bare keywords. Collect the alphabetic run and match it exactly.
+fn lex_keyword(cs: List[Char], start: Int64) -> Result[(Token, Int64), ParseError] {
+    let n = cs.len()
+    let uniq i = start
+    while (i < n) and cs[i].is_alpha() { i = i + 1 }
+    let word = Text.from_chars(slice(cs, start, i))
+    match word {
+        "true"  => Ok((TTrue,  i)),
+        "false" => Ok((TFalse, i)),
+        "null"  => Ok((TNull,  i)),
+        _       => Err(ParseError {
+            pos = start,
+            message = "unknown keyword '${word}'",
+        }),
+    }
+}
+
+# Half-open slice helper [from, to) over a char list, used by the lexers above.
+fn slice(cs: List[Char], from: Int64, to: Int64) -> List[Char] {
+    let uniq out = ListBuilder[Char]()
+    let uniq i = from
+    while i < to {
+        out.push(cs[i])
+        i = i + 1
+    }
+    out.finish()
+}
+
+fn hex_value(c: Char) -> Int64 {
+    match c {
+        '0' => 0, '1' => 1, '2' => 2, '3' => 3, '4' => 4,
+        '5' => 5, '6' => 6, '7' => 7, '8' => 8, '9' => 9,
+        'a' => 10, 'b' => 11, 'c' => 12, 'd' => 13, 'e' => 14, 'f' => 15,
+        'A' => 10, 'B' => 11, 'C' => 12, 'D' => 13, 'E' => 14, 'F' => 15,
+        _   => 0,
+    }
+}
+
+
+# =============================================================================
+# 4. Parser
+#
+# A recursive-descent parser over the lexeme list. State is a small immutable
+# `Cursor` (the token list plus a position); each parse step returns the value
+# it built *and the advanced cursor*, threaded with `?` so the first error wins.
+# Returning the cursor by value keeps the parser pure — no shared mutable index.
+# =============================================================================
+
+struct Cursor { toks: List[Lexeme], at: Int64 }
+
+fn peek(c: Cursor) -> Lexeme    { c.toks[c.at] }
+fn advance(c: Cursor) -> Cursor { c with { at = c.at + 1 } }
+
+# Public entry point: lex, then parse a single top-level value, then require
+# that nothing but `TEnd` follows it.
+fn parse(src: Text) -> Result[Json, ParseError] {
+    let toks = lex(src)?
+    let (value, rest) = parse_value(Cursor { toks, at = 0 })?
+    let tail = peek(rest)
+    match tail.token {
+        TEnd => Ok(value),
+        _    => Err(ParseError {
+            pos = tail.pos,
+            message = "trailing content after top-level value",
+        }),
+    }
+}
+
+# Dispatch on the leading token. This is the heart of the recursive descent and
+# a clean demonstration of matching an untagged union of tokens.
+fn parse_value(c: Cursor) -> Result[(Json, Cursor), ParseError] {
+    let lx = peek(c)
+    match lx.token {
+        TLBrace     => parse_object(c),
+        TLBracket   => parse_array(c),
+        s: TString  => Ok((jstr(s.value), advance(c))),
+        n: TNumber  => Ok((JNum { value = n.value, is_int = n.is_int }, advance(c))),
+        TTrue       => Ok((jbool(true),  advance(c))),
+        TFalse      => Ok((jbool(false), advance(c))),
+        TNull       => Ok((jnull(),      advance(c))),
+        TEnd        => Err(ParseError { pos = lx.pos, message = "unexpected end of input" }),
+        _           => Err(ParseError { pos = lx.pos, message = "expected a value" }),
+    }
+}
+
+# `[ value (, value)* ]`, with the empty-array special case handled up front.
+fn parse_array(c: Cursor) -> Result[(Json, Cursor), ParseError] {
+    let uniq cur = advance(c)                    # consume '['
+    let uniq items = ListBuilder[Json]()
+
+    if peek(cur).token is TRBracket {
+        return Ok((jarr(items.finish()), advance(cur)))
+    }
+
+    loop {
+        let (value, next) = parse_value(cur)?
+        items.push(value)
+        cur = next
+        let sep = peek(cur)
+        match sep.token {
+            TComma    => { cur = advance(cur) },             # another element
+            TRBracket => { return Ok((jarr(items.finish()), advance(cur))) },
+            _ => return Err(ParseError {
+                pos = sep.pos,
+                message = "expected ',' or ']' in array",
+            }),
+        }
+    }
+}
+
+# `{ "key" : value (, "key" : value)* }`. Duplicate keys are rejected rather
+# than silently last-wins, which is the safer default for request bodies.
+fn parse_object(c: Cursor) -> Result[(Json, Cursor), ParseError] {
+    let uniq cur = advance(c)                    # consume '{'
+    let uniq fields = MapBuilder[Text, Json]()
+
+    if peek(cur).token is TRBrace {
+        return Ok((jobj(fields.finish()), advance(cur)))
+    }
+
+    loop {
+        let key_lx = peek(cur)
+        let key = match key_lx.token {
+            s: TString => s.value,
+            _ => return Err(ParseError {
+                pos = key_lx.pos,
+                message = "expected string key in object",
+            }),
+        }
+        if fields.contains_key(key) {
+            return Err(ParseError {
+                pos = key_lx.pos,
+                message = "duplicate key '${key}'",
+            })
+        }
+        cur = advance(cur)
+
+        let colon = peek(cur)
+        match colon.token {
+            TColon => { cur = advance(cur) },
+            _ => return Err(ParseError {
+                pos = colon.pos,
+                message = "expected ':' after key",
+            }),
+        }
+
+        let (value, next) = parse_value(cur)?
+        fields.push(key, value)
+        cur = next
+
+        let sep = peek(cur)
+        match sep.token {
+            TComma  => { cur = advance(cur) },
+            TRBrace => { return Ok((jobj(fields.finish()), advance(cur))) },
+            _ => return Err(ParseError {
+                pos = sep.pos,
+                message = "expected ',' or '}' in object",
+            }),
+        }
+    }
+}
+
+
+# =============================================================================
+# 5. Paths and validation errors
+#
+# A `Path` locates a value inside a document — the JSON-Pointer-ish trail the
+# validator builds as it descends. A segment is either an object key or an array
+# index, so `PathSeg` is a two-member untagged union.
+# =============================================================================
+
+struct Key   { name: Text }
+struct Index { at: Int64 }
+type PathSeg = Key | Index
+
+struct Path { segs: List[PathSeg] }
+
+fn root() -> Path { Path { segs = [] } }
+
+# Paths are immutable; descending produces a *new* path. Because each step is a
+# fresh value, a path captured in an error never changes underneath us even as
+# the walk continues elsewhere.
+fn at_key(p: Path, name: Text)   -> Path { Path { segs = p.segs.append(Key { name }) } }
+fn at_index(p: Path, at: Int64)  -> Path { Path { segs = p.segs.append(Index { at }) } }
+
+# Render a path like `$.user.emails[0]`. `$` is the document root.
+fn show_path(p: Path) -> Text {
+    let uniq out = TextBuilder()
+    out.push("$")
+    for seg in p.segs {
+        match seg {
+            k: Key   => { out.push("."); out.push(k.name) },
+            i: Index => { out.push("["); out.push(i.at.to_text()); out.push("]") },
+        }
+    }
+    out.finish()
+}
+
+struct ValidationError {
+    path:    Path,
+    code:    Text,                              # machine-readable, e.g. "type"
+    message: Text,                              # human-readable detail
+}
+
+fn verr(path: Path, code: Text, message: Text) -> ValidationError {
+    ValidationError { path, code, message }     # filled from same-named locals
+}
+
+fn show_error(e: ValidationError) -> Text {
+    "${show_path(e.path)}: ${e.message} [${e.code}]"
+}
+
+fn show_errors(errs: List[ValidationError]) -> Text {
+    if errs.is_empty() {
+        "valid"
+    } else {
+        let lines = errs.map(\ "  - " & show_error(it))
+        "${errs.len().to_text()} error(s):\n" & join(lines, "\n")
+    }
+}
+
+fn join(parts: List[Text], sep: Text) -> Text {
+    let uniq out = TextBuilder()
+    for entry in parts.enumerate() {
+        if entry.0 > 0 { out.push(sep) }
+        out.push(entry.1)
+    }
+    out.finish()
+}
+
+
+# =============================================================================
+# 6. Schema model
+#
+# A schema is a tree of constraints. Each node kind is its own struct, and
+# `Schema` is the untagged union over them — exactly the shape of the JSON model
+# in section 1, and matched the same way. Nodes nest (`SArr.items`, `SObj`'s
+# fields, `SUnion.options`) so the union is recursive, like any AST.
+#
+# Several nodes carry *lambdas*: `SStr.check` is a caller-supplied predicate run
+# after the structural checks pass, and the format registry (section 8) is a map
+# of named lambdas. This is where "ideally generics" meets "lambdas": a schema
+# is data, but it embeds behaviour.
+# =============================================================================
+
+type SAny                                       # matches anything; data-less
+type SNull                                      # must be JSON null
+
+struct SBool {
+    const: Option[Bool],                        # if present, the only allowed value
+}
+
+struct SNum {
+    min:         Option[Real64],
+    max:         Option[Real64],
+    exclusive:   Bool,                          # min/max are exclusive bounds
+    integer:     Bool,                          # require an integral value
+    multiple_of: Option[Real64],
+}
+
+struct SStr {
+    min_len: Option[Int64],
+    max_len: Option[Int64],
+    format:  Option[Text],                      # name into the format registry
+    # A custom predicate returning an *optional message*: `none` means OK,
+    # `some(msg)` means rejected with that explanation. Stored as a lambda.
+    check:   Option[Fn(Text) -> Option[Text]],
+}
+
+struct SArr {
+    items:     Schema,                          # schema every element must meet
+    min_items: Option[Int64],
+    max_items: Option[Int64],
+    unique:    Bool,                            # reject duplicate elements
+}
+
+# Object field: its name, the schema for its value, and whether it is required.
+struct FieldSpec {
+    name:     Text,
+    schema:   Schema,
+    required: Bool,
+}
+
+# What to do with members not named in `fields`.
+type AdditAny                                   # extra members allowed, unchecked
+type AdditNone                                  # extra members are an error
+struct AdditSchema { schema: Schema }           # extra members must match a schema
+type Additional = AdditAny | AdditNone | AdditSchema
+
+struct SObj {
+    fields:     List[FieldSpec],
+    additional: Additional,
+}
+
+struct SUnion { options: List[Schema] }         # anyOf: match at least one option
+struct SEnum  { allowed: List[Json] }           # value must equal one listed value
+struct SNot   { negated: Schema }               # value must NOT match the inner schema
+struct SRef   { name: Text }                    # reference a named schema in the registry
+
+type Schema =
+    SAny | SNull | SBool | SNum | SStr | SArr | SObj
+    | SUnion | SEnum | SNot | SRef
+
+# Named schemas, so a schema can refer to itself (`SRef`) and model recursive
+# documents — a category tree, a comment thread. The map is keyed by ref name.
+struct Registry { defs: Map[Text, Schema] }
+
+fn empty_registry() -> Registry { Registry { defs = map_of() } }
+
+
+# =============================================================================
+# 7. Schema constructor DSL
+#
+# Building `SStr { min_len = none, max_len = none, format = none, check = none }`
+# by hand at every use site is noise. These helpers give a fluent surface: start
+# from a permissive node, then tighten it with record copy-update (`with`).
+# Because each constructor returns the concrete struct type (`SStr`, not
+# `Schema`), and that struct is a member of `Schema`, the result drops straight
+# into any position expecting a `Schema` — untagged-union subtyping at work.
+# =============================================================================
+
+fn anything() -> SAny  { SAny }
+fn a_null()   -> SNull { SNull }
+
+fn a_bool() -> SBool { SBool { const = none } }
+
+fn a_number() -> SNum {
+    SNum { min = none, max = none, exclusive = false, integer = false, multiple_of = none }
+}
+
+# An integer is just a number node with the integral flag set — reuse, not a
+# new variant.
+fn an_integer() -> SNum { a_number() with { integer = true } }
+
+fn a_string() -> SStr {
+    SStr { min_len = none, max_len = none, format = none, check = none }
+}
+
+# Array of a given element schema. `items` accepts any `Schema`, so callers pass
+# `a_string()`, `an_object(...)`, or even another `an_array(...)`.
+fn an_array(items: Schema) -> SArr {
+    SArr { items, min_items = none, max_items = none, unique = false }
+}
+
+# Objects default to rejecting unknown members — the safe choice for request
+# bodies, and the one that catches typos in field names.
+fn an_object(fields: List[FieldSpec]) -> SObj {
+    SObj { fields, additional = AdditNone }
+}
+
+fn required(name: Text, schema: Schema) -> FieldSpec {
+    FieldSpec { name, schema, required = true }
+}
+
+fn optional(name: Text, schema: Schema) -> FieldSpec {
+    FieldSpec { name, schema, required = false }
+}
+
+fn one_of(options: List[Schema]) -> SUnion { SUnion { options } }
+fn an_enum(allowed: List[Json]) -> SEnum   { SEnum { allowed } }
+fn a_ref(name: Text) -> SRef               { SRef { name } }
+
+# A nullable schema is "the schema, or null" — expressed as a union, the same
+# way `Option[T]` is `Some[T] | None`. No special "nullable" flag is needed.
+fn nullable(schema: Schema) -> SUnion { one_of([schema, a_null()]) }
+
+# Convenience for the common "string drawn from a fixed set" case.
+fn string_enum(values: List[Text]) -> SEnum {
+    an_enum(values.map(\ jstr(it)))
+}
+
+
+# =============================================================================
+# 8. Format registry
+#
+# Named string formats (`email`, `uuid`, `date`, ...) are lambdas keyed by name.
+# A schema references a format by name (`SStr.format = some("email")`) and the
+# validator looks the predicate up here. Keeping them in a map — rather than
+# baking them into the validator — means a host could register its own formats
+# without touching the engine.
+# =============================================================================
+
+type FormatFn = Fn(Text) -> Bool                # a function-type alias
+
+fn default_formats() -> Map[Text, FormatFn] {
+    [
+        "email"    => \ is_email(it),
+        "uuid"     => \ is_uuid(it),
+        "date"     => \ is_iso_date(it),
+        "non-empty"=> \ not it.is_empty(),
+        "slug"     => \ is_slug(it),
+    ]
+}
+
+# Deliberately lenient checks — enough to demonstrate format dispatch, not to be
+# RFC-complete. Each is an ordinary predicate, usable on its own too.
+fn is_email(s: Text) -> Bool {
+    let parts = s.split("@")
+    (parts.len() == 2) and (not parts[0].is_empty()) and parts[1].contains(".")
+}
+
+fn is_uuid(s: Text) -> Bool {
+    let groups = s.split("-")
+    let sizes  = [8, 4, 4, 4, 12]
+    (groups.len() == 5)
+        and zip_all(groups, sizes, \ it.0.len() == it.1)
+        and groups.all(|g| g.chars().all(\ it.is_hex_digit()))
+}
+
+fn is_iso_date(s: Text) -> Bool {
+    let parts = s.split("-")
+    (parts.len() == 3)
+        and (parts[0].len() == 4)
+        and (parts[1].len() == 2)
+        and (parts[2].len() == 2)
+        and parts.all(|p| p.chars().all(\ it.is_digit()))
+}
+
+fn is_slug(s: Text) -> Bool {
+    (not s.is_empty()) and s.chars().all(\ it.is_digit() or it.is_alpha() or (it == '-'))
+}
+
+
+# =============================================================================
+# 9. Validation engine
+#
+# `validate` walks a schema and a value together, appending a `ValidationError`
+# for every constraint the value breaks, and returns *all* of them — it does not
+# stop at the first. The return is a plain `List[ValidationError]`; empty means
+# valid. Each schema kind has its own checker; the top-level `match` is
+# exhaustive over `Schema`, so adding a node kind forces this dispatch to handle
+# it.
+# =============================================================================
+
+# Context threaded through the walk: the registry (for `SRef`) and the format
+# table (for `SStr.format`). Bundling them keeps signatures short.
+struct Ctx {
+    registry: Registry,
+    formats:  Map[Text, FormatFn],
+}
+
+fn validate(schema: Schema, value: Json, ctx: Ctx) -> List[ValidationError] {
+    check(schema, value, root(), ctx)
+}
+
+fn check(schema: Schema, value: Json, path: Path, ctx: Ctx) -> List[ValidationError] {
+    match schema {
+        SAny      => [],                                    # nothing to check
+        SNull     => check_null(value, path),
+        s: SBool  => check_bool(s, value, path),
+        s: SNum   => check_num(s, value, path),
+        s: SStr   => check_str(s, value, path, ctx),
+        s: SArr   => check_arr(s, value, path, ctx),
+        s: SObj   => check_obj(s, value, path, ctx),
+        s: SUnion => check_union(s, value, path, ctx),
+        s: SEnum  => check_enum(s, value, path),
+        s: SNot   => check_not(s, value, path, ctx),
+        s: SRef   => check_ref(s, value, path, ctx),
+    }
+}
+
+# A reusable "wrong shape" error so every checker reports type mismatches the
+# same way.
+fn type_error(expected: Text, value: Json, path: Path) -> List[ValidationError] {
+    [verr(path, "type", "expected ${expected}, found ${type_name(value)}")]
+}
+
+fn check_null(value: Json, path: Path) -> List[ValidationError] {
+    match value {
+        JNull => [],
+        _     => type_error("null", value, path),
+    }
+}
+
+fn check_bool(s: SBool, value: Json, path: Path) -> List[ValidationError] {
+    match value {
+        b: JBool => match s.const {
+            some(want) =>
+                if b.value == want { [] }
+                else { [verr(path, "const", "must be ${want.to_text()}")] },
+            none => [],
+        },
+        _ => type_error("boolean", value, path),
+    }
+}
+
+fn check_num(s: SNum, value: Json, path: Path) -> List[ValidationError] {
+    match value {
+        n: JNum => {
+            # Accumulate every numeric violation rather than bail on the first.
+            let uniq errs = ListBuilder[ValidationError]()
+            let v = n.value
+
+            if s.integer and (v.floor() != v) {
+                errs.push(verr(path, "integer", "expected an integer, found ${v.to_text()}"))
+            }
+            match s.min {
+                some(lo) => {
+                    let bad = if s.exclusive { v <= lo } else { v < lo }
+                    if bad {
+                        errs.push(verr(path, "min", "must be >= ${lo.to_text()}, found ${v.to_text()}"))
+                    }
+                },
+                none => {},
+            }
+            match s.max {
+                some(hi) => {
+                    let bad = if s.exclusive { v >= hi } else { v > hi }
+                    if bad {
+                        errs.push(verr(path, "max", "must be <= ${hi.to_text()}, found ${v.to_text()}"))
+                    }
+                },
+                none => {},
+            }
+            match s.multiple_of {
+                some(step) => {
+                    if not is_multiple(v, step) {
+                        errs.push(verr(path, "multipleOf", "must be a multiple of ${step.to_text()}"))
+                    }
+                },
+                none => {},
+            }
+            errs.finish()
+        },
+        _ => type_error("number", value, path),
+    }
+}
+
+# True when `v` is an integer multiple of `step`, within a small tolerance to
+# absorb floating-point noise.
+fn is_multiple(v: Real64, step: Real64) -> Bool {
+    if step == 0.0 { return false }
+    let ratio = v / step
+    (ratio - ratio.floor()).abs() < 0.000001
+}
+
+fn check_str(s: SStr, value: Json, path: Path, ctx: Ctx) -> List[ValidationError] {
+    match value {
+        str: JStr => {
+            let uniq errs = ListBuilder[ValidationError]()
+            let text = str.value
+            let len  = text.len()
+
+            match s.min_len {
+                some(lo) =>
+                    if len < lo {
+                        errs.push(verr(path, "minLength",
+                            "length ${len.to_text()} below minimum ${lo.to_text()}"))
+                    },
+                none => {},
+            }
+            match s.max_len {
+                some(hi) =>
+                    if len > hi {
+                        errs.push(verr(path, "maxLength",
+                            "length ${len.to_text()} above maximum ${hi.to_text()}"))
+                    },
+                none => {},
+            }
+            # Format: look the predicate up by name and run it.
+            match s.format {
+                some(name) => match ctx.formats.get(name) {
+                    some(pred) =>
+                        if not pred(text) {
+                            errs.push(verr(path, "format", "not a valid ${name}"))
+                        },
+                    none =>
+                        errs.push(verr(path, "format", "unknown format '${name}'")),
+                },
+                none => {},
+            }
+            # Custom predicate lambda: `some(msg)` is a rejection reason.
+            match s.check {
+                some(fn_check) => match fn_check(text) {
+                    some(msg) => errs.push(verr(path, "check", msg)),
+                    none      => {},
+                },
+                none => {},
+            }
+            errs.finish()
+        },
+        _ => type_error("string", value, path),
+    }
+}
+
+fn check_arr(s: SArr, value: Json, path: Path, ctx: Ctx) -> List[ValidationError] {
+    match value {
+        a: JArr => {
+            let uniq errs = ListBuilder[ValidationError]()
+            let count = a.items.len()
+
+            match s.min_items {
+                some(lo) =>
+                    if count < lo {
+                        errs.push(verr(path, "minItems",
+                            "has ${count.to_text()} items, need at least ${lo.to_text()}"))
+                    },
+                none => {},
+            }
+            match s.max_items {
+                some(hi) =>
+                    if count > hi {
+                        errs.push(verr(path, "maxItems",
+                            "has ${count.to_text()} items, at most ${hi.to_text()}"))
+                    },
+                none => {},
+            }
+            if s.unique and has_duplicate(a.items) {
+                errs.push(verr(path, "uniqueItems", "array elements must be unique"))
+            }
+            # Recurse into each element, tagging its index onto the path. The
+            # element errors are flattened into the running list.
+            for entry in a.items.enumerate() {
+                let child = check(s.items, entry.1, at_index(path, entry.0), ctx)
+                for e in child { errs.push(e) }
+            }
+            errs.finish()
+        },
+        _ => type_error("array", value, path),
+    }
+}
+
+# O(n^2) duplicate scan — fine for the small arrays a schema describes, and it
+# avoids requiring `Json` to be hashable.
+fn has_duplicate(items: List[Json]) -> Bool {
+    for entry in items.enumerate() {
+        let rest = drop(items, entry.0 + 1)
+        if rest.any(|other| json_eq(entry.1, other)) { return true }
+    }
+    false
+}
+
+fn check_obj(s: SObj, value: Json, path: Path, ctx: Ctx) -> List[ValidationError] {
+    match value {
+        o: JObj => {
+            let uniq errs = ListBuilder[ValidationError]()
+            let declared = s.fields.map(\ it.name)
+
+            # Required-presence and per-field value checks.
+            for spec in s.fields {
+                match o.fields.get(spec.name) {
+                    some(child_value) => {
+                        let child = check(spec.schema, child_value, at_key(path, spec.name), ctx)
+                        for e in child { errs.push(e) }
+                    },
+                    none =>
+                        if spec.required {
+                            errs.push(verr(at_key(path, spec.name), "required",
+                                "missing required field '${spec.name}'"))
+                        },
+                }
+            }
+
+            # Members not named in the schema, handled per the `additional` policy.
+            for entry in o.fields.entries() {
+                if not declared.contains(entry.0) {
+                    match s.additional {
+                        AdditAny  => {},
+                        AdditNone =>
+                            errs.push(verr(at_key(path, entry.0), "additionalProperties",
+                                "unexpected field '${entry.0}'")),
+                        extra: AdditSchema => {
+                            let child = check(extra.schema, entry.1, at_key(path, entry.0), ctx)
+                            for e in child { errs.push(e) }
+                        },
+                    }
+                }
+            }
+            errs.finish()
+        },
+        _ => type_error("object", value, path),
+    }
+}
+
+# anyOf: the value must satisfy at least one option. If none match, we report a
+# single summary error rather than dumping every branch's failures, which would
+# be confusing.
+fn check_union(s: SUnion, value: Json, path: Path, ctx: Ctx) -> List[ValidationError] {
+    let any_ok = s.options.any(|opt| check(opt, value, path, ctx).is_empty())
+    if any_ok {
+        []
+    } else {
+        [verr(path, "anyOf", "value matched none of the ${s.options.len().to_text()} allowed schemas")]
+    }
+}
+
+fn check_enum(s: SEnum, value: Json, path: Path) -> List[ValidationError] {
+    if s.allowed.any(|allowed| json_eq(allowed, value)) {
+        []
+    } else {
+        let shown = join(s.allowed.map(\ render(it)), ", ")
+        [verr(path, "enum", "must be one of [${shown}], found ${render(value)}")]
+    }
+}
+
+# `not`: success and failure are inverted. An inner match is the error here.
+fn check_not(s: SNot, value: Json, path: Path, ctx: Ctx) -> List[ValidationError] {
+    if check(s.negated, value, path, ctx).is_empty() {
+        [verr(path, "not", "value must not match the negated schema")]
+    } else {
+        []
+    }
+}
+
+# Resolve a named schema and validate against it. An unknown ref is a schema
+# *authoring* bug, so it surfaces as a loud validation error at this path.
+fn check_ref(s: SRef, value: Json, path: Path, ctx: Ctx) -> List[ValidationError] {
+    match ctx.registry.defs.get(s.name) {
+        some(target) => check(target, value, path, ctx),
+        none         => [verr(path, "$ref", "unresolved schema reference '${s.name}'")],
+    }
+}
+
+# Drop the first `n` elements (helper for the duplicate scan).
+fn drop[T](xs: List[T], n: Int64) -> List[T] {
+    let uniq out = ListBuilder[T]()
+    for entry in xs.enumerate() {
+        if entry.0 >= n { out.push(entry.1) }
+    }
+    out.finish()
+}
+
+
+# =============================================================================
+# 10. Validated[T] — an error-accumulating applicative
+#
+# Structural validation answers "is this document well-formed?". The next step
+# is turning a *valid* `Json` into a *typed* Tel record. We want that decode to
+# accumulate every problem too, so the caller sees all field errors at once.
+#
+# `Validated[T]` is the generic carrier for that: either a `Valid[T]` holding a
+# decoded value, or an `Invalid` holding a list of errors. It is structurally a
+# clone of `Result[T, List[ValidationError]]`, but with *applicative* combining
+# — `map2` keeps both sides' errors instead of short-circuiting on the first.
+# This is the part of the program where generics do the most work.
+# =============================================================================
+
+struct Valid[T]  { value: T }
+struct Invalid   { errors: List[ValidationError] }
+type Validated[T] = Valid[T] | Invalid
+
+fn valid[T](value: T) -> Validated[T]            { Valid { value } }
+fn invalid[T](errors: List[ValidationError]) -> Validated[T] { Invalid { errors } }
+fn one_invalid[T](e: ValidationError) -> Validated[T] { invalid([e]) }
+
+# Functor: transform the success value, leave errors untouched.
+fn vmap[A, B](v: Validated[A], f: Fn(A) -> B) -> Validated[B] {
+    match v {
+        ok: Valid    => valid(f(ok.value)),
+        bad: Invalid => invalid(bad.errors),
+    }
+}
+
+# Applicative combine of two: BOTH error lists are kept when either fails. This
+# accumulation is the whole reason `Validated` exists separately from `Result`.
+fn map2[A, B, C](va: Validated[A], vb: Validated[B], f: Fn(A, B) -> C) -> Validated[C] {
+    match va {
+        a: Valid => match vb {
+            b: Valid    => valid(f(a.value, b.value)),
+            eb: Invalid => invalid(eb.errors),
+        },
+        ea: Invalid => match vb {
+            _: Valid    => invalid(ea.errors),
+            eb: Invalid => invalid(ea.errors.concat(eb.errors)),
+        },
+    }
+}
+
+# The wider arities are defined in terms of `map2`, currying the constructor one
+# field at a time. Decoders for big records use these directly.
+fn map3[A, B, C, R](
+    va: Validated[A], vb: Validated[B], vc: Validated[C],
+    f: Fn(A, B, C) -> R,
+) -> Validated[R] {
+    let partial = map2(va, vb, |a, b| |c| f(a, b, c))   # Validated[Fn(C)->R]
+    ap(partial, vc)
+}
+
+fn map4[A, B, C, D, R](
+    va: Validated[A], vb: Validated[B], vc: Validated[C], vd: Validated[D],
+    f: Fn(A, B, C, D) -> R,
+) -> Validated[R] {
+    let partial = map3(va, vb, vc, |a, b, c| |d| f(a, b, c, d))
+    ap(partial, vd)
+}
+
+fn map5[A, B, C, D, E, R](
+    va: Validated[A], vb: Validated[B], vc: Validated[C],
+    vd: Validated[D], ve: Validated[E],
+    f: Fn(A, B, C, D, E) -> R,
+) -> Validated[R] {
+    let partial = map4(va, vb, vc, vd, |a, b, c, d| |e| f(a, b, c, d, e))
+    ap(partial, ve)
+}
+
+# Apply a wrapped function to a wrapped argument, accumulating errors. `map2`
+# already does the accumulation; `ap` is just `map2` with function application
+# as the combiner.
+fn ap[A, B](vf: Validated[Fn(A) -> B], va: Validated[A]) -> Validated[B] {
+    map2(vf, va, |f, a| f(a))
+}
+
+# Monadic bind, for the cases where the *next* decode depends on the previous
+# value (so it cannot accumulate — it must short-circuit).
+fn and_then[A, B](v: Validated[A], f: Fn(A) -> Validated[B]) -> Validated[B] {
+    match v {
+        ok: Valid    => f(ok.value),
+        bad: Invalid => invalid(bad.errors),
+    }
+}
+
+# Sequence a list of `Validated` into a `Validated` list, accumulating ALL
+# errors across the elements. This is the generic workhorse behind decoding
+# arrays, and a compact showcase of a fold over a lambda.
+fn combine_all[T](items: List[Validated[T]]) -> Validated[List[T]] {
+    items.fold(valid([]), |acc, item| map2(acc, item, |xs, x| xs.append(x)))
+}
+
+
+# =============================================================================
+# 11. Decoders — Json to typed values
+#
+# A `Decoder[T]` is just a function from `Json` to `Validated[T]`. Expressing it
+# as a generic function-type alias lets decoders be passed around, composed, and
+# stored as data (e.g. given to `field` below). Each primitive decoder reports a
+# typed error at the current path; the structural validator has usually already
+# caught shape problems, but decoders stay honest on their own.
+# =============================================================================
+
+type Decoder[T] = Fn(Json, Path) -> Validated[T]
+
+fn decode_bool(j: Json, path: Path) -> Validated[Bool] {
+    match j {
+        b: JBool => valid(b.value),
+        _        => one_invalid(verr(path, "type", "expected boolean, found ${type_name(j)}")),
+    }
+}
+
+fn decode_text(j: Json, path: Path) -> Validated[Text] {
+    match j {
+        s: JStr => valid(s.value),
+        _       => one_invalid(verr(path, "type", "expected string, found ${type_name(j)}")),
+    }
+}
+
+fn decode_int(j: Json, path: Path) -> Validated[Int64] {
+    match j {
+        n: JNum =>
+            if n.value.floor() == n.value {
+                valid(n.value.to_int64())
+            } else {
+                one_invalid(verr(path, "type", "expected integer, found ${n.value.to_text()}"))
+            },
+        _ => one_invalid(verr(path, "type", "expected integer, found ${type_name(j)}")),
+    }
+}
+
+fn decode_real(j: Json, path: Path) -> Validated[Real64] {
+    match j {
+        n: JNum => valid(n.value),
+        _       => one_invalid(verr(path, "type", "expected number, found ${type_name(j)}")),
+    }
+}
+
+# Decode the value at object key `name` with `dec`. A missing key is itself an
+# error here (use `optional_field` for absence-as-`none`). The decoder's own
+# errors are re-pathed under the key.
+fn field[T](obj: Json, name: Text, dec: Decoder[T], path: Path) -> Validated[T] {
+    match obj {
+        o: JObj => match o.fields.get(name) {
+            some(child) => dec(child, at_key(path, name)),
+            none        => one_invalid(verr(at_key(path, name), "required",
+                                            "missing field '${name}'")),
+        },
+        _ => one_invalid(verr(path, "type", "expected object, found ${type_name(obj)}")),
+    }
+}
+
+# Like `field`, but absence yields `none` instead of an error, and a present
+# value is wrapped in `some` after decoding. The result type `Validated[Option[T]]`
+# threads the optionality through the generic carrier.
+fn optional_field[T](obj: Json, name: Text, dec: Decoder[T], path: Path) -> Validated[Option[T]] {
+    match obj {
+        o: JObj => match o.fields.get(name) {
+            some(child) => vmap(dec(child, at_key(path, name)), \ some(it)),
+            none        => valid(none),
+        },
+        _ => one_invalid(verr(path, "type", "expected object, found ${type_name(obj)}")),
+    }
+}
+
+# Decode a JSON array into a typed list, applying `dec` elementwise and
+# accumulating every element's errors via `combine_all`.
+fn decode_list[T](j: Json, dec: Decoder[T], path: Path) -> Validated[List[T]] {
+    match j {
+        a: JArr => {
+            let decoded = a.items.enumerate().map(|entry| dec(entry.1, at_index(path, entry.0)))
+            combine_all(decoded)
+        },
+        _ => one_invalid(verr(path, "type", "expected array, found ${type_name(j)}")),
+    }
+}
+
+
+# =============================================================================
+# 12. Domain model and its decoder
+#
+# The typed records a user-registration endpoint actually wants. Once a document
+# validates against `user_schema` (section 13) it is decoded into a `UserRecord`
+# with `decode_user`, which fans out across the fields with `map5` so that — if
+# decoding still finds problems — every field error comes back at once.
+# =============================================================================
+
+struct Address {
+    street: Text,
+    city:   Text,
+    zip:    Text,
+}
+
+# A role is a closed set; modelling it as a data-less union gives self-checking
+# decode and exhaustive handling, instead of a bare string.
+type RoleAdmin
+type RoleEditor
+type RoleViewer
+type Role = RoleAdmin | RoleEditor | RoleViewer
+
+fn decode_role(j: Json, path: Path) -> Validated[Role] {
+    match j {
+        s: JStr => match s.value {
+            "admin"  => valid(RoleAdmin),
+            "editor" => valid(RoleEditor),
+            "viewer" => valid(RoleViewer),
+            _ => one_invalid(verr(path, "enum", "unknown role '${s.value}'")),
+        },
+        _ => one_invalid(verr(path, "type", "expected role string, found ${type_name(j)}")),
+    }
+}
+
+fn role_name(r: Role) -> Text {
+    match r {
+        RoleAdmin  => "admin",
+        RoleEditor => "editor",
+        RoleViewer => "viewer",
+    }
+}
+
+struct UserRecord {
+    username: Text,
+    email:    Text,
+    age:      Option[Int64],
+    roles:    List[Role],
+    address:  Option[Address],
+}
+
+# Decode an `Address`. `map3` runs all three field decoders and merges errors.
+fn decode_address(j: Json, path: Path) -> Validated[Address] {
+    map3(
+        field(j, "street", decode_text, path),
+        field(j, "city",   decode_text, path),
+        field(j, "zip",    decode_text, path),
+        |street, city, zip| Address { street, city, zip },
+    )
+}
+
+# The top-level decoder. Each argument to `map5` is itself a `Validated`, and
+# the lambda is the record constructor in disguise. If any field fails, its
+# errors flow into the combined `Invalid` without masking the others.
+fn decode_user(j: Json, path: Path) -> Validated[UserRecord] {
+    map5(
+        field(j, "username", decode_text, path),
+        field(j, "email",    decode_text, path),
+        optional_field(j, "age", decode_int, path),
+        field(j, "roles", |rj, rp| decode_list(rj, decode_role, rp), path),
+        optional_field(j, "address", decode_address, path),
+        |username, email, age, roles, address|
+            UserRecord { username, email, age, roles, address },
+    )
+}
+
+fn show_user(u: UserRecord) -> Text {
+    let age_text = match u.age {
+        some(a) => a.to_text(),
+        none    => "unset",
+    }
+    let role_text = join(u.roles.map(\ role_name(it)), ", ")
+    let addr_text = match u.address {
+        some(a) => "${a.street}, ${a.city} ${a.zip}",
+        none    => "no address",
+    }
+    "User(username=${u.username}, email=${u.email}, age=${age_text}, " &
+        "roles=[${role_text}], address=${addr_text})"
+}
+
+
+# =============================================================================
+# 13. The example schema
+#
+# A registration document, plus a *recursive* category-tree schema to exercise
+# `SRef`. Everything is assembled from the section-7 DSL, so the structure reads
+# top-down like the document it describes.
+# =============================================================================
+
+# Password rule expressed as a custom-check lambda: must contain a letter and a
+# digit. Returns `some(reason)` to reject.
+fn password_check() -> Fn(Text) -> Option[Text] {
+    |pw| {
+        let has_alpha = pw.chars().any(\ it.is_alpha())
+        let has_digit = pw.chars().any(\ it.is_digit())
+        if has_alpha and has_digit {
+            none
+        } else {
+            some("password must contain both a letter and a digit")
+        }
+    }
+}
+
+fn user_schema() -> SObj {
+    an_object([
+        required("username",
+            a_string() with { min_len = some(3), max_len = some(32), format = some("slug") }),
+        required("email",
+            a_string() with { format = some("email") }),
+        required("password",
+            a_string() with { min_len = some(8), check = some(password_check()) }),
+        optional("age",
+            an_integer() with { min = some(13.0), max = some(120.0) }),
+        required("roles",
+            an_array(string_enum(["admin", "editor", "viewer"]))
+                with { min_items = some(1), unique = true }),
+        optional("address", address_schema()),
+    ])
+}
+
+fn address_schema() -> SObj {
+    an_object([
+        required("street", a_string() with { min_len = some(1) }),
+        required("city",   a_string() with { min_len = some(1) }),
+        required("zip",    a_string() with { format = some("non-empty") }),
+    ])
+}
+
+# A recursive schema: a category has a name and a list of sub-categories, each
+# itself a category. The self-reference goes through the registry by name.
+fn category_registry() -> Registry {
+    let category = an_object([
+        required("name", a_string() with { min_len = some(1) }),
+        optional("children", an_array(a_ref("category"))),
+    ])
+    Registry { defs = ["category" => category] }
+}
+
+
+# =============================================================================
+# 14. Driver
+#
+# Wire the pieces together on a few sample documents: parse, structurally
+# validate, and — when valid — decode into the typed `UserRecord`. Prints a
+# short report for each. This is the shape of the request-handling path a real
+# embedding host would call into.
+# =============================================================================
+
+# One end-to-end run over a single document against the user schema.
+fn run_user_case(label: Text, source: Text) -> () {
+    print("── ${label} ──")
+    print("input: ${source}")
+
+    let ctx = Ctx { registry = empty_registry(), formats = default_formats() }
+
+    match parse(source) {
+        Err(pe) => print("parse error at ${pe.pos.to_text()}: ${pe.message}"),
+        Ok(doc) => {
+            let errs = validate(user_schema(), doc, ctx)
+            if errs.is_empty() {
+                print("schema: valid")
+                # Structurally valid, so decode into the typed record.
+                match decode_user(doc, root()) {
+                    ok: Valid    => print("decoded: ${show_user(ok.value)}"),
+                    bad: Invalid => print("decode: ${show_errors(bad.errors)}"),
+                }
+            } else {
+                print("schema: ${show_errors(errs)}")
+            }
+        },
+    }
+    print("")
+}
+
+# One end-to-end run against the recursive category schema.
+fn run_category_case(label: Text, source: Text) -> () {
+    print("── ${label} ──")
+    print("input: ${source}")
+    let ctx = Ctx { registry = category_registry(), formats = default_formats() }
+    match parse(source) {
+        Err(pe) => print("parse error at ${pe.pos.to_text()}: ${pe.message}"),
+        Ok(doc) => print("schema: ${show_errors(validate(a_ref("category"), doc, ctx))}"),
+    }
+    print("")
+}
+
+fn main() -> () {
+    print("JSON Schema Validator — Tel example\n")
+
+    # A clean document: passes the schema and decodes to a UserRecord.
+    run_user_case("valid user", r"""
+        {
+            "username": "ada-lovelace",
+            "email": "ada@example.com",
+            "password": "babbage99",
+            "age": 36,
+            "roles": ["admin", "editor"],
+            "address": { "street": "12 Analytical Way", "city": "London", "zip": "EC1" }
+        }
+    """)
+
+    # A document with several independent problems. The validator reports them
+    # all, not just the first: bad email, short password without a digit, age
+    # below the minimum, an unknown role, a duplicate role, and a stray field.
+    run_user_case("multiple errors", r"""
+        {
+            "username": "x",
+            "email": "not-an-email",
+            "password": "letters",
+            "age": 9,
+            "roles": ["admin", "admin", "wizard"],
+            "nickname": "xx"
+        }
+    """)
+
+    # Malformed JSON: the parser stops with a located error before validation.
+    run_user_case("syntax error", r"""
+        { "username": "bob", "email": "bob@x.io", }
+    """)
+
+    # Recursive schema: a category tree nested three deep, all valid.
+    run_category_case("category tree (valid)", r"""
+        {
+            "name": "root",
+            "children": [
+                { "name": "fruit", "children": [ { "name": "citrus" } ] },
+                { "name": "veg" }
+            ]
+        }
+    """)
+
+    # The same tree, but a deep child violates the schema (empty name) — the
+    # error path points straight at the offending node.
+    run_category_case("category tree (deep error)", r"""
+        {
+            "name": "root",
+            "children": [ { "name": "fruit", "children": [ { "name": "" } ] } ]
+        }
+    """)
+}

@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-deployment
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: {{ .Release.Name }}-pod
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          {{- if .Values.noindex }}
+          volumeMounts:
+            - name: robots
+              mountPath: /usr/share/nginx/html/robots.txt
+              subPath: robots.txt
+          {{- end }}
+      {{- if .Values.noindex }}
+      volumes:
+        - name: robots
+          configMap:
+            name: {{ .Release.Name }}-robots
+      {{- end }}

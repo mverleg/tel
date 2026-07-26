@@ -1,0 +1,47 @@
+[book]
+title = "Tel — Language Documentation"
+authors = ["Mark Verleg"]
+language = "en"
+multilingual = false
+src = "src"
+
+[build]
+build-dir = "out"
+create-missing = false
+
+[preprocessor.strip-todos]
+command = "python3 preprocessors/strip-todos.py"
+
+# Adds src/tips/ (Tel Improvement Proposals) to the book, but only when the
+# TEL_DEV env var is set (the dev deployment). Runs after strip-todos so the
+# TIPs keep their TODO(open) markers.
+[preprocessor.inject-tips]
+command = "python3 preprocessors/inject-tips.py"
+after = ["strip-todos"]
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/mverleg/tel"
+edit-url-template = "https://github.com/mverleg/tel/edit/main/doc/book/src/{path}"
+site-url = "/"
+additional-css = ["theme/footer.css", "theme/banner.css"]
+additional-js = ["theme/footer.js", "theme/banner.js"]
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+limit-results = 30
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 2
+boost-paragraph = 1
+expand = true
+heading-split-level = 2
+
+[output.html.playground]
+editable = false
+runnable = false

@@ -1,0 +1,12 @@
+image:
+  repository: mverleg/teldoc
+  tag: latest
+
+domain: tel.tryin.top
+# false → letsencrypt-staging (safe for first deploy / rate limits)
+# true  → letsencrypt-prod
+prod: false
+# true → serve robots.txt with "Disallow: /" so crawlers skip the site.
+# Flip to false (or remove this whole feature) once the docs are ready
+# to be indexed.
+noindex: true

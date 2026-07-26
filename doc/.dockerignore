@@ -1,0 +1,10 @@
+.git/
+.gitignore
+.claude/
+.idea/
+book/out/
+book/inputs/
+book/impl-notes/
+chart/
+Dockerfile
+.dockerignore
