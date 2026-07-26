@@ -37,6 +37,8 @@ Shadowing is permitted **across a scope boundary** (an inner block, a `match`
 arm, a lambda body). Re-declaring a name **in the same scope** is still an
 error — that reads like a typo, not an intent:
 
+{{#spec SAME_SCOPE_REDECLARATION}}
+
 ```tel
 let x = 1
 let x = 2     # ERROR — same scope. Did you mean `x = 2` (reassign)?

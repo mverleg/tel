@@ -48,6 +48,11 @@ fi
 
 IMAGE="${REPOSITORY}:${TAG}"
 
+echo "=== spec anchors ==="
+# Refresh book/spec-links.json so the deployed book links each documented rule
+# to the code implementing it. Fails the deploy when the two sides disagree.
+python3 ../scripts/spec_links.py --write-links
+
 echo "=== estimated print size ==="
 TEL_DEV="${TEL_DEV}" python3 ./scripts/estimate-pages.py || \
     echo "(page estimate skipped)"

@@ -7,6 +7,7 @@
 use tel_ast::Type;
 use tel_ast::Variable;
 use tel_ast::Variables;
+use tel_common::spec;
 use tel_common::{Identifier, TelErr};
 
 #[derive(Debug)]
@@ -47,9 +48,10 @@ impl Scope {
         type_annotation: Option<&Type>,
         mutable: bool
     ) -> Result<Variable, TelErr> {
+        spec!(SAME_SCOPE_REDECLARATION, "declaration sites only; `let` across a scope boundary is not implemented yet");
         for &known in &self.items {
             if known.iden(variables) == iden {
-                // or should shadowing in the same scope be allowed? I occasionally use it in other languages
+                // the docs settle this: shadowing needs a scope boundary, a repeat in one scope is an error
                 return Err(TelErr::ScopeErr {
                     msg: format!("variable '{iden}' declared twice in this scope")
                 })

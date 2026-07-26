@@ -5,6 +5,8 @@ identifiers follow the conservative shape that a reader from Python, Java, C#,
 Rust, JS, or Kotlin already expects: a letter or underscore followed by letters,
 digits, or underscores.
 
+{{#spec IDENTIFIER_SHAPE}}
+
 ```tel
 score          my_age_days     EuroAmt     User_v4     _unused
 ```

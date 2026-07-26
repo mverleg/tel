@@ -1,6 +1,6 @@
 # Tel — Programming Language Design
 
-This repository contains the design documentation for **Tel** (Typed Embedded Language).
+This directory (`doc/` in the `tel` repository) contains the design documentation for **Tel** (Typed Embedded Language). It used to be a separate `teldoc` repository; it was moved in so that a documented rule and the code implementing it can be linked and checked — see [Spec anchors](#spec-anchors-linking-a-rule-to-its-implementation) below, and the repository-level `../../CLAUDE.md`.
 
 > **What "embedded" means here:** Tel is designed to be **embedded in host applications** — game engines, Python/JS/JVM/Rust programs, message brokers, scientific tools, IDE plugins, modding hosts. It is **not** a language for embedded *systems* (microcontrollers, constrained hardware). Assume the host is a normal program running on normal hardware; the constraints come from being a *guest* inside another program, not from tiny memory or no-OS targets.
 
@@ -33,6 +33,7 @@ The documentation is organized as **chapters** (folders) containing **topics** (
 ├── book.toml              ← mdBook config (generation, not content)
 ├── theme/                 ← site theme overrides (generation)
 ├── preprocessors/         ← mdBook preprocessors (generation)
+├── spec-links.json        ← generated, gitignored (see Spec anchors)
 └── src/                   ← all documentation content
     ├── README.md          ← table of contents / entry point
     ├── inputs/            ← reference materials (see below)
@@ -112,6 +113,28 @@ The main authoring pattern is to convert raw snippets in `inputs/` into polished
 4. **Review and commit.** The agent reports its open questions; the user resolves them in a later iteration. One commit per integration.
 
 `02-philosophy/` is normally authored directly by the user, not via the integration loop — its content is the policy that the loop appeals to.
+
+## Spec anchors: linking a rule to its implementation
+
+A rule that the compiler actually enforces can carry a **spec anchor** — a `SCREAMING_SNAKE_CASE` id, unique across the book, that the implementation refers to by name. Declare it on its own line directly under the prose that states the rule:
+
+```markdown
+Re-declaring a name **in the same scope** is an error.
+
+{{#spec SAME_SCOPE_REDECLARATION}}
+```
+
+It renders as a small chip the reader can link to (`#spec-SAME_SCOPE_REDECLARATION`), followed by links to the code implementing the rule.
+
+Conventions:
+
+- **Name the rule, not the topic.** `SAME_SCOPE_REDECLARATION`, not `SHADOWING_CHAPTER`. One anchor per decision a compiler could get wrong; a topic file may hold several, or none.
+- **Declare each id once.** The checker rejects duplicates. To point at a rule from elsewhere in the book, use an ordinary relative link plus the `#spec-…` fragment.
+- **Anchor settled rules only.** Never anchor something still under `TODO(open):` — an anchor is a promise that this text is what the implementation follows.
+- **Renaming an id is a breaking change** for the code that claims it. Rename both sides in one commit; the checker will catch you if you don't.
+- Markers inside code blocks are left alone, so this file's examples are not declarations.
+
+The other half lives in the implementation: `spec!(SAME_SCOPE_REDECLARATION);` at each code site, checked by `../../scripts/spec_links.py` (run it after touching an anchor). The repository-level `../../CLAUDE.md` documents the code side and the checker in full.
 
 ## Terminology: ownership vs mutability (push back when conflated)
 

@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::sync::LazyLock;
 
+use crate::spec;
 use crate::SString;
 use log::debug;
 use serde::Serialize;
@@ -173,6 +174,7 @@ pub enum IdentifierErr { TooShort(SString), InvalidSymbol(SString, char), Reserv
 impl Identifier {
     pub fn new(name: impl Into<SString>) -> Result<Self, IdentifierErr> {
         // [a-zA-Z][a-zA-Z0-9_]*
+        spec!(IDENTIFIER_SHAPE, "ascii only; the case-twin rule is not implemented yet");
         let name = name.into();
         for ch in name.chars() {
             match ch {
@@ -199,6 +201,7 @@ impl Identifier {
                 return Err(IdentifierErr::InvalidSymbol(name, unexpected));
             }
         }
+        spec!(KEYWORDS_RESERVED);
         if let Some(res) = RESERVED_SET.get(name.as_str()) {
             debug!("reject identifier because '{name}' is reserved",);
             return Err(IdentifierErr::Reserved(res));

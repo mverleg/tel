@@ -19,13 +19,21 @@ command = "python3 preprocessors/strip-todos.py"
 command = "python3 preprocessors/inject-tips.py"
 after = ["strip-todos"]
 
+# Renders {{#spec ID}} markers into linkable anchors, and — when
+# spec-links.json is present (written by ../../scripts/spec_links.py) — into
+# links to the code implementing the rule. Runs last so injected TIPs get
+# their anchors too.
+[preprocessor.spec-anchors]
+command = "python3 preprocessors/spec-anchors.py"
+after = ["strip-todos", "inject-tips"]
+
 [output.html]
 default-theme = "rust"
 preferred-dark-theme = "navy"
 git-repository-url = "https://github.com/mverleg/tel"
 edit-url-template = "https://github.com/mverleg/tel/edit/main/doc/book/src/{path}"
 site-url = "/"
-additional-css = ["theme/footer.css", "theme/banner.css"]
+additional-css = ["theme/footer.css", "theme/banner.css", "theme/spec.css"]
 additional-js = ["theme/footer.js", "theme/banner.js"]
 
 [output.html.fold]

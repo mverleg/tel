@@ -6,6 +6,8 @@ Tel is effectively frozen at 1.0 (see
 [Priorities](../02-philosophy/01-priorities.md)), no later release adds a keyword
 that could break an existing script.
 
+{{#spec KEYWORDS_RESERVED}}
+
 This page records what the design notes commit to *about* keywords. The exact
 spelling of individual keywords is settled in the chapters that introduce the
 corresponding feature, not here.

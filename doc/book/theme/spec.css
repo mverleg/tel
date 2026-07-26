@@ -1,0 +1,45 @@
+/* Spec anchors: the {{#spec ID}} marker rendered by preprocessors/spec-anchors.py.
+   A small, unobtrusive chip that names the rule and links to the code
+   implementing it (when spec-links.json has been generated). */
+
+.tel-spec {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  margin: 0.2em 0 0.6em;
+  font-size: 0.78em;
+  line-height: 1.6;
+}
+
+.tel-spec-id {
+  padding: 0.05em 0.5em;
+  border: 1px solid var(--quote-border, #cccccc);
+  border-radius: 999px;
+  background: var(--quote-bg, rgba(127, 127, 127, 0.08));
+  color: var(--fg, inherit);
+  font-family: var(--mono-font, monospace);
+  letter-spacing: 0.02em;
+  opacity: 0.75;
+  text-decoration: none;
+}
+
+.tel-spec-id:hover {
+  opacity: 1;
+  text-decoration: none;
+}
+
+/* Anchor targets sit under the sticky menu bar otherwise. */
+.tel-spec:target .tel-spec-id {
+  opacity: 1;
+  border-color: var(--links, #4183c4);
+}
+
+.tel-spec-impl {
+  opacity: 0.7;
+  font-family: var(--mono-font, monospace);
+}
+
+.tel-spec-impl a {
+  color: var(--links, #4183c4);
+}
