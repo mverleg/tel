@@ -236,6 +236,19 @@
 - [Entity Identity and Projections](19-use-cases/09-entity-identity-and-projections.md)
 - [A Localization Library](19-use-cases/10-localization-library.md)
 
+# Compiler Internals
+
+- [Overview](19a-compiler-internals/01-overview.md)
+- [The Query Graph](19a-compiler-internals/02-query-graph.md)
+- [Keys and Fingerprints](19a-compiler-internals/03-keys-and-fingerprints.md)
+- [Invalidation](19a-compiler-internals/04-invalidation.md)
+- [Hashing](19a-compiler-internals/05-hashing.md)
+- [Deterministic Hashing](19a-compiler-internals/06-deterministic-hashing.md)
+- [Execution and Recovery](19a-compiler-internals/07-execution-and-recovery.md)
+- [Cycle Detection](19a-compiler-internals/08-cycle-detection.md)
+- [Invariants](19a-compiler-internals/09-invariants.md)
+- [Why Content-Addressed](19a-compiler-internals/10-content-addressing-rationale.md)
+
 # Appendix
 
 - [Keywords Reference](20-appendix/01-keywords.md)

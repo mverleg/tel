@@ -1,6 +1,6 @@
 //! Leaf-driven (push) invalidation tests (plans/roadmap.md item 10,
-//! docs/execution-and-recovery.md, docs/keys-and-invalidation.md
-//! "Invalidation From the Leafs").
+//! doc/book/src/19a-compiler-internals/07-execution-and-recovery.md,
+//! doc/book/src/19a-compiler-internals/04-invalidation.md "Push: from the leafs").
 //!
 //! The protocol under test: `Compiler::invalidate(path)` is pass 1 — an
 //! infallible reverse-edge marking walk; the next `run_watch` is pass 2 —
@@ -83,7 +83,7 @@ async fn invalidate_recomputes_only_the_affected_cone() {
     assert_eq!(monos, 1, "only the changed function re-checks; the sibling and main hit their keys");
 }
 
-/// The worked example of docs/keys-and-invalidation.md: a formatting-only
+/// The worked example of doc/book/src/19a-compiler-internals/04-invalidation.md: a formatting-only
 /// edit dirties the whole cone (marking is conservative and does no hashing),
 /// but pass 2 un-dirties it via early cutoff — one parse recompute, and the
 /// unchanged fingerprint stops propagation before any resolve or mono work.
@@ -158,7 +158,7 @@ async fn spurious_invalidations_are_harmless() {
     );
 }
 
-/// Panic safety (docs/cache-invalidation-problem.md #8): a panic at the
+/// Panic safety (doc/book/src/19a-compiler-internals/09-invariants.md, "Panics specifically"): a panic at the
 /// recompute boundary must leave the node dirty — never clean — and must not
 /// poison either cache layer. Observable consequence: after the panicking
 /// wave fails, a plain retry (with *no* new invalidate call) still recomputes
@@ -291,7 +291,7 @@ async fn local_function_instances_are_in_their_files_marking_cone() {
     );
 }
 
-/// Scenario A (docs/cache-invalidation-problem.md) under the watch stance:
+/// Scenario A (doc/book/src/19a-compiler-internals/01-overview.md, "Revert and branch-switch") under the watch stance:
 /// edit, then revert to the original bytes. The revert's wave re-reads the
 /// announced leaf (ground truth over events) but its digest leads straight to
 /// answers the content store already holds — zero recompute at every phase,
@@ -334,8 +334,8 @@ async fn watch_revert_recomputes_nothing() {
     assert_eq!(delta(before, counts(&compiler)), (0, 0, 0, 0));
 }
 
-/// Partial failure midway up a leaf→root pass (docs/cache-invalidation-problem.md
-/// #10): while a mid-chain file is broken (deterministic resolve error), a
+/// Partial failure midway up a leaf→root pass
+/// (doc/book/src/19a-compiler-internals/09-invariants.md, "Invariant 8, restated"): while a mid-chain file is broken (deterministic resolve error), a
 /// *different* leaf underneath it is edited. When the mid-chain file is later
 /// fixed, the whole affected chain must recompute — the leaf edit made during
 /// the broken period must be reflected. A falsely-clean node anywhere in the

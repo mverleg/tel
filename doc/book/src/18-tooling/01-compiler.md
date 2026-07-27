@@ -106,6 +106,10 @@ syntax tree as the source is edited. `TODO(open): how far to push
 incrementality — symbol-level caching is the committed target; Unison-style
 recompilation-free renames are noted as an aspiration only.`
 
+The full model — the three identifiers, the two cache layers, invalidation in
+both directions, hashing widths, concurrency and recovery — is
+[Compiler Internals](../19a-compiler-internals/01-overview.md).
+
 ## Interpreter vs AOT
 
 The same source must run two ways

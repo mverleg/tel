@@ -134,6 +134,12 @@ WhileLoop: Expr = {
     BoolCombineExpr,
 }
 
+// TODO @mark: align with the docs: reject a mix of different operators instead of
+// TODO @mark: ranking them. The ladder below (BoolCombine > BoolCompare > AddSub > MulDiv)
+// TODO @mark: is exactly the cross-operator precedence the docs decided against; only the
+// TODO @mark: three flat exceptions (same operator, +/- together, a chain of and/or/xor)
+// TODO @mark: may stay, and those are already left-associative here.
+// spec: MIXED_OPERATORS_REQUIRE_PARENS — NOT implemented: the ladder still ranks different operators, so `a + b * c` is accepted
 BoolCombineExpr: Expr = {
     <l:BoolCombineExpr> <o:BoolCombineOp> Br <r:BoolCompareExpr> => Expr::BinOp(o, Box::new(l), Box::new(r)),
     BoolCompareExpr,

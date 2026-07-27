@@ -15,7 +15,7 @@ dedup** ("don't enqueue identical queries"). It also delivers roadmap
 [item 16](roadmap.md) (prevent cache state leaking outside its scope) as a
 *consequence* of the eviction design rather than a separate feature.
 
-Related: [keys-and-invalidation.md](../../docs/keys-and-invalidation.md) (the
+Related: [keys and fingerprints](../../doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md) (the
 two-layer model this refines), [daemon.md](daemon.md) (the long-lived process
 that makes eviction necessary at all), [roadmap.md](roadmap.md) Phase 3–4.
 

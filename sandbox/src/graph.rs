@@ -30,7 +30,7 @@ pub struct MonoId {
     pub ty: Ty,
 }
 
-/// The *logical id* of the keys model (docs/keys-and-invalidation.md): `(query
+/// The *logical id* of the keys model (doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md): `(query
 /// kind, args)`. It names a query across time and edits — "parse file F" stays
 /// the same StepId when F's bytes change. Process-local by design (the args are
 /// interned `Sym` indices), so it may be hashed/compared cheaply but must never
@@ -88,7 +88,7 @@ impl Graph {
     /// re-derived from its (possibly changed) content on every recompute, and
     /// edges from *previous* content must not accumulate — a stale edge
     /// describes a program that no longer exists (the "zombie edge" problem of
-    /// docs/keys-and-invalidation.md) and could even join with fresh edges
+    /// doc/book/src/19a-compiler-internals/04-invalidation.md) and could even join with fresh edges
     /// into a phantom cycle after an import restructure.
     pub fn replace_dependencies(&self, caller: StepId, new_deps: impl IntoIterator<Item = StepId>) {
         let new_set: HashSet<StepId> = new_deps.into_iter().collect();
@@ -118,7 +118,7 @@ impl Graph {
     /// All transitive dependents of `step`, walking reverse edges upward.
     ///
     /// The result excludes `step` itself. A `visited` set makes this safe even
-    /// if the dependency graph contains a cycle (see docs/cycle-detection.md);
+    /// if the dependency graph contains a cycle (see doc/book/src/19a-compiler-internals/08-cycle-detection.md);
     /// each node is expanded at most once.
     pub fn transitive_dependents(&self, step: &StepId) -> HashSet<StepId> {
         let mut result = HashSet::new();
@@ -138,7 +138,7 @@ impl Graph {
     /// Find a cycle containing the given FQ in Resolve dependencies.
     /// Returns the cycle as a vector of FQs, starting from the target and ending at the target.
     ///
-    /// Diagnostic only (docs/cycle-detection.md): the *primary* cycle detector
+    /// Diagnostic only (doc/book/src/19a-compiler-internals/08-cycle-detection.md): the *primary* cycle detector
     /// is the ancestor-path check in `resolve_all_impl`, which fires before a
     /// cyclic import can deadlock the parallel resolver. This post-hoc DFS
     /// exists to verify, on a finished graph, that the invariant held (see the

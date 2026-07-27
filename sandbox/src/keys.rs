@@ -1,4 +1,4 @@
-//! The three-identifier key model from docs/keys-and-invalidation.md.
+//! The three-identifier key model from doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md.
 //!
 //! Every query (compiler step instance) has three identifiers with distinct jobs:
 //!
@@ -15,7 +15,7 @@
 //! [`StableHash`] trait, which (unlike `std::hash::Hash`) guarantees a
 //! deterministic byte encoding and resolves process-local ids ([`Sym`]) to
 //! their stable string form via [`StableCtx`] — see
-//! docs/deterministic-hashing.md. `std::hash::Hash` remains in use for
+//! doc/book/src/19a-compiler-internals/06-deterministic-hashing.md. `std::hash::Hash` remains in use for
 //! in-memory maps, where nondeterminism is harmless.
 
 use crate::common::{Interner, Name, Path, Sym, FQ};
@@ -26,8 +26,11 @@ use xxhash_rust::xxh3::Xxh3;
 /// [`ContentKey`] by construction (the README item "include schema hash in the
 /// file cache"). Bump it whenever a change makes previously cached results
 /// unusable — a different AST shape, different phase semantics, a different
-/// `StableHash` encoding. Old entries are then unreachable (superseded garbage,
-/// not hazards): a cold cache, never a stale one.
+/// `StableHash` encoding, or a different *hash algorithm* (the algorithm is a
+/// schema ingredient, not an implementation detail; see
+/// doc/book/src/19a-compiler-internals/05-hashing.md "The digest algorithm is
+/// part of the schema version"). Old entries are then unreachable (superseded
+/// garbage, not hazards): a cold cache, never a stale one.
 /// History: 2 — `StableHasher` swapped `DefaultHasher` → xxh3, keys widened
 /// to 128 bits. 3 — `Panic`/`Unreachable` carry a `(frame, node)` span-sidecar
 /// locator (plans/fast-mode.md), so the parse/resolve/mono answer encodings
@@ -42,7 +45,7 @@ use xxhash_rust::xxh3::Xxh3;
 pub const SCHEMA_VERSION: u64 = 5;
 
 /// The query kind tag. Folding it into every content key puts each phase in a
-/// disjoint keyspace (docs/keys-and-invalidation.md "Per-Phase Keyspaces"): a
+/// disjoint keyspace (doc/book/src/19a-compiler-internals/02-query-graph.md "Query kinds and their order"): a
 /// parse key can never alias a mono key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -67,7 +70,7 @@ pub struct StableCtx<'a> {
 
 /// The single place the hash algorithm lives.
 ///
-/// Backed by xxh3 per docs/hashing.md: [`finish128`](StableHasher::finish128)
+/// Backed by xxh3 per doc/book/src/19a-compiler-internals/05-hashing.md: [`finish128`](StableHasher::finish128)
 /// for content keys and content digests (global, ever-accumulating keyspace),
 /// [`finish64`](StableHasher::finish64) for result fingerprints (bounded
 /// per-slot domain) — one streaming state serves both widths. Unlike the
@@ -78,7 +81,7 @@ pub struct StableCtx<'a> {
 ///
 /// The byte *encoding* is ours and stable (fixed-width little-endian
 /// integers, length-prefixed strings and sequences, tagged enums — the rules
-/// in docs/deterministic-hashing.md), so an algorithm swap never changes a
+/// in doc/book/src/19a-compiler-internals/06-deterministic-hashing.md), so an algorithm swap never changes a
 /// `StableHash` impl; the golden tests below pin encoding and algorithm both.
 pub struct StableHasher {
     inner: Xxh3,
@@ -151,13 +154,13 @@ pub trait StableHash {
 }
 
 /// Content key: the cache lookup identity of one query instance
-/// (docs/keys-and-invalidation.md). `hash(SCHEMA_VERSION, kind, stable args,
+/// (doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md). `hash(SCHEMA_VERSION, kind, stable args,
 /// direct deps' result fingerprints)` — transitive by recursion through the dep
 /// fingerprints, forming a Merkle DAG over *answers*.
 ///
 /// 128 bits (xxh3-128): content keys live in one unbounded, ever-accumulating
 /// keyspace — every distinct computation ever seen — which is birthday
-/// territory for 64 bits (docs/hashing.md). A distinct newtype from
+/// territory for 64 bits (doc/book/src/19a-compiler-internals/05-hashing.md). A distinct newtype from
 /// [`Fingerprint`] so the two can never be mixed up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ContentKey(u128);
@@ -202,7 +205,7 @@ impl ContentKey {
 /// the dep fingerprints inside the content key.
 ///
 /// 64-bit by design (its collision domain is the historical outputs of one
-/// logical query — docs/hashing.md). Invariant: never a storage or lookup key;
+/// logical query — doc/book/src/19a-compiler-internals/05-hashing.md). Invariant: never a storage or lookup key;
 /// results are stored only *under* content keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Fingerprint(u64);
@@ -273,7 +276,7 @@ impl StableHash for Fingerprint {
 /// key, and later stages chain to the parse stage through it.
 ///
 /// Keying on content instead of path is what makes the cache safe across
-/// source changes (docs/cache-invalidation-problem.md): changed bytes make a
+/// source changes (doc/book/src/19a-compiler-internals/01-overview.md): changed bytes make a
 /// different digest (never a stale hit), reverted bytes hit the old entry
 /// (Scenario A).
 /// 128-bit like [`ContentKey`], not 64-bit like [`Fingerprint`]: the digest
@@ -331,7 +334,7 @@ impl StableHash for ContentDigest {
 
 // ---- StableHash impls: primitives and containers ----------------------------
 //
-// Encoding rules (docs/deterministic-hashing.md): fixed-width little-endian
+// Encoding rules (doc/book/src/19a-compiler-internals/06-deterministic-hashing.md): fixed-width little-endian
 // integers; length-prefixed strings, bytes, and sequences; enums as a u32
 // variant tag then the payload; structs/tuples field by field in declaration
 // order. There is intentionally no impl for usize, raw pointers, floats, or
@@ -771,7 +774,7 @@ impl StableHash for crate::types::FuncData {
     }
 }
 
-/// The direct output of one resolve step (docs/keys-and-invalidation.md: a
+/// The direct output of one resolve step (doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md: a
 /// result fingerprint hashes the direct output, and *only* that). `funcs` is
 /// in registration order, which is deterministic given the input.
 impl StableHash for crate::store::ResolveAnswer {
@@ -785,7 +788,7 @@ impl StableHash for crate::store::ResolveAnswer {
 // ---- StableHash impls: deterministic errors ---------------------------------
 //
 // A deterministic error is a terminal answer (invariant 6 of
-// docs/keys-and-invalidation.md) and therefore fingerprintable, so a
+// doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md) and therefore fingerprintable, so a
 // dependent whose dep *stably errors* can still derive its content key. The
 // payloads are already-rendered `String`s, which are stable by construction.
 // (Impls cover all variants for totality, but non-terminal errors — cycles,
@@ -1002,7 +1005,7 @@ mod tests {
     }
 
     /// Parse is the leaf query (read is fused with parse), and per
-    /// docs/keys-and-invalidation.md a leaf's content key hashes the external
+    /// doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md a leaf's content key hashes the external
     /// input itself — the path is the *logical* id, not a key ingredient. So
     /// identical bytes at two paths share one parse key (sound: `PreExpr`
     /// contains no path-derived data), while any byte change makes a new key.
@@ -1056,7 +1059,7 @@ mod tests {
         assert_ne!(with_kind(QueryKind::Resolve), with_kind(QueryKind::Exec));
     }
 
-    /// The order-shuffle test from docs/deterministic-hashing.md: the same
+    /// The order-shuffle test from doc/book/src/19a-compiler-internals/06-deterministic-hashing.md: the same
     /// semantic value must fingerprint identically even when the interner
     /// assigned different indices (here: forced by interning dummies first).
     /// This is the test a raw-`Sym`-index leak would fail.
@@ -1122,7 +1125,7 @@ mod tests {
         assert_ne!(Fingerprint::of(&print, &c), Fingerprint::of(&ret, &c));
     }
 
-    /// Golden hashes (docs/deterministic-hashing.md "Testing Determinism"):
+    /// Golden hashes (doc/book/src/19a-compiler-internals/06-deterministic-hashing.md "Testing Determinism"):
     /// checked-in constants pin the exact output of the stable encoding +
     /// xxh3, so an accidental encoding change surfaces as a red test instead
     /// of a silently cold — or, once persistent, mysteriously slow — cache.

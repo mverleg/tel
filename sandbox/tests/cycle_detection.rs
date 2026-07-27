@@ -1,6 +1,6 @@
 //! Import-cycle detection tests.
 //!
-//! Exercises the deadlock-safe detector from `docs/cycle-detection.md`: each
+//! Exercises the deadlock-safe detector from `doc/book/src/19a-compiler-internals/08-cycle-detection.md`: each
 //! resolution carries the chain of in-progress ancestor resolutions, and a
 //! dependency already on that chain is reported as a cycle *before* it is
 //! awaited or spawned -- so a genuine cycle errors out deterministically

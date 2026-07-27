@@ -12,7 +12,7 @@ for external (published, vendored) dependencies: because their source is
 per-compile read+hash, no watcher, no dirty bits — and their entries become
 shareable across projects.
 
-Related: [keys-and-invalidation.md](../../docs/keys-and-invalidation.md) (the
+Related: [keys and fingerprints](../../doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md) (the
 content-addressed leaf model this specializes),
 [concurrency-and-eviction.md](concurrency-and-eviction.md) (sealed entries are
 prime eviction/sharing candidates), [daemon.md](daemon.md) (a shared tier

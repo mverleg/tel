@@ -1,7 +1,7 @@
 //! Cross-run cache invalidation tests.
 //!
 //! Exercises the content-addressed parse cache described in
-//! `docs/cache-invalidation-problem.md`: a `Compiler` keeps its cache across
+//! `doc/book/src/19a-compiler-internals/01-overview.md`: a `Compiler` keeps its cache across
 //! runs, so an unchanged/reverted file is not re-parsed, while a changed file is
 //! re-parsed and never served stale.
 
@@ -116,7 +116,7 @@ async fn mono_cache_follows_content_per_file() {
 
 /// Parse is the leaf query, so its content key hashes the bytes only — the
 /// file path is the *logical* id, not a key ingredient
-/// (docs/keys-and-invalidation.md). Byte-identical files at two paths
+/// (doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md). Byte-identical files at two paths
 /// therefore share one parse entry (sound: the parse output embeds no paths),
 /// while the mono cache, whose output embeds path-based FQs, keeps them apart.
 #[tokio::test]
@@ -143,7 +143,7 @@ async fn identical_content_at_two_paths_shares_parse_but_not_mono() {
     );
 }
 
-/// Deterministic errors are terminal answers (docs/keys-and-invalidation.md
+/// Deterministic errors are terminal answers (doc/book/src/19a-compiler-internals/09-invariants.md
 /// invariant 6): a file that fails to parse is not re-parsed on the next run —
 /// the cached error is served from the content store.
 #[tokio::test]
@@ -254,7 +254,7 @@ async fn changed_import_recomputes_only_its_chain() {
     );
 }
 
-/// Scenario B from docs/cache-invalidation-problem.md, exactly as specified:
+/// Scenario B from doc/book/src/19a-compiler-internals/01-overview.md, exactly as specified:
 /// a whitespace/comment-only edit deep in a leaf dependency re-parses that one
 /// file — the input genuinely changed — but its parse *answer* is unchanged,
 /// so its fingerprint is unchanged, so every content key above it is unchanged:

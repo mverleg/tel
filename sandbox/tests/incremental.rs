@@ -41,7 +41,7 @@ fn counts(compiler: &Compiler) -> (usize, usize, usize) {
     )
 }
 
-/// Scenario A from docs/cache-invalidation-problem.md, across every cached
+/// Scenario A from doc/book/src/19a-compiler-internals/01-overview.md, across every cached
 /// phase: edit, compile, revert, compile — the post-revert compile recomputes
 /// *nothing* (zero parse answers, zero resolves, zero mono checks); every key
 /// it re-derives was already seen.

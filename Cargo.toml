@@ -32,7 +32,7 @@ tel-lang = { path = "./compiler", version = "=0.1.0" }
 # External dependencies
 # Fast hasher for in-memory maps only (collisions are caught by Eq there);
 # 64-bit and not stable across runs/versions, so never for stored fingerprints.
-# See docs/hashing.md
+# See doc/book/src/19a-compiler-internals/05-hashing.md
 ahash = "0.8.12"
 clap = { version = "4.5.54", default-features = true, features = ["std", "derive", "unicode"] }
 dashmap = "6.1.0"
@@ -56,7 +56,7 @@ time = { version = "0.3.45", features = ["serde"] }
 tokio = { version = "1.42.0", features = ["fs", "rt", "rt-multi-thread", "macros", "io-util"] }
 xolir = "0.1.0"
 # Stable hashes: xxh3-128 for content keys (cache lookup), xxh3-64 for result
-# fingerprints (answer-changed checks). See docs/hashing.md.
+# fingerprints (answer-changed checks). See doc/book/src/19a-compiler-internals/05-hashing.md.
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 [patch.crates-io]

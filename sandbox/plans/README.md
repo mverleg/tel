@@ -1,7 +1,7 @@
 # Sandbox pending plans
 
-Working plans for the sandbox query engine. Design *analysis* lives in
-`../../docs/`; this directory holds the *pending plans and ordered todos*.
+Working plans for the sandbox query engine. Design *analysis* lives in the book
+(`../../doc/book/src/19a-compiler-internals/`); this directory holds the *pending plans and ordered todos*.
 
 - **[roadmap.md](roadmap.md)** — the consolidated, ordered execution plan
   (Phases 0–4), merging the README feature checklist, the caching design
@@ -40,6 +40,6 @@ Working plans for the sandbox query engine. Design *analysis* lives in
   shareable across projects. Direction decided 2026-07-10.
 
 Related analysis (not plans, but referenced throughout):
-- `../../docs/cache-invalidation-problem.md` — content-addressed caching, the
-  two-layer model, early cutoff, and consistency under partial failure.
-- `../../docs/inverse-dependency-graph.md`, `../../docs/cycle-detection.md`.
+- `../../doc/book/src/19a-compiler-internals/` — the whole caching model:
+  content-addressed keys, the two layers, early cutoff, the invariants, and
+  consistency under partial failure.

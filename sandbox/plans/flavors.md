@@ -85,7 +85,7 @@ codegen depends on `opt-level` + `target`; etc.
 ## Interaction with caching & invalidation
 
 - Flavors sit **on top of** the content-addressed / two-layer model
-  (`../../docs/cache-invalidation-problem.md`). A flavored key is
+  (`../../doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md`). A flavored key is
   `(subject, declared-flavor-subset) → digest`.
 - **Invalidation is per position, across all flavors.** A file change dirties
   every flavor of the affected nodes; you must not leave a stale

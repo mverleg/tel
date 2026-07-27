@@ -8,6 +8,8 @@ meet, Tel demands explicit parentheses instead of resolving the grouping for
 you. The compiler refuses `3 + 3 / 2 % 2` outright rather than quietly reading
 it off a precedence ladder.
 
+{{#spec MIXED_OPERATORS_REQUIRE_PARENS}}
+
 ```tel
 # REJECTED — mixes +, /, and %
 3 + 3 / 2 % 2

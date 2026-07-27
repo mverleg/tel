@@ -4,7 +4,7 @@ Tel's compiler is planned as a query compiler with content-addressed caching:
 every compilation step is a query with a stable cache key, results are shared
 across runs and machines, and incremental recompiles follow dirty cones from
 changed files. The architecture is worked out and validated in the sandbox —
-see [keys-and-invalidation.md](../../tel/docs/keys-and-invalidation.md)
+see [keys-and-invalidation.md](../book/src/19a-compiler-internals/03-keys-and-fingerprints.md)
 (the three-identifier model, content keys, early cutoff) and its companion
 docs. That architecture is not free: it imposes concrete constraints on how
 type checking and inference may be *specified*. This document collects those
@@ -33,7 +33,7 @@ To build a query's key you need its dependencies' fingerprints *before running
 the query body*. The sandbox design therefore requires every query's dependency
 list to have a **fixed shape with dynamic contents**, discoverable in two tiers
 (see "How a Query's Dependencies Are Discovered" in
-[keys-and-invalidation.md](../../tel/docs/keys-and-invalidation.md)):
+[keys-and-invalidation.md](../book/src/19a-compiler-internals/03-keys-and-fingerprints.md)):
 
 1. **Structural deps** — a pure function of the query's own arguments ("check F"
    needs the resolve of F's file; the file is in F's fully-qualified name).
@@ -145,7 +145,7 @@ priced in re-check fan-out, not just semantic ambiguity.
 ### C6. Answers must be deterministic and canonical
 
 Everything entering a fingerprint goes through stable hashing
-([deterministic-hashing.md](../../tel/docs/deterministic-hashing.md)); the
+([deterministic-hashing.md](../book/src/19a-compiler-internals/06-deterministic-hashing.md)); the
 type checker must produce answers that *can* be stably hashed:
 
 - **Canonical solutions.** Fresh inference variables, numbering of

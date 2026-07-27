@@ -1,6 +1,5 @@
-//! The two cache layers from docs/keys-and-invalidation.md ("Where Each Piece
-//! Lives") and docs/cache-invalidation-problem.md ("Two layers — only one is
-//! fragile"):
+//! The two cache layers from doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md
+//! ("Two layers"):
 //!
 //! - [`ContentStore`] — immutable, append-only `ContentKey -> result` tables.
 //!   Never invalidated: an entry under a content key is valid forever by
@@ -48,7 +47,7 @@ pub struct ResolveAnswer {
 }
 
 /// One stored resolve row: the answer (deterministic errors included) plus
-/// the answer's result fingerprint (docs/keys-and-invalidation.md stores the
+/// the answer's result fingerprint (doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md stores the
 /// fingerprint *with* the value so dependents can key on it without
 /// re-hashing). Errors are fingerprinted too ([`Fingerprint::of_err`]): a
 /// stably-erroring answer is a terminal answer, and its dependents key on it
@@ -460,7 +459,7 @@ fn mono_size(answer: &MonoAnswer, interner: &Interner) -> u32 {
 
 /// One session-memo record: what the logical id currently binds to.
 ///
-/// Updated only as a whole (invariant 4 of docs/keys-and-invalidation.md:
+/// Updated only as a whole (invariant 4 of doc/book/src/19a-compiler-internals/09-invariants.md:
 /// memo updates are atomic per query — key and fingerprint together), via a
 /// single [`BindingLayer::record`] insert.
 #[derive(Debug, Clone, Copy)]
@@ -481,7 +480,7 @@ pub struct BindingRecord {
     /// (invariant 10) compares current leaf digests against this.
     pub input_digest: Option<ContentDigest>,
     /// Push-invalidation dirty bit — pass 1 of the two-pass protocol
-    /// (docs/execution-and-recovery.md) sets it via
+    /// (doc/book/src/19a-compiler-internals/07-execution-and-recovery.md) sets it via
     /// [`BindingLayer::mark_dirty`]; pass 2 clears it only as part of a
     /// successful whole-record commit (invariant 8: never at scheduling
     /// time).
@@ -541,8 +540,8 @@ impl BindingLayer {
     }
 
     /// Pass-1 marking: flip `step` to dirty. A bit flip only — no hashing, no
-    /// IO, infallible (docs/keys-and-invalidation.md "Invalidation From the
-    /// Leafs"). A step with no record is `Unknown` and needs no flip: it has
+    /// IO, infallible (doc/book/src/19a-compiler-internals/04-invalidation.md "Push: from the
+    /// leafs"). A step with no record is `Unknown` and needs no flip: it has
     /// no memoized key that could be wrongly trusted.
     pub fn mark_dirty(&self, step: &StepId) {
         if let Some(mut r) = self.records.get_mut(step) {

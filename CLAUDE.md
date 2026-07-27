@@ -10,7 +10,6 @@ documentation and the implementation work.
 | path | what |
 | --- | --- |
 | `doc/` | the **language documentation** — the mdBook design docs (`doc/book/src`), raw notes (`doc/inputs`), examples, and the site deployment. See `doc/book/CLAUDE.md`. |
-| `docs/` | **redirect stubs only.** These were the query-engine design notes (hashing, cache invalidation, recovery); the content moved into the book as `doc/book/src/19a-compiler-internals/`. The stubs stay because ~40 doc comments in `sandbox/` link to them by name. |
 | `sandbox/`, `sandbox-daemon/` | the query-compiler sandbox: a small Lisp-like demo language used to develop the caching/dependency architecture (see below). |
 | `common/`, `ast/`, `hir/`, `parser/`, `compiler/`, `cli/` | the real Tel implementation, still early. |
 | `telc-cache/`, `async-lazy/`, `testing/` | supporting crates. |
@@ -19,9 +18,10 @@ documentation and the implementation work.
 The query engine's **design** is documented in the book, chapter
 `19a-compiler-internals` — keys and fingerprints, invalidation, hashing,
 determinism, concurrency and recovery, cycle detection, the numbered invariants,
-and the content-addressed-vs-verifying-trace rationale. Write design changes
-there, not in `docs/`. The book's invariant numbering is the one code comments
-cite ("invariant 6"), so renumbering it is a breaking change.
+and the content-addressed-vs-verifying-trace rationale. It used to live in a
+top-level `docs/` directory; that directory is gone and `sandbox/` doc comments
+cite the book chapter by path. The book's invariant numbering is the one those
+comments cite ("invariant 6"), so renumbering it is a breaking change.
 
 Sandbox **status** — what is built, what is next — lives in `sandbox/plans/`,
 not in the book. The book documents the model and stays valid once the model is

@@ -1,6 +1,6 @@
 //! Persistent-cache tests (plans/roadmap.md Phase 3 item 12): a
 //! `Compiler::with_disk_cache` warms the *next* process over the same cache
-//! directory. This is Scenario A of docs/cache-invalidation-problem.md
+//! directory. This is Scenario A of doc/book/src/19a-compiler-internals/01-overview.md
 //! (revert recomputes nothing) lifted across a process boundary — the whole
 //! point of the disk tier — plus the failure modes: version mismatch and
 //! corruption degrade to a cold-but-correct compile, and `Compiler::new`

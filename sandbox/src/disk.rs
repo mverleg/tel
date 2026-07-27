@@ -3,7 +3,7 @@
 //! item 12).
 //!
 //! Only the content store persists — entries under a [`ContentKey`] are
-//! valid forever by construction (docs/cache-invalidation-problem.md), so
+//! valid forever by construction (doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md), so
 //! this tier is append-only and can never serve a stale answer, only a
 //! missing one. The binding layer, graph, and everything session-scoped
 //! stay in memory.

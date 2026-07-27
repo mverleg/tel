@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Immutable chain of resolutions in progress on this task's path, root-most
-/// first (docs/cycle-detection.md). Each child resolution extends the chain by
+/// first (doc/book/src/19a-compiler-internals/08-cycle-detection.md). Each child resolution extends the chain by
 /// one; the `Arc` shares the prefix, so extending is cheap and parallel
 /// branches never see each other's chain — which is what keeps a diamond
 /// (shared dependency, different chains) from false-positiving as a cycle.
@@ -50,7 +50,7 @@ impl AncestorPath {
 }
 
 /// How a pull decides whether a memoized binding can be trusted — the two
-/// reconciliation stances of docs/execution-and-recovery.md ("When
+/// reconciliation stances of doc/book/src/19a-compiler-internals/07-execution-and-recovery.md ("When
 /// `reconcile()` runs, by mode").
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PullMode {
@@ -75,7 +75,7 @@ pub enum PullMode {
 pub struct Global {
     graph: Graph,
     interner: Interner,
-    /// The immutable content-addressed layer (docs/keys-and-invalidation.md):
+    /// The immutable content-addressed layer (doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md):
     /// append-only `content key -> answer` tables for parse, resolve, and
     /// mono. A key always maps to the same answer, or is absent (recompute);
     /// invalidation is implicit — changed input, different key. Parse keys
@@ -156,7 +156,7 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
 /// failure's *answer fingerprint* when it is a terminal (cached) answer.
 /// `None` on the error side marks a non-terminal failure — a cycle, a task
 /// join failure, transient IO — which is not an answer: nothing above it may
-/// be keyed or cached (invariant 6 of docs/keys-and-invalidation.md).
+/// be keyed or cached (invariant 6 of doc/book/src/19a-compiler-internals/09-invariants.md).
 type ResolveOutcome = Result<(Expr, SymbolTable, Fingerprint), (Located<ResolveError>, Option<Fingerprint>)>;
 
 /// Content-key *preimage* of one monomorphised instance: the instance identity
@@ -315,8 +315,8 @@ impl Global {
         *self.panic_on_resolve.lock().unwrap() = needle.map(String::from);
     }
 
-    /// Pass 1 of two-pass invalidation (docs/execution-and-recovery.md,
-    /// docs/cache-invalidation-problem.md #7): mark the changed leaf and its
+    /// Pass 1 of two-pass invalidation (doc/book/src/19a-compiler-internals/09-invariants.md,
+    /// "Invariant 8, restated"): mark the changed leaf and its
     /// whole reverse-edge cone dirty. Bit flips only — infallible, no
     /// hashing, no IO — so it can never half-fail into a falsely-clean state;
     /// recompute (pass 2) happens lazily on the next pull and clears dirty
@@ -337,8 +337,8 @@ impl Global {
     /// the way back, so the leaf flips last. At every intermediate state the
     /// marking invariant (*dirty implies all transitive dependents are
     /// dirty*) holds, which is what makes an interrupted walk resumable and
-    /// the stop-at-dirty short-circuit sound (docs/keys-and-invalidation.md
-    /// "Marking invariant and resumability").
+    /// the stop-at-dirty short-circuit sound (doc/book/src/19a-compiler-internals/04-invalidation.md
+    /// "The marking invariant").
     fn mark_cone(&self, step: StepId, visited: &mut HashSet<StepId>) {
         if !visited.insert(step) {
             return;
@@ -399,7 +399,7 @@ impl Global {
         let source = match tokio::fs::read_to_string(path).await {
             Ok(source) => source,
             // An IO failure is transient, not a deterministic answer
-            // (invariant 6 of docs/keys-and-invalidation.md): without content
+            // (invariant 6 of doc/book/src/19a-compiler-internals/09-invariants.md): without content
             // there is no digest to key on, so nothing enters the content
             // store or the binding layer.
             Err(err) => return Err(ParseError::from(err)),
@@ -491,7 +491,7 @@ impl Global {
     async fn resolve_each(this: &Arc<Global>, caller: StepId, ancestors: AncestorPath, ids: &[ResolveId], mode: PullMode) -> Result<Vec<ResolveOutcome>, Located<ResolveError>> {
         debug!("CoreContext::resolve_each x{}: {:?}", ids.len(), ids);
 
-        // Deadlock-safe cycle detection (docs/cycle-detection.md): a requested
+        // Deadlock-safe cycle detection (doc/book/src/19a-compiler-internals/08-cycle-detection.md): a requested
         // resolution that is already on this task's in-progress ancestor chain
         // closes an import cycle. Checked before any await/spawn, so the
         // wait-for cycle — two parked tasks awaiting each other — never forms.
@@ -546,7 +546,7 @@ impl Global {
     }
 
     /// Resolve one file-level unit through the two-layer cache — the pull
-    /// direction of docs/keys-and-invalidation.md ("Recomputation From the
+    /// direction of doc/book/src/19a-compiler-internals/04-invalidation.md ("Pull: from the
     /// Root"):
     ///
     /// 1. Re-derive the content key top-down: demand the parse (leaf) first,
@@ -556,8 +556,8 @@ impl Global {
     /// 2. Look the key up. A hit is served without running the resolver, and
     ///    is transitively valid *by construction* — the key can only match if
     ///    every upstream answer (all the way to the leaf digests) matched
-    ///    first. This is the transitive validation of
-    ///    docs/cache-invalidation-problem.md #4, done by key derivation
+    ///    first. This is transitive validation
+    ///    (doc/book/src/19a-compiler-internals/04-invalidation.md), done by key derivation
     ///    instead of a separate validity walk.
     /// 3. On a miss, run the resolver body and store the answer under the key
     ///    — deterministic errors included, as terminal answers.
@@ -582,8 +582,8 @@ impl Global {
 
             // Watch stance: a clean (Verified) binding is served from its
             // memoized key with zero recursion — no parse demand, no leaf
-            // read, no import walk. This is step 2 of "Invalidation From the
-            // Leafs" (docs/keys-and-invalidation.md): queries not marked
+            // read, no import walk. This is step 2 of "Push: from the
+            // leafs" (doc/book/src/19a-compiler-internals/04-invalidation.md): queries not marked
             // reuse their memo outright; only the dirty cone re-derives. The
             // commit replays the answer's definitions and rebinds (a no-op
             // rebind of the same record), and the step's edges stay as last
@@ -757,7 +757,7 @@ impl Global {
             let compute = this.store.resolve_get_or_compute(key, &this.interner, || async {
                 this.computed_resolves.fetch_add(1, Ordering::Relaxed);
                 let ctx = ResolveContext { current: id, core: &this };
-                // The recompute boundary (docs/cache-invalidation-problem.md #8):
+                // The recompute boundary (doc/book/src/19a-compiler-internals/09-invariants.md, "Panics specifically"):
                 // a panic here is an accident of the run, not an answer. Caught
                 // *inside* `init` and surfaced as an abort, it reverts the claim
                 // (a waiter re-runs) and writes nothing — the binding keeps

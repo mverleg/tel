@@ -11,7 +11,7 @@
 //! stream type, so drivers never care where events come from.
 //!
 //! Two contracts carry over from the watch stance
-//! (docs/execution-and-recovery.md, [`crate::Compiler::run_watch`]):
+//! (doc/book/src/19a-compiler-internals/07-execution-and-recovery.md, [`crate::Compiler::run_watch`]):
 //!
 //! * **Extra events are hints.** A spurious or duplicate event costs one
 //!   re-derive that early cutoff stops immediately, so backends should

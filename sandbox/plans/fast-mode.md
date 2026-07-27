@@ -402,7 +402,7 @@ registered function list), doc-comment tables.
 
 ## Interaction with caching & invalidation
 
-Builds on the two-layer model in `../../docs/cache-invalidation-problem.md`:
+Builds on the two-layer model in `../../doc/book/src/19a-compiler-internals/03-keys-and-fingerprints.md`:
 
 - Core and sidecar results are distinct content-store entries under distinct
   query kinds; both valid forever by construction, both cacheable.

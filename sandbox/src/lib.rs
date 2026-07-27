@@ -226,7 +226,7 @@ impl Compiler {
     /// Compile and execute `path`, reusing anything already cached from previous
     /// runs of this `Compiler`.
     ///
-    /// This is the *batch* stance (docs/execution-and-recovery.md): it never
+    /// This is the *batch* stance (doc/book/src/19a-compiler-internals/07-execution-and-recovery.md): it never
     /// trusts change events — every demanded leaf is re-read and re-digested,
     /// every demanded step re-derives its content key. Always correct, no
     /// [`invalidate`](Compiler::invalidate) calls required.
@@ -257,7 +257,7 @@ impl Compiler {
     /// spurious calls are harmless (the next watch run re-verifies via
     /// digests and early cutoff).
     ///
-    /// `&mut self` is the mutation phase of docs/execution-and-recovery.md:
+    /// `&mut self` is the mutation phase of doc/book/src/19a-compiler-internals/07-execution-and-recovery.md:
     /// marking is mutually exclusive with any in-flight query wave at compile
     /// time.
     pub fn invalidate(&mut self, path: &str) {

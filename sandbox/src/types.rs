@@ -515,7 +515,7 @@ pub enum ResolveError {
     ParseError(String, ParseError),
     JoinError(String),
     /// A Rust panic caught at the recompute boundary. Non-terminal by
-    /// definition (invariant 6 of docs/keys-and-invalidation.md): a panic is
+    /// definition (invariant 6 of doc/book/src/19a-compiler-internals/09-invariants.md): a panic is
     /// an accident of the run, not a function of the content key, so this
     /// variant is never cached, never fingerprinted, and the panicking node's
     /// binding is left untouched (dirty stays dirty).

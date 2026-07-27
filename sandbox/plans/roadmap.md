@@ -4,7 +4,7 @@ Ordered execution plan for the sandbox query compiler. This consolidates three
 existing sources plus a gap analysis against `qcompiler`:
 
 - The **feature checklist** in `README.md` ("Query engine features")
-- The **caching design + priorities** in `../../docs/cache-invalidation-problem.md`
+- The **caching design** in the book, `../../doc/book/src/19a-compiler-internals/`
 - **In-code `TODO @mark`** markers
 - **Capabilities `qcompiler` has that the sandbox lacks** (see bottom section)
 
