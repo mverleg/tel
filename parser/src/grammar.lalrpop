@@ -90,7 +90,7 @@ Returns: Expr = {
     "return" <Expression>,
 }
 
-// precedence (though some may be warnings for being confusing):
+// precedence (superseded by the docs, see the TODO at BoolCombineExpr below):
 //   1 + 2 == 3 or 4  => (1 + 2) == (3 or 4)
 //   1 or 2 + 4  =>  1 or (2 + 4)
 //   false or false == false or true  =>  false or (false == false) or true
@@ -329,11 +329,15 @@ ParamList: Box<[AssignmentDest]> = {
     <Comma<AssignDest>> => <>.into_boxed_slice(),
 }
 
+// TODO @mark: align with the docs: generic arguments go in `[]`, not `<>` — same brackets
+// TODO @mark: as indexing (`List[T]`, `xs[i]`), which is what removes the "less-than or open
+// TODO @mark: generic?" ambiguity and keeps the lexer fixed-lookahead. Applies to TypeUse too.
 GenericList: Box<[AssignmentDest]> = {
     "<" Br <gens:Comma<AssignDest>> ">" => gens.into_boxed_slice(),
     () => Box::new([]),
 }
 
+// TODO @mark: `[]` instead of `<>` for generics, see GenericList above
 TypeUse: Type = {
     <iden:Iden> <gen:("<" <Comma<TypeUse>> ">")?> => Type {
             iden,

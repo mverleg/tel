@@ -2,10 +2,10 @@ image:
   repository: mverleg/teldoc
   tag: latest
 
-domain: tel.tryin.top
-# false → letsencrypt-staging (safe for first deploy / rate limits)
-# true  → letsencrypt-prod
-prod: false
+domain: tel.apivolve.com
+# true  → letsencrypt-prod (the default tier; the only one deployed)
+# false → letsencrypt-staging, used by `k8s-deploy.sh --dev`
+prod: true
 # true → serve robots.txt with "Disallow: /" so crawlers skip the site.
 # Flip to false (or remove this whole feature) once the docs are ready
 # to be indexed.

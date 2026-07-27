@@ -32,6 +32,6 @@ The script:
 |--------------------|------------------|----------------------------------------------------------------------------------|
 | `image.repository` | `mverleg/teldoc` | Docker Hub repo                                                                  |
 | `image.tag`        | `latest`         | Set to git sha by `k8s-deploy.sh`                                                |
-| `domain`           | `tel.tryin.top`  | Ingress host + TLS SAN; set by `k8s-deploy.sh` per mode                          |
-| `prod`             | `false`          | `true` → `letsencrypt-prod` + HSTS + `tel.apivolve.com`. `false` → staging, HSTS off, `tel.tryin.top` |
+| `domain`           | `tel.apivolve.com` | Ingress host + TLS SAN; set by `k8s-deploy.sh` per mode                          |
+| `prod`             | `true`           | `true` → `letsencrypt-prod` + HSTS + `tel.apivolve.com`. `false` → staging, HSTS off, `tel.tryin.top` |
 | `noindex`          | `true`           | Serves `robots.txt` with `Disallow: /`; flip to `false` once ready to be indexed |

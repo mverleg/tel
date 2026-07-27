@@ -5,10 +5,13 @@
 #
 # Usage: ./k8s-deploy.sh [--prod | --dev]
 #
-#   --dev   (default) letsencrypt-staging cert, domain tel.tryin.top,
-#                     namespace + release teldoc-dev
-#   --prod            letsencrypt-prod cert,    domain tel.apivolve.com,
+#   --prod  (default) letsencrypt-prod cert,    domain tel.apivolve.com,
 #                     namespace + release teldoc-prod
+#   --dev             letsencrypt-staging cert, domain tel.tryin.top,
+#                     namespace + release teldoc-dev, book includes the TIPs
+#
+# The dev tier is not deployed (uninstalled 2026-07-27); the flag is kept so
+# it can be brought back with one command.
 #
 # Requires: kubectl context pointing at the tryin.top cluster, and
 # `docker login` already done for the mverleg Docker Hub account.
@@ -16,7 +19,7 @@
 BASE="teldoc"
 REPOSITORY="mverleg/teldoc"
 
-PROD=false
+PROD=true
 while [ $# -gt 0 ]; do
     case "$1" in
         --prod) PROD=true ;;
