@@ -24,18 +24,25 @@ New dependencies need explicit approval first (project rule).
 
 ## Not gated, just not done
 
-* **Cache eviction + parallel queries** — memory/disk cache tiering + eviction
-  (item 13; the disk store is append-only, no eviction yet), now unified with
-  parallel queries, `Pending` state, and input dedup. **Direction decided
-  2026-07-10**, plan in
-  [plans/concurrency-and-eviction.md](plans/concurrency-and-eviction.md);
-  unimplemented. (Pluggable source backends and further query flavors are
-  dropped from scope for now.)
+* ~~**Cache eviction + parallel queries**~~ — done 2026-07-22/23 (item 13),
+  all four phases of
+  [plans/concurrency-and-eviction.md](plans/concurrency-and-eviction.md):
+  the cache primitive + between-wave compaction, admission control,
+  single-flight for derived kinds, and the byte budget wired into daemon config
+  (`TEL_SANDBOX_CACHE_BUDGET`) with GC on wave completion. (Pluggable source
+  backends and further query flavors stay dropped from scope.)
 * **External dependencies as sealed leaves** (item 13b) — external deps are
   immutable by contract, so they skip per-compile read+hash, the watcher, and
   dirty tracking; keyed on the lockfile-pinned release hash, gated by a
   provenance bit, and cross-project shareable. **Direction decided 2026-07-10**,
-  plan in [plans/external-deps.md](plans/external-deps.md); unimplemented.
+  plan in [plans/external-deps.md](plans/external-deps.md). **Slice 1 landed
+  2026-07-26**: `ContentDigest::sealed` in `src/keys.rs` (`SCHEMA_VERSION` 4→5)
+  and `src/deps.rs` (`LeafSource`/`SealedCoord`, JSON `Lockfile`, XDG store
+  path, temporary hash-at-lock). Slices 2–4 open — import→coordinate wiring,
+  the provenance bit, and the shared sealed tier; until Slice 2 the module is
+  private and unused outside its own tests. This is the last open item of the
+  swap readiness gate
+  ([plans/swap-to-real-language.md](plans/swap-to-real-language.md) §4).
 * **Fast mode vs IDE mode** — roadmap item 11, plan in
   [plans/fast-mode.md](plans/fast-mode.md). **Landed**: the span sidecar
   (`QueryKind::Spans`, memory-only, keyed on the source digest); a structural

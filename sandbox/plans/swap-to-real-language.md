@@ -40,19 +40,20 @@ pipeline), retiring `qcompiler` as the by-then-obsolete prototype.**
   first slice of fast/IDE mode (span sidecar + in-session `path:line:col`
   upgrade for panics and type/resolve errors).
 - **Phase 3 — persistence & scale:** LMDB content store done; query flavors
-  mechanism done. **Not built:** memory/disk tiering + eviction (item 13) and
-  external deps as sealed leaves (item 13b) — *both have decided designs*
-  ([concurrency-and-eviction.md](concurrency-and-eviction.md),
-  [external-deps.md](external-deps.md)) but no implementation. Pluggable source
-  backends descoped.
-- **Phase 4 — hardening & performance:** **not built** — context-leak
-  prevention (item 16), lock-free during compile (17), boxed recursive awaits
-  (18), threadpool parse (19), cleanups (20).
+  mechanism done; memory/disk tiering + eviction (item 13) done 2026-07-22/23
+  (Phases A–D of [concurrency-and-eviction.md](concurrency-and-eviction.md)).
+  **Partly built:** external deps as sealed leaves (item 13b) — Slice 1 landed
+  2026-07-26 (`ContentDigest::sealed`, `src/deps.rs`), Slices 2–4 open, see
+  [external-deps.md](external-deps.md). Pluggable source backends descoped.
+- **Phase 4 — hardening & performance:** context-leak prevention (item 16) done
+  2026-07-22. **Not built:** lock-free during compile (17), boxed recursive
+  awaits (18), threadpool parse (19), cleanups (20).
 
 In one line: **the engine is feature-complete for a correct, incremental,
-persistent, single-writer compiler, and is missing (a) concurrency + eviction,
-(b) external deps, and (c) the Phase-4 hardening — before it is evolved in place
-into the real compiler, which is what this document plans.**
+persistent, concurrent compiler with a bounded cache, and is missing only (a)
+the rest of external deps (13b Slices 2–4) and (b) the deferable Phase-4
+performance items — before it is evolved in place into the real compiler, which
+is what this document plans.**
 
 ---
 
@@ -166,11 +167,14 @@ banked in the shipped Phases 0–3.
 Do **not** start grafting real queries until these are true, because each one is
 far cheaper to get right against the toy language:
 
-- [ ] **Item 16 (context-leak prevention).** The real compiler will have many
-  query bodies written over time; the scope-safety contract (a step cannot
-  smuggle the context out) must be *enforced by construction*, not by
-  convention, before third parties write queries. This is the one Phase-4 item
-  that is a true prerequisite, not just polish.
+- [x] **Item 16 (context-leak prevention). Done 2026-07-22.** The real compiler
+  will have many query bodies written over time; the scope-safety contract (a
+  step cannot smuggle the context out) must be *enforced by construction*, not
+  by convention, before third parties write queries. This is the one Phase-4
+  item that is a true prerequisite, not just polish. Closed by splitting the
+  async backend *driver* from the backend *body*: the body is a bare `fn`
+  pointer over a borrowed `BackendCtx<'a>`, so there is no `Arc` in scope and no
+  environment to capture into.
 - [x] **Light answer-seam (§2, §3.1).** The mechanism touches answers only
   through `content_key()`/`fingerprint()`/portable impls, not by matching AST
   internals — so each body swap in §3.2 is local. This replaces the
@@ -182,20 +186,31 @@ far cheaper to get right against the toy language:
   `*_to_portable`/postcard, never to inner fields). The only remaining coupling
   is concrete *kind naming* (fixed `QueryKind`, per-kind `ContentStore`
   fields) — the intended §2 coupling, not a seam violation.
-- [ ] **Concurrency + eviction (item 13).** Real projects are large; an
-  unbounded in-memory cache and a single-writer run loop are fine for the toy
-  suite but not for a real workspace. Design is decided
-  ([concurrency-and-eviction.md](concurrency-and-eviction.md)); it must be
-  built.
-- [ ] **External deps as sealed leaves (item 13b).** Real projects have
-  dependencies; the sealing/provenance model must exist before the real
-  language's imports point at packages. Design decided
-  ([external-deps.md](external-deps.md)).
-- [ ] **Portable encoding routes through the seam.** Each answer type carries
+- [x] **Concurrency + eviction (item 13). Done 2026-07-22/23.** Real projects
+  are large; an unbounded in-memory cache and a single-writer run loop are fine
+  for the toy suite but not for a real workspace. All four phases of
+  [concurrency-and-eviction.md](concurrency-and-eviction.md) landed: the cache
+  primitive + between-wave compaction (A), admission control (B), single-flight
+  for derived kinds (C), and the byte budget wired into daemon config with
+  GC on wave completion (D, `TEL_SANDBOX_CACHE_BUDGET`).
+- [ ] **External deps as sealed leaves (item 13b). Slice 1 of 4 done
+  2026-07-26 — the one gate item still open.** Real projects have dependencies;
+  the sealing/provenance model must exist before the real language's imports
+  point at packages. Landed: `ContentDigest::sealed` (domain-tagged apart from
+  local digests, `SCHEMA_VERSION` 4→5) and `src/deps.rs` —
+  `LeafSource`/`SealedCoord`, the versioned JSON `Lockfile`, XDG store-path
+  resolution, and a *temporary* hash-at-lock (`lock_package`). Still open, per
+  [external-deps.md](external-deps.md): wiring the resolver's import→coordinate
+  lookup and the parse leaf's digest-from-coordinate (Slice 2), the provenance
+  bit through graph/binding plus marking/monitor exclusion (Slice 3), and the
+  shared sealed disk tier (Slice 4). Until Slice 2, `deps` is a private module
+  exercised only by its own unit tests.
+- [x] **Portable encoding routes through the seam.** Each answer type carries
   its own `to_portable()`/`from_portable()` (the seam from §2), so adding a real
   kind is one concrete arm, not a `portable.rs` rewrite. This is expected work
   per kind, not a blocking prerequisite — listed here only so the seam lands
-  before the first real kind does.
+  before the first real kind does. Satisfied for the kinds that exist today
+  (confirmed by the same 07-22 audit); each new real kind still adds its arm.
 
 Deferable past the swap (do in the real crate): lock-free compile (17), boxed
 recursive awaits (18) — though 18 may become *urgent* under the real language's
@@ -367,12 +382,15 @@ already exists as the first flavor; real targets slot into the same mechanism.
   `qcompiler`'s own `README`/`TODO` were fully superseded or already tracked in
   `roadmap.md`, so they were deleted with the skeleton. The `docs/` design notes
   (`keys-and-invalidation.md`, `execution-and-recovery.md`,
-  `content-addressed-vs-verifying-trace.md`) are authoritative sandbox
-  documentation and stay.
-- **Whether concurrency/eviction (13) and external deps (13b) truly gate the
-  swap** or can land in parallel with S2–S3 against real code. Listed as gates
-  here on the conservative assumption that getting them right is cheaper against
-  the toy suite; revisit if S2 is ready first.
+  `content-addressed-vs-verifying-trace.md`) were authoritative and stayed;
+  they have since moved into the book as
+  `doc/book/src/19a-compiler-internals/`, leaving redirect stubs.
+- **Whether external deps (13b) truly gates the swap** or can land in parallel
+  with S2–S3 against real code. Listed as a gate here on the conservative
+  assumption that getting it right is cheaper against the toy suite; now
+  live, since 13b is the last open gate item and S2 is a paper mapping with no
+  code dependency on sealed leaves. (The same question about concurrency/
+  eviction is moot — 13 landed 2026-07-22/23.)
 - **Conformance expectation format (§5).** Inline `# tel-test:` header vs a
   sidecar `.expected` file per program; how errors are matched (exact
   `path:line:col` vs error-kind-only, to keep tests robust to message wording);
