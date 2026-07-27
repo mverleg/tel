@@ -9,6 +9,8 @@ explicitly with `let`. **`let` is optional** — it is required only when the
 binding **shadows** an outer name or carries a **modifier** such as `uniq` (see
 below).
 
+{{#spec IMMUTABLE_BY_DEFAULT}}
+
 ## What
 
 ```tel
@@ -41,6 +43,8 @@ By default a binding is immutable. The full set of forms:
   [Mutability](02-mutability.md)). A **modifier such as `uniq` requires `let`**.
 - **`name: T = expr`** — a type-annotated binding; the `:` marks it as a
   declaration just as `let` does, so an annotated binding is always a fresh one.
+
+  {{#spec ANNOTATED_BINDING_DECLARES}}
 
 ```tel
 count          = 3             # bare — fresh immutable local

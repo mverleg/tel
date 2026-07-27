@@ -10,6 +10,8 @@ Tel uses **`#` to start a normal line comment**, running to the end of the line.
 This matches the convention scripting users already know from Python, shell,
 Ruby, and many config formats — *familiarity over a novel surface*.
 
+{{#spec LINE_COMMENT_HASH}}
+
 ```tel
 # A scoring rule the host hands to Tel.
 fn score(order: Order) -> Score {

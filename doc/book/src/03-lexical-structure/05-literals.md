@@ -61,6 +61,8 @@ Tel has **no base prefixes or lexical shortcuts** for non-decimal literals:
 there is no `0x`, no `0b`, no `0o`. The only number tokens the lexer recognises
 are plain decimal integers and decimals.
 
+{{#spec NUMBER_LITERALS_DECIMAL_ONLY}}
+
 Instead, a non-decimal value is written by calling a **const function** that
 parses a string at compile time:
 

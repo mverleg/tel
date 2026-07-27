@@ -29,6 +29,8 @@ A bare assignment `name = value` resolves as follows:
 - `name` is **not declared anywhere visible** → declares a fresh immutable local
   in the current scope.
 
+{{#spec BARE_ASSIGN_REASSIGNS_OR_DECLARES}}
+
 So a write never *silently* touches an outer-scope binding: reaching out is
 always explicit. To deliberately reassign a binding from an enclosing scope, an
 explicit keyword is required:

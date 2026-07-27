@@ -73,6 +73,7 @@ impl Scope {
         type_annotation: Option<&Type>,
         mutable: bool
     ) -> Variable {
+        spec!(BARE_ASSIGN_REASSIGNS_OR_DECLARES, "current scope only; reaching an enclosing scope should be an error but scopes do not nest yet");
         if let Some(_parent) = &self.parent {
             todo!("nested scopes not yet implemented")
         }

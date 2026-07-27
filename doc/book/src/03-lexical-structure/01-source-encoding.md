@@ -14,6 +14,8 @@ text boxes, and config files.
 - Indentation carries no meaning — two files that differ only in indentation are
   the same program. See [Layout Rules](../04-syntax/05-layout-rules.md).
 
+{{#spec LINE_ENDINGS_INSIGNIFICANT}}
+
 ## Open questions
 
 `TODO(open): the surface alphabet.` The lean is toward an English-only,

@@ -28,6 +28,8 @@ Tel statements end at a newline. There is no mandatory `;` at the end of every
 line — the newline does that job — which keeps everyday code free of line noise
 while still giving the parser a clear, fixed point where a statement ends.
 
+{{#spec NEWLINE_TERMINATES_STATEMENT}}
+
 ```tel
 let total = order.total
 let age   = order.age_days
@@ -53,6 +55,8 @@ A newline terminates a statement **except in two cases**:
 2. **The next line begins with a leading `.`.** A line whose first non-space
    token is `.` continues a method chain off the previous line — so a multi-line
    chain needs **no** wrapping parentheses.
+
+{{#spec LEADING_DOT_CONTINUATION}}
 
 ```tel
 render(

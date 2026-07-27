@@ -35,22 +35,28 @@ match {
     r#"[ \t]*('[^']*')"# => SQSTR,
 
     // Ignore line comments
+    // spec: LINE_COMMENT_HASH — `##` doc comments are lexed as ordinary comments, their text is dropped
     r#"#[^\r\n]*(\r\n|\n|\r)(\s|\n|\r)*"# => { },
 
     // Do not count NEWLINE token when preceded by ellipsis
     r#"[ \t]*\.{3}[ \t\n\r]*"# => { },
 } else {
     // Periods have special lexing because a linebreak is allowed before
+    // spec: LEADING_DOT_CONTINUATION — the newline before `.` is swallowed, so the chain continues
     r#"[ \t\n\r]*\."# => PERIOD,
 
     // Turn at least one semicolons and any number of newlines into a single token (without this they are skipped)
+    // spec: SEMICOLON_STATEMENT_SEPARATOR — a run of `;` collapses into one token, so an empty statement is accepted instead of rejected
     r#";+[ \t]*( |\t|\n|\r|;)*"# => SEMICOLON,
 } else {
     // Turn any remaining newlines (not preceded by semicolon, in previous rule) into a single token
+    // spec: NEWLINE_TERMINATES_STATEMENT — the token is consumed by `End` below
+    // spec: LINE_ENDINGS_INSIGNIFICANT — \n, \r and \r\n all produce the same single token
     r#"[ \t]*(\n|\r)+"# => NEWLINE,
 
     // Disallow math without whitespace
     // TODO @mark: make sure all operators are here
+    // spec: BINARY_OPERATOR_SPACING — arithmetic only, and it fails as a lex error rather than the specific complaint the docs ask for
     r#"[ \t]*[a-zA-Z0-9_]+[+\-*/%]"# => TOO_COMPLEX1,
     r#"[ \t]*[*/%][a-zA-Z0-9_]+"# => TOO_COMPLEX2,
 
@@ -191,6 +197,7 @@ InvokeExpr: Invoke = {
     // TODO @mark: should numbers also be supported, for tuples?
 }
 
+// spec: NUMBER_LITERALS_DECIMAL_ONLY — no base prefixes; digit-group underscores are not implemented yet
 NumLit: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => f64::from_str(s).unwrap();
 
 StructDecl: Struct = {
@@ -329,6 +336,7 @@ TypeUse: Type = {
 }
 
 // If this does not match, it may be a reserved keyword
+// spec: IDENTIFIER_SHAPE — the token shape; a lone `_` is not an identifier. The rest is checked in Identifier::new
 Iden: Identifier = <s:r"([a-zA-Z]|_[a-zA-Z0-9])[a-zA-Z0-9_]*"> => Identifier::new(s).unwrap();
 
 Comma<T>: Vec<T> = {

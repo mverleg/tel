@@ -174,6 +174,8 @@ way to space each construct:
 - **Binary operators are surrounded by spaces.** `a + b`, `x > y`, `n = 1` —
   never `a+b`, `x>y`, `n=1`. Besides readability, this reserves the no-space
   forms for prefix/unary uses (`-x`) without ambiguity.
+
+  {{#spec BINARY_OPERATOR_SPACING}}
 - **`.` is tight.** Member access and method chains carry no surrounding space:
   `order.total`, `xs.map(f)`, never `order . total`.
 - **No space just inside parentheses.** A `(` is followed immediately by its

@@ -1,6 +1,7 @@
 use tel_ast::TelFile;
 use tel_ast::Variables;
 use tel_ast as ast;
+use tel_common::spec;
 use tel_common::TelErr;
 pub use self::scope::Scope;
 
@@ -66,6 +67,8 @@ fn assignments_to_api(
         // let dest: AssignmentDest = dest;  // enforce that `dest` is not borrowed
         //TODO @mark: ^ enable this and pass owned values to scope
         let ast::AssignmentDest { kw, target, typ } = dest;
+        spec!(ANNOTATED_BINDING_DECLARES, "the `:` type annotation is what makes it a fresh binding, like `let`");
+        spec!(IMMUTABLE_BY_DEFAULT, "the modifier is spelled `mut` here; the docs settled on `let uniq`");
         let (allow_outer, is_mutable) = match (kw, typ) {
             (ast::AssignmentKw::None, None) => (true, false),
             (ast::AssignmentKw::None, Some(_)) => (false, false),

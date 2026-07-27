@@ -29,6 +29,8 @@ newline."* So the on-one-line separator is **`;`**, and a trailing `;` before
 not required. An empty statement (a `;` with nothing before it) is not a
 statement and is rejected.
 
+{{#spec SEMICOLON_STATEMENT_SEPARATOR}}
+
 `TODO(open): trailing `;` style.` Decide whether the formatter inserts a
 trailing `;` before `}`, omits it, or leaves the choice to the author.
 
