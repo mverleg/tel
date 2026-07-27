@@ -10,14 +10,22 @@ documentation and the implementation work.
 | path | what |
 | --- | --- |
 | `doc/` | the **language documentation** — the mdBook design docs (`doc/book/src`), raw notes (`doc/inputs`), examples, and the site deployment. See `doc/book/CLAUDE.md`. |
-| `docs/` | **implementation notes** for the sandbox query engine (hashing, cache invalidation, recovery). Internal, not user-facing. |
+| `docs/` | **redirect stubs only.** These were the query-engine design notes (hashing, cache invalidation, recovery); the content moved into the book as `doc/book/src/19a-compiler-internals/`. The stubs stay because ~40 doc comments in `sandbox/` link to them by name. |
 | `sandbox/`, `sandbox-daemon/` | the query-compiler sandbox: a small Lisp-like demo language used to develop the caching/dependency architecture (see below). |
 | `common/`, `ast/`, `hir/`, `parser/`, `compiler/`, `cli/` | the real Tel implementation, still early. |
 | `telc-cache/`, `async-lazy/`, `testing/` | supporting crates. |
 | `scripts/` | repo tooling, notably `spec_links.py` (see below). |
 
-Note the `doc/` (user-facing language docs) vs `docs/` (sandbox impl notes)
-split — they are different things and neither should absorb the other.
+The query engine's **design** is documented in the book, chapter
+`19a-compiler-internals` — keys and fingerprints, invalidation, hashing,
+determinism, concurrency and recovery, cycle detection, the numbered invariants,
+and the content-addressed-vs-verifying-trace rationale. Write design changes
+there, not in `docs/`. The book's invariant numbering is the one code comments
+cite ("invariant 6"), so renumbering it is a breaking change.
+
+Sandbox **status** — what is built, what is next — lives in `sandbox/plans/`,
+not in the book. The book documents the model and stays valid once the model is
+implemented.
 
 ## Spec anchors: linking documentation to code
 
@@ -158,5 +166,7 @@ See `sandbox/language.md` for full language reference.
 ## Project Rules
 
 * Always ask before adding new dependencies, internal and external.
-* Don't create commits unless requested.
+* Commit each change when it is complete — one commit per logical change,
+  written directly on `main`. Don't leave finished work sitting uncommitted.
+  Don't push unless requested.
 * Don't run formatters.
