@@ -19,7 +19,7 @@
 //!   sandbox (which has no registry). Both are placeholders until a real
 //!   fetch/registry story exists.
 
-use crate::keys::ContentDigest;
+use crate::keys::{ContentDigest, StableCtx, StableHash, StableHasher};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path as FsPath, PathBuf};
@@ -161,6 +161,13 @@ pub struct Lockfile {
 }
 
 impl Lockfile {
+    /// The answer for a root with no lockfile at all: no packages, so every
+    /// import is a path under the project root. Absence is a normal state, not
+    /// an error — a project without dependencies never writes one.
+    pub fn empty() -> Lockfile {
+        Lockfile { version: FORMAT_VERSION, packages: HashMap::new() }
+    }
+
     pub fn parse(json: &str) -> Result<Lockfile, LockError> {
         let lock: Lockfile = serde_json::from_str(json).map_err(|e| LockError::Parse(e.to_string()))?;
         if lock.version != FORMAT_VERSION {
@@ -183,18 +190,89 @@ impl Lockfile {
         Lockfile::parse(&text)
     }
 
-    /// Resolve one file of a locked package to its sealed coordinate. `None`
-    /// when the package is not in the lockfile — the caller then treats the
-    /// import as a path under the project root.
-    pub fn coord(&self, package: &str, path_within_package: &str) -> Result<Option<SealedCoord>, LockError> {
+    /// What one package is pinned to. `None` when the package is not in the
+    /// lockfile — the caller then treats the import as a path under the
+    /// project root.
+    ///
+    /// This is the whole *per-package* answer: it names no file, so every file
+    /// of a package shares it and a bump to a *different* package cannot
+    /// change it (plans/external-deps.md, "the lockfile enters the graph per
+    /// dependency").
+    pub fn package(&self, package: &str) -> Result<Option<PackagePin>, LockError> {
         let Some(entry) = self.packages.get(package) else {
             return Ok(None);
         };
-        Ok(Some(SealedCoord {
+        Ok(Some(PackagePin {
             release_hash: ReleaseHash::from_hex(&entry.hash)?,
-            path_within_package: path_within_package.to_string(),
             semver: entry.version.clone(),
         }))
+    }
+
+    /// Resolve one file of a locked package to its sealed coordinate.
+    pub fn coord(&self, package: &str, path_within_package: &str) -> Result<Option<SealedCoord>, LockError> {
+        Ok(self.package(package)?.map(|pin| pin.file(path_within_package)))
+    }
+}
+
+/// What a lockfile pins one package to: immutable bytes (the release hash),
+/// plus the semver that names them for humans.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackagePin {
+    pub release_hash: ReleaseHash,
+    pub semver: String,
+}
+
+impl PackagePin {
+    /// The coordinate of one file inside this package.
+    pub fn file(&self, path_within_package: &str) -> SealedCoord {
+        SealedCoord {
+            release_hash: self.release_hash.clone(),
+            path_within_package: path_within_package.to_string(),
+            semver: self.semver.clone(),
+        }
+    }
+}
+
+/// The answer of the lockfile leaf query: the parsed table, or the rendered
+/// error of a lockfile that could not be read. A malformed lockfile is a
+/// *deterministic* answer — the same bytes always fail the same way — so it is
+/// cached and fingerprinted like any other.
+pub type LockAnswer = Result<Lockfile, String>;
+
+/// The answer of the per-package projection: what the lockfile pins this
+/// package to (`None` = not a locked package, an answer in its own right), or
+/// the rendered error of a lockfile that could not be read.
+///
+/// The error lives *in the answer* rather than being collapsed to `None`
+/// because the two are different answers: an importer under a broken lockfile
+/// must not key the same as one whose package simply is not listed.
+pub type CoordAnswer = Result<Option<PackagePin>, String>;
+
+impl StableHash for PackagePin {
+    fn stable_hash(&self, _ctx: &StableCtx<'_>, out: &mut StableHasher) {
+        // The release hash alone. Semver is human-facing metadata, so editing
+        // *only* the version string leaves this fingerprint unchanged and every
+        // importer cuts off early — the same reason keys are built on the
+        // release hash rather than bare semver.
+        out.write_bytes(self.release_hash.as_bytes());
+    }
+}
+
+impl StableHash for Lockfile {
+    fn stable_hash(&self, ctx: &StableCtx<'_>, out: &mut StableHasher) {
+        // Sorted: a HashMap's iteration order is not stable, and a fingerprint
+        // that depended on it would differ between processes over equal
+        // content (doc/book/src/19a-compiler-internals/06-deterministic-hashing.md).
+        let mut names: Vec<&String> = self.packages.keys().collect();
+        names.sort();
+        out.write_len(names.len());
+        for name in names {
+            name.stable_hash(ctx, out);
+            let entry = &self.packages[name];
+            entry.hash.stable_hash(ctx, out);
+            entry.algo.stable_hash(ctx, out);
+            entry.version.stable_hash(ctx, out);
+        }
     }
 }
 
@@ -273,6 +351,28 @@ pub fn lock_package(package_dir: &FsPath) -> Result<ReleaseHash, LockError> {
         h.update(bytes);
     }
     Ok(ReleaseHash(h.digest128().to_be_bytes().to_vec()))
+}
+
+/// The digest of a sealed leaf, recovered from the store path its bytes live
+/// at — the inverse of [`SealedCoord::source_path`], and the reason nothing
+/// downstream of resolution has to carry sealedness around explicitly.
+///
+/// `<deps_root>/<release-hash>/<path within package>` *is* the on-disk encoding
+/// of a coordinate, so a path under [`deps_root`] determines its own digest
+/// without reading a byte. `None` for any other path — an ordinary local file,
+/// which is read and hashed as always.
+///
+/// (Semver is not recoverable here, and deliberately is not needed: it is
+/// human-facing metadata and never a key ingredient.)
+pub fn sealed_digest_for_path(path: &FsPath) -> Option<ContentDigest> {
+    let rest = path.strip_prefix(deps_root()).ok()?;
+    let mut components = rest.components();
+    let release_hash = ReleaseHash::from_hex(components.next()?.as_os_str().to_str()?).ok()?;
+    let within: Vec<&str> = components.map(|c| c.as_os_str().to_str()).collect::<Option<_>>()?;
+    if within.is_empty() {
+        return None;
+    }
+    Some(ContentDigest::sealed(release_hash.as_bytes(), &within.join("/")))
 }
 
 /// The algorithm name a lockfile entry must carry for a hash produced by
@@ -376,6 +476,26 @@ mod tests {
         // Rejected at load, so it does not depend on which import is compiled.
         let missing_algo = r#"{ "version": 1, "packages": { "m": { "hash": "aa", "version": "1.0.0" } } }"#;
         assert!(matches!(Lockfile::parse(missing_algo), Err(LockError::Parse(_))));
+    }
+
+    /// The store path round-trips to the same digest the coordinate produces:
+    /// that identity is what lets a sealed leaf be keyed from its path alone,
+    /// with no side table and nothing to keep in sync.
+    #[test]
+    fn a_store_path_recovers_its_own_digest() {
+        let coord = SealedCoord {
+            release_hash: ReleaseHash::from_hex("ab12cd").unwrap(),
+            path_within_package: "sub/vec.telsb".to_string(),
+            semver: "1.4.2".to_string(),
+        };
+        assert_eq!(sealed_digest_for_path(&coord.source_path()), Some(coord.digest()));
+
+        // A local file is not sealed, however it is spelled.
+        assert_eq!(sealed_digest_for_path(FsPath::new("/proj/src/main.telsb")), None);
+        // Under the root but naming no file within a package.
+        assert_eq!(sealed_digest_for_path(&deps_root().join("ab12cd")), None);
+        // Under the root with a non-hex first component.
+        assert_eq!(sealed_digest_for_path(&deps_root().join("not-hex/vec.telsb")), None);
     }
 
     #[test]

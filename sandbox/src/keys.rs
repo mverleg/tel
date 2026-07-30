@@ -59,6 +59,19 @@ pub enum QueryKind {
     /// digest as `Parse`, computed on demand, and — by design — folded into no
     /// downstream key, so it can never cascade a recompile.
     Spans = 5,
+    /// The **lockfile leaf**: the parsed `package -> pinned coordinate` table
+    /// (plans/external-deps.md). An ordinary local, tracked leaf — it is the
+    /// one file we watch and hash so that "an external dependency changed"
+    /// flows through the normal path while the dependency artifacts stay
+    /// frozen.
+    Lock = 6,
+    /// One package's coordinate, projected out of [`QueryKind::Lock`]. A step
+    /// depends on the coordinates of the packages it imports, never on the
+    /// whole table: bumping one dependency leaves every *other* package's
+    /// fingerprint unchanged, so unaffected importers cut off early instead of
+    /// re-resolving. (One lockfile is shared by every entry point in a
+    /// workspace, so a whole-table dependency would fan out to all of them.)
+    LockCoord = 7,
 }
 
 /// Context for stable hashing: carries whatever is needed to map process-local
@@ -935,6 +948,19 @@ impl StableHash for crate::types::ResolveError {
                 out.write_u32(17);
                 c.stable_hash(ctx, out);
                 path.stable_hash(ctx, out);
+            }
+            BadLockfile(c, path, err) => {
+                out.write_u32(20);
+                c.stable_hash(ctx, out);
+                path.stable_hash(ctx, out);
+                err.stable_hash(ctx, out);
+            }
+            AmbiguousImport(c, path, local, package) => {
+                out.write_u32(19);
+                c.stable_hash(ctx, out);
+                path.stable_hash(ctx, out);
+                local.stable_hash(ctx, out);
+                package.stable_hash(ctx, out);
             }
             ImportNameCollision(c, name, first, second) => {
                 out.write_u32(18);

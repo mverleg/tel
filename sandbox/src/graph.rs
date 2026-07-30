@@ -1,4 +1,4 @@
-use crate::common::{Ctx, CtxDisplay, Interner, Path, FQ};
+use crate::common::{Ctx, CtxDisplay, Interner, Name, Path, FQ};
 use crate::types::Ty;
 use dashmap::DashMap;
 use serde::Deserialize;
@@ -19,6 +19,21 @@ pub struct ResolveId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExecId {
     pub main_loc: FQ,
+}
+
+/// The lockfile of one workspace root — a tracked local leaf like any source
+/// file, keyed by its path (plans/external-deps.md).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct LockId {
+    pub file_path: Path,
+}
+
+/// One package's coordinate projected out of a lockfile. Keyed by package so
+/// that a step depends only on the packages it actually imports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct LockCoordId {
+    pub file_path: Path,
+    pub package: Name,
 }
 
 /// One monomorphisation instance: a function specialised to one numeric type.
@@ -45,6 +60,8 @@ pub enum StepId {
     Resolve(ResolveId),
     Mono(MonoId),
     Exec(ExecId),
+    Lock(LockId),
+    LockCoord(LockCoordId),
 }
 
 impl CtxDisplay for StepId {
@@ -55,6 +72,8 @@ impl CtxDisplay for StepId {
             StepId::Resolve(id) => write!(f, "Resolve({})", Ctx(&id.func_loc, i)),
             StepId::Mono(id) => write!(f, "Mono({} @ {})", Ctx(&id.func_loc, i), id.ty),
             StepId::Exec(id) => write!(f, "Exec({})", Ctx(&id.main_loc, i)),
+            StepId::Lock(id) => write!(f, "Lock({})", Ctx(&id.file_path, i)),
+            StepId::LockCoord(id) => write!(f, "LockCoord({} @ {})", Ctx(&id.package, i), Ctx(&id.file_path, i)),
         }
     }
 }

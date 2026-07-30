@@ -42,18 +42,20 @@ pipeline), retiring `qcompiler` as the by-then-obsolete prototype.**
 - **Phase 3 — persistence & scale:** LMDB content store done; query flavors
   mechanism done; memory/disk tiering + eviction (item 13) done 2026-07-22/23
   (Phases A–D of [concurrency-and-eviction.md](concurrency-and-eviction.md)).
-  **Partly built:** external deps as sealed leaves (item 13b) — Slice 1 landed
-  2026-07-26 (`ContentDigest::sealed`, `src/deps.rs`), Slices 2–4 open, see
+  External deps as sealed leaves (item 13b): Slices 1–2 landed 2026-07-26/30 —
+  `ContentDigest::sealed`, `src/deps.rs`, the `Lock`/`LockCoord` kinds, and a
+  parse leaf keyed from the coordinate. Slices 3–4 (provenance bit, shared
+  sealed tier) are deferable optimizations, see
   [external-deps.md](external-deps.md). Pluggable source backends descoped.
 - **Phase 4 — hardening & performance:** context-leak prevention (item 16) done
   2026-07-22. **Not built:** lock-free during compile (17), boxed recursive
   awaits (18), threadpool parse (19), cleanups (20).
 
 In one line: **the engine is feature-complete for a correct, incremental,
-persistent, concurrent compiler with a bounded cache, and is missing only (a)
-the external-deps wiring (13b Slice 2) and (b) the deferable Phase-4
-performance items — before it is evolved in place into the real compiler, which
-is what this document plans.**
+persistent, concurrent compiler with a bounded cache and external dependencies
+as sealed leaves, and is missing only the deferable performance items (13b
+Slices 3–4, Phase 4) — before it is evolved in place into the real compiler,
+which is what this document plans.**
 
 ---
 
@@ -193,7 +195,7 @@ far cheaper to get right against the toy language:
   primitive + between-wave compaction (A), admission control (B), single-flight
   for derived kinds (C), and the byte budget wired into daemon config with
   GC on wave completion (D, `TEL_SANDBOX_CACHE_BUDGET`).
-- [ ] **External deps as sealed leaves (item 13b) — Slice 2 only.** Real
+- [x] **External deps as sealed leaves (item 13b) — Slice 2 done 2026-07-30.** Real
   projects have dependencies; the sealing model must exist before the real
   language's imports point at packages. Landed 2026-07-26 (Slice 1):
   `ContentDigest::sealed` (domain-tagged apart from local digests,
@@ -203,7 +205,11 @@ far cheaper to get right against the toy language:
   exercised only by its own unit tests.
 
   **Narrowed 2026-07-30:** only **Slice 2** — the resolver's import→coordinate
-  lookup and the parse leaf's digest-from-coordinate — remains a gate item.
+  lookup and the parse leaf's digest-from-coordinate — was a gate item, and it
+  **landed the same day**: the `Lock`/`LockCoord(package)` kinds, imports whose
+  first segment names a locked package, and `Global::parse_sealed` (a warm run
+  compiles with the dependency's bytes deleted). With that, **the gate is
+  green.**
   Slices 3 (provenance bit) and 4 (shared sealed tier) are **deferable**: a
   sealed leaf without the provenance bit is simply treated as local (re-read,
   re-hashed, watched — slower, never wrong), and the shared tier has no customer

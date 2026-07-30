@@ -1,14 +1,16 @@
 # External dependencies as sealed leaves — design
 
-Status: **direction decided 2026-07-10; implementation started 2026-07-26.**
-Slice 1 (foundational) landed: `ContentDigest::sealed` (keys.rs, domain-tagged,
-`SCHEMA_VERSION` 4→5), and a `deps.rs` module with `LeafSource`/`SealedCoord`,
-a JSON `Lockfile`, XDG store-path resolution, and a *temporary* hash-at-lock.
-Not yet wired into the parse leaf or invalidation — see "Sketch of the work".
-`deps` is still a private module referenced by nothing but its own unit tests.
+Status: **direction decided 2026-07-10; Slices 1–2 landed 2026-07-26 / 07-30.**
+Slice 1: `ContentDigest::sealed` (keys.rs, domain-tagged, `SCHEMA_VERSION` 4→5)
+and a `deps.rs` module with `SealedCoord`, a JSON `Lockfile`, XDG store-path
+resolution, and a *temporary* hash-at-lock. Slice 2 wired it in: the `Lock` and
+`LockCoord` query kinds, import→coordinate resolution, and a parse leaf that
+takes its digest from the coordinate (`Global::parse_sealed`) — a warm run
+compiles with the dependency's bytes deleted, which `tests/sealed_deps.rs`
+asserts directly.
 
-Of the remaining slices, **only Slice 2 gates the swap**; Slices 3–4 are
-deferable optimizations (see "Slicing and granularity decisions" below).
+**Slices 3–4 remain, and are deferable** — they are optimizations, not
+semantics (see "Slicing and granularity decisions" below).
 
 An optimization
 for external (published, vendored) dependencies: because their source is
@@ -127,6 +129,14 @@ that lets us skip invalidation — orthogonal, and independently valuable.
   `ContentDigest::sealed` folds `(release_hash, path)`, domain-tagged apart from
   the local `of()` digest (leading `0` vs `1` byte) so a sealed coordinate can
   never alias a local file. Cost a `SCHEMA_VERSION` bump (4→5, cold cache).
+- **Query kinds** — `Lock` (the lockfile leaf: read+hash `<root>/tel.lock`,
+  answer = the parsed table) and `LockCoord(package)` (the per-package
+  projection above it), both ordered below `Resolve`. A resolve step depends on
+  the `LockCoord`s of the packages it imports, and its content key pins their
+  fingerprints. Memory-only: one small file per root, re-read at leaf cost.
+  A `CoordAnswer` is `Result<Option<PackagePin>, String>` — a *broken* lockfile
+  and a package that simply is not listed are different answers and must not
+  share a key. **[Slice 2, done]**
 - **Provenance bit** — one bit threaded through the graph/binding record;
   leaves seed it, derived steps AND it; sealed steps are excluded from the
   marking pass and never registered with the monitor. **[Slice 3]**
@@ -137,7 +147,11 @@ that lets us skip invalidation — orthogonal, and independently valuable.
   no new dep); `Lockfile::coord(pkg, path)` returns `Some(SealedCoord)` for a
   locked package, `None` (→ not sealed) otherwise. Wiring the resolver's
   import→coordinate lookup and the parse leaf's digest-from-coordinate is
-  Slice 2, under the import form decided below.
+  Slice 2, under the import form decided below. **[done]** An import's first
+  segment names the package; the rest is the file within it. Sealedness needs
+  no separate plumbing downstream: `<deps_root>/<hash>/<path>` *is* the
+  coordinate's on-disk encoding, so `sealed_digest_for_path` recovers the digest
+  from the path alone (`deps::sealed_digest_for_path`).
 - **Shared sealed disk tier** (later) — a read-through tier above the per-root
   cache, keyed purely on sealed content keys, safe to share across roots by
   content-addressing. **[Slice 4]**

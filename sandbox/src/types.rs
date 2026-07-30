@@ -506,6 +506,14 @@ pub enum ResolveError {
     /// callable by — is the same (context, name, first path, second path).
     /// An error rather than a precedence rule: see `check_import_path`.
     ImportNameCollision(String, String, String, String),
+    /// The lockfile could not be read, so no import can be resolved through
+    /// it (context, lockfile path, rendered error).
+    BadLockfile(String, String, String),
+    /// An import whose first segment names a locked package *and* which also
+    /// exists as a file under the project root (context, import path, local
+    /// file, package). Neither wins — precedence is the shadowing rule this
+    /// design does not have.
+    AmbiguousImport(String, String, String, String),
     VariableAlreadyDefined(String, String),
     ArgOutsideFunction(String),
     InvalidArgNumber(String, u8),
@@ -535,6 +543,11 @@ impl fmt::Display for ResolveError {
             ResolveError::UndefinedFunction(ctx, name) => write!(f, "Undefined function in {}: {}", ctx, name),
             ResolveError::InvalidImportPath(ctx, name) => write!(f, "Invalid import in {}: {}", ctx, name),
             ResolveError::DuplicateImport(ctx, path) => write!(f, "Duplicate import in {}: {}", ctx, path),
+            ResolveError::BadLockfile(ctx, path, err) => write!(
+                f, "Cannot resolve imports in {}: lockfile {} is unusable: {}", ctx, path, err),
+            ResolveError::AmbiguousImport(ctx, path, local, package) => write!(
+                f, "Ambiguous import {} in {}: it names both the local file {} and a file in locked package '{}'",
+                path, ctx, local, package),
             ResolveError::ImportNameCollision(ctx, name, first, second) => write!(
                 f, "Imports {} and {} in {} are both callable as '{}'", first, second, ctx, name),
             ResolveError::VariableAlreadyDefined(ctx, name) => write!(f, "Variable already defined in {}: {}", ctx, name),

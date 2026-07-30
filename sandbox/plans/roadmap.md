@@ -179,7 +179,11 @@ dropping it reclaims everything).
     first-out, `mono` stickiest); recency stamped barrier-free (`Relaxed`).
 
 13b. **External dependencies as sealed leaves** — **direction decided
-    2026-07-10**, see [external-deps.md](external-deps.md). External deps are
+    2026-07-10; Slices 1–2 built 2026-07-26/30** (sealed digests, the
+    `Lock`/`LockCoord` kinds, import→coordinate resolution, a parse leaf keyed
+    from the coordinate). Slices 3–4 — the provenance bit and the shared sealed
+    disk tier — are deferable optimizations. See
+    [external-deps.md](external-deps.md). External deps are
     immutable by contract, so they skip per-compile read+hash, watcher
     registration, and dirty tracking; keyed on the lockfile-pinned release hash
     (not bare semver), with a provenance bit (`sealed = AND of inputs`) gating

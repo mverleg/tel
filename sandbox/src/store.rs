@@ -24,6 +24,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::common::{Interner, FQ};
 use crate::disk::DiskCache;
 use crate::graph::StepId;
+use crate::deps::{CoordAnswer, LockAnswer};
 use crate::keys::{ContentDigest, ContentKey, Fingerprint, QueryKind};
 use crate::types::{Expr, FuncData, Located, MonoFuncData, ParseError, PreExpr, ResolveError, SpanTable, SymbolTable, TypeError};
 use async_lazy::Cache;
@@ -85,6 +86,10 @@ fn cost_weight(kind: QueryKind) -> u64 {
         QueryKind::Parse => 2,
         QueryKind::Spans => 1,
         QueryKind::Exec => 1,
+        // The lockfile tables are memory-only and tiny; they are never in the
+        // eviction pool, so these weights are for totality only.
+        QueryKind::Lock => 1,
+        QueryKind::LockCoord => 1,
     }
 }
 
@@ -136,6 +141,14 @@ pub struct ContentStore {
     /// and it feeds no downstream key — losing it can never serve a stale
     /// answer. `Arc` so a lookup hands out a cheap clone.
     spans: DashMap<ContentKey, Arc<SpanTable>>,
+    /// Parsed lockfiles, and the per-package coordinates projected out of them
+    /// (plans/external-deps.md). Memory-only and outside the eviction pool:
+    /// one small file per root, re-read at leaf cost, and persisting it would
+    /// buy nothing a re-read does not. Unlike `spans` these *do* feed
+    /// downstream keys — which is why they are cached and fingerprinted at all,
+    /// rather than recomputed per import.
+    lock: DashMap<ContentKey, Arc<LockAnswer>>,
+    lock_coord: DashMap<ContentKey, CoordAnswer>,
     /// Optional persistent tier (src/disk.rs). Read order is always memory →
     /// disk → compute; every fresh compute (and only the *winning* insert of
     /// a race) is written through. `None` is the cold-and-hermetic default —
@@ -158,6 +171,8 @@ impl ContentStore {
             resolve: Cache::new(),
             mono: DashMap::new(),
             spans: DashMap::new(),
+            lock: DashMap::new(),
+            lock_coord: DashMap::new(),
             disk: None,
             meta: DashMap::new(),
             clock: AtomicU64::new(0),
@@ -213,6 +228,36 @@ impl ContentStore {
         }).await;
         self.stamp(key, QueryKind::Parse, || parse_size(answer));
         answer
+    }
+
+    /// Like [`parse_get`](ContentStore::parse_get), but the initializer may
+    /// **abort** instead of producing an answer.
+    ///
+    /// For a sealed leaf the content key is known from its coordinate before
+    /// any IO, so the bytes are read *inside* the claim — only on a miss. That
+    /// read can fail transiently (the dependency store is not populated yet),
+    /// and a transient failure is not an answer (invariant 6): aborting leaves
+    /// the key empty, so a later demand recomputes rather than being served a
+    /// cached IO error forever.
+    pub async fn parse_get_abortable<F, Fut, A>(&self, key: ContentKey, init: F) -> Result<&Result<PreExpr, ParseError>, A>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<Result<PreExpr, ParseError>, A>>,
+    {
+        let answer = self.parse.get_or_init_abortable(key, || async move {
+            if let Some(disk) = &self.disk {
+                if let Some(hit) = disk.get_parse(key) {
+                    return Ok(hit);
+                }
+            }
+            let answer = init().await?;
+            if let Some(disk) = &self.disk {
+                disk.put_parse(key, &answer);
+            }
+            Ok(answer)
+        }).await?;
+        self.stamp(key, QueryKind::Parse, || parse_size(answer));
+        Ok(answer)
     }
 
     /// Peek at a resolve answer without entering the single-flight claim:
@@ -353,6 +398,26 @@ impl ContentStore {
         };
         self.stamp(key, QueryKind::Spans, || table.approx_bytes());
         table
+    }
+
+    /// Get the parsed lockfile for `key`, parsing it with `build` on first
+    /// demand. Same idempotent, first-write-wins shape as
+    /// [`spans_get_or_build`](ContentStore::spans_get_or_build), and
+    /// deliberately *not* stamped for eviction: see the `lock` field.
+    pub fn lock_get_or_build(&self, key: ContentKey, build: impl FnOnce() -> LockAnswer) -> Arc<LockAnswer> {
+        if let Some(hit) = self.lock.get(&key) {
+            return hit.clone();
+        }
+        self.lock.entry(key).or_insert_with(|| Arc::new(build())).clone()
+    }
+
+    /// Get one package's pinned coordinate for `key`, projecting it with
+    /// `build` on first demand.
+    pub fn lock_coord_get_or_build(&self, key: ContentKey, build: impl FnOnce() -> CoordAnswer) -> CoordAnswer {
+        if let Some(hit) = self.lock_coord.get(&key) {
+            return hit.clone();
+        }
+        self.lock_coord.entry(key).or_insert_with(build).clone()
     }
 
     /// Evict cold entries until the retained set fits `budget_bytes`

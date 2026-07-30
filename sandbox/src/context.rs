@@ -1,5 +1,6 @@
-use crate::common::{Ctx, Interner, Path, FQ};
-use crate::graph::{ExecId, Graph, MonoId, ParseId, ResolveId, StepId};
+use crate::common::{Ctx, Interner, Name, Path, FQ};
+use crate::deps::{CoordAnswer, LockAnswer};
+use crate::graph::{ExecId, Graph, LockCoordId, LockId, MonoId, ParseId, ResolveId, StepId};
 use crate::keys::{ContentDigest, ContentKey, Fingerprint, QueryKind, StableCtx, StableHash};
 use crate::store::{BindingLayer, BindingRecord, ContentStore, MonoAnswer, ResolveAnswer, ResolveEntry};
 use crate::types::{ExecuteError, Expr, FuncData, FuncId, Located, MonoFuncData, ParseError, PreExpr, ResolveError, SpanTable, SymbolTable, Ty, TypeError};
@@ -139,6 +140,9 @@ pub struct Global {
     printer: Arc<dyn Printer>,
 }
 
+/// The lockfile of a workspace root, beside its `tel.toml` marker.
+const LOCKFILE_NAME: &str = "tel.lock";
+
 /// Trace label for a query kind — matches the `kind` strings the step spans
 /// use, so `evict` lines line up with the `step` lines of the same kind.
 fn query_kind_name(kind: QueryKind) -> &'static str {
@@ -148,6 +152,8 @@ fn query_kind_name(kind: QueryKind) -> &'static str {
         QueryKind::Mono => "mono",
         QueryKind::Exec => "exec",
         QueryKind::Spans => "spans",
+        QueryKind::Lock => "lock",
+        QueryKind::LockCoord => "lock-coord",
     }
 }
 
@@ -350,9 +356,14 @@ impl Global {
     /// executed); under-marking is impossible because edges are only ever
     /// *replaced* with sets re-derived from current content, never dropped.
     pub fn invalidate_path(&self, path: &str) {
-        let leaf = StepId::Parse(ParseId { file_path: Path::intern(&self.interner, path) });
+        let file_path = Path::intern(&self.interner, path);
         let mut visited = HashSet::new();
-        self.mark_cone(leaf, &mut visited);
+        // A path is a leaf of whichever kind reads it — a source file (parse)
+        // or the lockfile. Marking both is how the caller stays ignorant of
+        // which: the one that never existed has no record and no dependents,
+        // which is already documented as harmless.
+        self.mark_cone(StepId::Parse(ParseId { file_path }), &mut visited);
+        self.mark_cone(StepId::Lock(LockId { file_path }), &mut visited);
     }
 
     /// Post-order marking walk: recurse up the reverse edges first, flip on
@@ -384,6 +395,116 @@ impl Global {
 }
 
 impl Global {
+    /// The **lockfile leaf** (plans/external-deps.md): `<root>/tel.lock`,
+    /// parsed into the `package -> pin` table. An ordinary tracked local leaf —
+    /// read and digested like a source file — because *which* sealed
+    /// coordinates are in play is exactly what a dep bump changes.
+    ///
+    /// A missing lockfile is a normal answer (no packages, so every import is a
+    /// path under the root), not an error; it is digested distinctly from an
+    /// empty file, which is instead a parse error.
+    async fn lock_impl(&self, caller: StepId, mode: PullMode) -> (Arc<LockAnswer>, Fingerprint) {
+        let lock_path = self.root().join(LOCKFILE_NAME);
+        let id = LockId { file_path: Path::intern(&self.interner, &lock_path.to_string_lossy()) };
+        let step = StepId::Lock(id);
+        self.graph.register_dependency(caller, step);
+
+        // Watch stance: a clean binding is trusted outright, exactly as for a
+        // source leaf — the lockfile is watched like any other tracked file.
+        if mode == PullMode::TrustClean {
+            if let Some(record) = self.bindings.get(&step) {
+                if !record.dirty {
+                    if let Some(key) = record.content_key {
+                        let answer = self.store.lock_get_or_build(key, || {
+                            unreachable!("a clean binding implies a stored lock answer")
+                        });
+                        return (answer, record.fingerprint);
+                    }
+                }
+            }
+        }
+
+        let source = tokio::fs::read_to_string(&lock_path).await.ok();
+        if source.is_some() {
+            self.leaf_reads.fetch_add(1, Ordering::Relaxed);
+        }
+        let sctx = StableCtx { interner: &self.interner };
+        let digest = ContentDigest::of(source.as_deref().unwrap_or(""));
+        let key = ContentKey::build(QueryKind::Lock, |h| {
+            // Absence is not the same input as an empty file: the first is an
+            // empty table, the second a parse error.
+            h.write_u32(source.is_some() as u32);
+            digest.stable_hash(&sctx, h);
+        });
+        let answer = self.store.lock_get_or_build(key, || match &source {
+            None => Ok(crate::deps::Lockfile::empty()),
+            Some(text) => crate::deps::Lockfile::parse(text).map_err(|e| e.to_string()),
+        });
+
+        let fingerprint = match &*answer {
+            Ok(lock) => Fingerprint::of_ok(lock, &sctx),
+            Err(e) => Fingerprint::of_err(e, &sctx),
+        };
+        if !self.bindings.is_current(&step, key) {
+            self.bindings.record(step, BindingRecord {
+                content_key: Some(key),
+                fingerprint,
+                input_digest: Some(digest),
+                dirty: false,
+            });
+        }
+        (answer, fingerprint)
+    }
+
+    /// One package's pin, **projected** out of the lockfile leaf.
+    ///
+    /// This is the granularity a step depends on: bumping package A leaves
+    /// `LockCoord(B)`'s fingerprint unchanged, so importers of B cut off early
+    /// instead of re-resolving (one lockfile is shared by every entry point in
+    /// a workspace, so a whole-table dependency would fan out to all of them).
+    ///
+    /// `None` — "not a locked package" — is a real answer and is fingerprinted
+    /// as one: adding a package of that name later must change it, so that
+    /// importers who resolved a *local* path under that name re-resolve.
+    async fn lock_coord_impl(&self, caller: StepId, package: &str, mode: PullMode) -> (StepId, CoordAnswer, Fingerprint) {
+        let lock_path = self.root().join(LOCKFILE_NAME);
+        let id = LockCoordId {
+            file_path: Path::intern(&self.interner, &lock_path.to_string_lossy()),
+            package: Name::intern(&self.interner, package),
+        };
+        let step = StepId::LockCoord(id);
+        self.graph.register_dependency(caller, step);
+
+        let (lock, lock_fp) = self.lock_impl(step, mode).await;
+        let sctx = StableCtx { interner: &self.interner };
+        let key = ContentKey::build(QueryKind::LockCoord, |h| {
+            package.stable_hash(&sctx, h);
+            lock_fp.stable_hash(&sctx, h);
+        });
+        let pin = self.store.lock_coord_get_or_build(key, || match &*lock {
+            // A broken lockfile is not "no packages" — see `CoordAnswer`. The
+            // *import* reports it, since this projection has no context to
+            // report against, but the distinction is carried here so the two
+            // cases can never share a key.
+            Err(e) => Err(e.clone()),
+            Ok(lock) => lock.package(package).map_err(|e| e.to_string()),
+        });
+
+        let fingerprint = match &pin {
+            Ok(found) => Fingerprint::of_ok(found, &sctx),
+            Err(e) => Fingerprint::of_err(e, &sctx),
+        };
+        if !self.bindings.is_current(&step, key) {
+            self.bindings.record(step, BindingRecord {
+                content_key: Some(key),
+                fingerprint,
+                input_digest: None,
+                dirty: false,
+            });
+        }
+        (step, pin, fingerprint)
+    }
+
     async fn parse_impl(&self, caller: StepId, id: ParseId, mode: PullMode) -> Result<&PreExpr, ParseError> {
         debug!("CoreContext::parse_impl: {:?}", id);
         let mut span = self.trace.span("parse", || format!("{}", Ctx(&id.file_path, &self.interner)));
@@ -413,11 +534,21 @@ impl Global {
             }
         }
 
+        let path = id.file_path.resolve(&self.interner);
+
+        // A **sealed** leaf (plans/external-deps.md): immutable by contract, so
+        // its digest comes from its coordinate — which its store path encodes —
+        // and the artifact is never read to compute a key. Only a cold miss
+        // reads bytes at all, inside the store closure; a warm run never
+        // touches the dependency store.
+        if let Some(digest) = crate::deps::sealed_digest_for_path(std::path::Path::new(path)) {
+            return self.parse_sealed(id, path, digest).await;
+        }
+
         // Read+parse stay fused, but the read happens on every compile so we can
         // compute a content digest and key the cache on it. This saves the parse
         // *computation* (not the read) when the bytes are unchanged, and reuses
         // the result across runs on revert / branch-switch.
-        let path = id.file_path.resolve(&self.interner);
         let source = match tokio::fs::read_to_string(path).await {
             Ok(source) => source,
             // An IO failure is transient, not a deterministic answer
@@ -475,6 +606,48 @@ impl Global {
         // Success borrows from the content store; a cached error is cloned
         // out (errors are small, and an owned error keeps the signature free
         // of store lifetimes).
+        result.as_ref().map_err(|e| e.clone())
+    }
+
+    /// Parse a **sealed** leaf: the digest is the coordinate's, so the key is
+    /// known before any IO and the bytes are read only if the store misses.
+    ///
+    /// This is the entire sealed optimization at the leaf: no per-compile
+    /// read+hash. What it is *not* yet is the dirty-tracking exemption — a
+    /// sealed leaf still carries an ordinary binding record here (Slice 3),
+    /// which costs a little bookkeeping but can never be wrong: an immutable
+    /// file simply never gets marked.
+    async fn parse_sealed(&self, id: ParseId, path: &'static str, digest: ContentDigest) -> Result<&PreExpr, ParseError> {
+        let key = ContentKey::build(QueryKind::Parse, |h| {
+            digest.stable_hash(&StableCtx { interner: &self.interner }, h);
+        });
+        let result = match self.store.parse_get_abortable(key, move || async move {
+            debug!("CoreContext::parse_sealed cold miss, reading {:?}", path);
+            self.computed_parses.fetch_add(1, Ordering::Relaxed);
+            self.leaf_reads.fetch_add(1, Ordering::Relaxed);
+            // A failed read aborts the claim: nothing is cached and no binding
+            // is written, exactly as for a local leaf whose file is missing.
+            let source = tokio::fs::read_to_string(path).await.map_err(|e| e.to_string())?;
+            Ok(crate::parse::tokenize_and_parse(&source))
+        }).await {
+            Ok(answer) => answer,
+            Err(io) => return Err(crate::types::ParseError::IoError(io)),
+        };
+
+        let step = StepId::Parse(id);
+        if !self.bindings.is_current(&step, key) {
+            let ctx = StableCtx { interner: &self.interner };
+            let fingerprint = match result {
+                Ok(pre) => Fingerprint::of_ok(pre, &ctx),
+                Err(e) => Fingerprint::of_err(e, &ctx),
+            };
+            self.bindings.record(step, BindingRecord {
+                content_key: Some(key),
+                fingerprint,
+                input_digest: Some(digest),
+                dirty: false,
+            });
+        }
         result.as_ref().map_err(|e| e.clone())
     }
 
@@ -647,7 +820,7 @@ impl Global {
                     let path_str = fq.path_str(&this.interner).to_string();
                     let err = Located::bare(ResolveError::ParseError(path_str, e));
                     let fp = Fingerprint::of_err(&err, &sctx);
-                    let key = Self::resolve_key(&sctx, fq, parse_fp, &[]);
+                    let key = Self::resolve_key(&sctx, fq, parse_fp, &[], &[]);
                     let entry = this.store.resolve_store_terminal(key, ResolveEntry { answer: Err(err), fingerprint: fp }, &this.interner).await;
                     span.cache_miss(key);
                     span.set_fingerprint(|| Some(entry.fingerprint));
@@ -670,7 +843,7 @@ impl Global {
                     this.graph.replace_dependencies(StepId::Resolve(id), [parse_step]);
                     let e = Located::bare(e);
                     let fp = Fingerprint::of_err(&e, &sctx);
-                    let key = Self::resolve_key(&sctx, fq, parse_fp, &[]);
+                    let key = Self::resolve_key(&sctx, fq, parse_fp, &[], &[]);
                     let entry = this.store.resolve_store_terminal(key, ResolveEntry { answer: Err(e), fingerprint: fp }, &this.interner).await;
                     span.cache_miss(key);
                     span.set_fingerprint(|| Some(entry.fingerprint));
@@ -682,17 +855,85 @@ impl Global {
             // against the project root — *not* relative to the importing file
             // — so the same import text names the same file no matter which
             // file wrote it (plans/external-deps.md, "Import form decision").
+            //
+            // Its first segment may name a **locked package**, in which case
+            // the import is a sealed leaf and the rest of the path is the file
+            // within that package. Every import consults the lockfile, local
+            // ones included: "not a package" is an answer too, so introducing a
+            // package with that name later changes the fingerprint and the
+            // importer re-resolves.
             let root = this.root();
+            let lock_path_str = root.join(LOCKFILE_NAME).to_string_lossy().into_owned();
             let mut import_ids = Vec::with_capacity(imports.len());
             let mut import_funcs = Vec::with_capacity(imports.len());
+            let mut lock_steps = Vec::with_capacity(imports.len());
+            let mut lock_fps = Vec::with_capacity(imports.len());
+            let mut mapping_error = None;
             for path in &imports {
                 // Validated by `extract_import_names`: leading '/', no empty
                 // or dotted segments.
-                let full_path = root.join(format!("{}.telsb", path.trim_start_matches('/')));
+                let rest = path.trim_start_matches('/');
+                let (package, within) = rest.split_once('/').unwrap_or((rest, ""));
+                let (lock_step, pin, lock_fp) =
+                    this.lock_coord_impl(StepId::Resolve(id), package, mode).await;
+                lock_steps.push(lock_step);
+                lock_fps.push((package.to_string(), lock_fp));
+
+                let local_path = root.join(format!("{rest}.telsb"));
+                let full_path = match pin {
+                    Err(e) => {
+                        mapping_error = Some(ResolveError::BadLockfile(
+                            context_str.to_string(), lock_path_str.clone(), e));
+                        break;
+                    }
+                    Ok(None) => local_path,
+                    Ok(Some(pin)) => {
+                        // `/pkg` alone names a package, not a file in it.
+                        if within.is_empty() {
+                            mapping_error = Some(ResolveError::InvalidImportPath(
+                                context_str.to_string(),
+                                format!("{path} (names package {package:?} but no file within it)")));
+                            break;
+                        }
+                        // Sealed and local candidates both existing is exactly
+                        // the ambiguity this design refuses to resolve by
+                        // precedence — neither wins.
+                        //
+                        // The existence probe is untracked IO: creating the
+                        // local file later is not itself a change the engine
+                        // sees (it becomes visible on the next batch compile,
+                        // or when anything else re-resolves this file). Sealing
+                        // provenance through the graph is Slice 3.
+                        if local_path.is_file() {
+                            mapping_error = Some(ResolveError::AmbiguousImport(
+                                context_str.to_string(), path.clone(),
+                                local_path.to_string_lossy().into_owned(), package.to_string()));
+                            break;
+                        }
+                        pin.file(&format!("{within}.telsb")).source_path()
+                    }
+                };
                 let name = crate::resolve::import_callable_name(path);
                 let import_fq = FQ::intern(&this.interner, &full_path.to_string_lossy(), name);
                 import_ids.push(ResolveId { func_loc: import_fq });
                 import_funcs.push((name.to_string(), FuncId(import_fq)));
+            }
+
+            // A mapping error is deterministic in the parse answer plus the
+            // lockfile coordinates this step just read — all of which its key
+            // pins — so it is a terminal answer, cached like any other.
+            if let Some(e) = mapping_error {
+                let mut dep_steps = Vec::with_capacity(lock_steps.len() + 1);
+                dep_steps.push(parse_step);
+                dep_steps.extend(lock_steps.iter().copied());
+                this.graph.replace_dependencies(StepId::Resolve(id), dep_steps);
+                let e = Located::bare(e);
+                let fp = Fingerprint::of_err(&e, &sctx);
+                let key = Self::resolve_key(&sctx, fq, parse_fp, &[], &lock_fps);
+                let entry = this.store.resolve_store_terminal(key, ResolveEntry { answer: Err(e), fingerprint: fp }, &this.interner).await;
+                span.cache_miss(key);
+                span.set_fingerprint(|| Some(entry.fingerprint));
+                return this.commit_resolve(id, key, entry);
             }
 
             // The dep set just re-derived from the *current* content replaces
@@ -701,8 +942,9 @@ impl Global {
             // previous content accumulate would grow the graph with zombies —
             // and an import restructure could even join stale and fresh edges
             // into a phantom cycle.
-            let mut dep_steps = Vec::with_capacity(import_ids.len() + 1);
+            let mut dep_steps = Vec::with_capacity(import_ids.len() + lock_steps.len() + 1);
             dep_steps.push(parse_step);
+            dep_steps.extend(lock_steps.iter().copied());
             dep_steps.extend(import_ids.iter().map(|i| StepId::Resolve(*i)));
             this.graph.replace_dependencies(StepId::Resolve(id), dep_steps);
 
@@ -749,7 +991,7 @@ impl Global {
                     // uncached (invariant 6).
                     return Err((err, None));
                 }
-                let key = Self::resolve_key(&sctx, fq, parse_fp, &deps);
+                let key = Self::resolve_key(&sctx, fq, parse_fp, &deps, &lock_fps);
                 if let Some(entry) = this.store.resolve_peek(key, &this.interner).await {
                     span.cache_hit(key);
                     span.set_fingerprint(|| Some(entry.fingerprint));
@@ -762,7 +1004,7 @@ impl Global {
                 return this.commit_resolve(id, key, entry);
             }
 
-            let key = Self::resolve_key(&sctx, fq, parse_fp, &deps);
+            let key = Self::resolve_key(&sctx, fq, parse_fp, &deps, &lock_fps);
             if let Some(entry) = this.store.resolve_peek(key, &this.interner).await {
                 debug!("CoreContext::resolve_one cache hit for {:?}", id);
                 span.cache_hit(key);
@@ -848,7 +1090,7 @@ impl Global {
     /// deps are the parse of this file plus the resolve of each direct
     /// import. Dep identity is pinned alongside each fingerprint
     /// (invariant 3), and the count is length-prefixed.
-    fn resolve_key(ctx: &StableCtx<'_>, fq: FQ, parse_fp: Fingerprint, deps: &[(FQ, Fingerprint)]) -> ContentKey {
+    fn resolve_key(ctx: &StableCtx<'_>, fq: FQ, parse_fp: Fingerprint, deps: &[(FQ, Fingerprint)], lock_fps: &[(String, Fingerprint)]) -> ContentKey {
         ContentKey::build(QueryKind::Resolve, |h| {
             fq.stable_hash(ctx, h);
             parse_fp.stable_hash(ctx, h);
@@ -856,6 +1098,14 @@ impl Global {
             for (dep_fq, dep_fp) in deps {
                 dep_fq.stable_hash(ctx, h);
                 dep_fp.stable_hash(ctx, h);
+            }
+            // The package coordinates this step's imports resolved through.
+            // They decide *which file* each import names, so — like any other
+            // direct dependency — their answers are pinned by the key.
+            h.write_len(lock_fps.len());
+            for (package, fp) in lock_fps {
+                package.stable_hash(ctx, h);
+                fp.stable_hash(ctx, h);
             }
         })
     }
