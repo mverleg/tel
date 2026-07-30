@@ -5,6 +5,10 @@ Slice 1 (foundational) landed: `ContentDigest::sealed` (keys.rs, domain-tagged,
 `SCHEMA_VERSION` 4→5), and a `deps.rs` module with `LeafSource`/`SealedCoord`,
 a JSON `Lockfile`, XDG store-path resolution, and a *temporary* hash-at-lock.
 Not yet wired into the parse leaf or invalidation — see "Sketch of the work".
+`deps` is still a private module referenced by nothing but its own unit tests.
+
+Of the remaining slices, **only Slice 2 gates the swap**; Slices 3–4 are
+deferable optimizations (see "Slicing and granularity decisions" below).
 
 An optimization
 for external (published, vendored) dependencies: because their source is
@@ -151,6 +155,40 @@ that lets us skip invalidation — orthogonal, and independently valuable.
   package's source tree deterministically (sorted, length-prefixed `(path,
   bytes)`, xxh3-128 → hex). Stands in for a registry checksum until a real fetch
   story exists; explicitly a placeholder.
+
+### Slicing and granularity decisions (2026-07-30)
+
+- **Only Slice 2 gates the swap.** Slices 3 (provenance bit) and 4 (shared
+  sealed tier) move to *deferable*, alongside the Phase-4 performance items in
+  plans/swap-to-real-language.md §4. Neither changes semantics: without the
+  provenance bit a sealed leaf is merely treated like a local one (re-read,
+  re-hashed, watched — slower, not wrong), and the shared tier has no customer
+  until a machine hosts more than one Tel project. Slice 3's value is entirely
+  about scale (inotify ceilings, vendored trees), which the toy suite cannot
+  exercise — so "cheaper against the toy language", the reason 13b was a gate,
+  does not hold for it.
+- **The lockfile enters the graph per dependency, not wholesale.** Two kinds,
+  both ordered below `Resolve`:
+  - `Lock` — a leaf: read+hash the lockfile once, answer is the parsed table.
+  - `LockCoord(package)` — a projection over `Lock`, answer is that one
+    package's coordinate.
+
+  A resolve step depends only on the `LockCoord`s of the packages it imports.
+  Bumping dep A leaves `LockCoord(B)`'s fingerprint unchanged, so B's importers
+  cut off early instead of re-resolving. The coarse alternative (depend on
+  `Lock` directly) was rejected: **one lockfile is shared by several entry
+  points**, so its fan-out is wide rather than rare, and a one-package bump
+  would re-resolve every root. Making `LockCoord` the leaf itself — skipping
+  `Lock` — was also rejected: the batch stance re-reads every demanded leaf, so
+  that is one read+hash of the same file *per package* per compile.
+- **Release hash stays the hash-at-lock placeholder.** There is no registry,
+  fetch path, or ecosystem to provide a real checksum, and inventing a package
+  manager to unblock a compiler refactor is the wrong order. `lock_package` is a
+  sound *pin*; what it lacks is *provenance* (a publisher-signed checksum). Two
+  hooks keep the replacement cheap: `Lockfile::version` must actually reject
+  formats this build cannot read (today it is parsed and then `#[allow(dead_code)]`),
+  and the lockfile should record which hash algorithm produced the digest, so a
+  registry checksum later is not a format break.
 
 ### Import form decision (2026-07-30)
 

@@ -51,7 +51,7 @@ pipeline), retiring `qcompiler` as the by-then-obsolete prototype.**
 
 In one line: **the engine is feature-complete for a correct, incremental,
 persistent, concurrent compiler with a bounded cache, and is missing only (a)
-the rest of external deps (13b Slices 2–4) and (b) the deferable Phase-4
+the external-deps wiring (13b Slice 2) and (b) the deferable Phase-4
 performance items — before it is evolved in place into the real compiler, which
 is what this document plans.**
 
@@ -193,18 +193,24 @@ far cheaper to get right against the toy language:
   primitive + between-wave compaction (A), admission control (B), single-flight
   for derived kinds (C), and the byte budget wired into daemon config with
   GC on wave completion (D, `TEL_SANDBOX_CACHE_BUDGET`).
-- [ ] **External deps as sealed leaves (item 13b). Slice 1 of 4 done
-  2026-07-26 — the one gate item still open.** Real projects have dependencies;
-  the sealing/provenance model must exist before the real language's imports
-  point at packages. Landed: `ContentDigest::sealed` (domain-tagged apart from
-  local digests, `SCHEMA_VERSION` 4→5) and `src/deps.rs` —
-  `LeafSource`/`SealedCoord`, the versioned JSON `Lockfile`, XDG store-path
-  resolution, and a *temporary* hash-at-lock (`lock_package`). Still open, per
-  [external-deps.md](external-deps.md): wiring the resolver's import→coordinate
-  lookup and the parse leaf's digest-from-coordinate (Slice 2), the provenance
-  bit through graph/binding plus marking/monitor exclusion (Slice 3), and the
-  shared sealed disk tier (Slice 4). Until Slice 2, `deps` is a private module
+- [ ] **External deps as sealed leaves (item 13b) — Slice 2 only.** Real
+  projects have dependencies; the sealing model must exist before the real
+  language's imports point at packages. Landed 2026-07-26 (Slice 1):
+  `ContentDigest::sealed` (domain-tagged apart from local digests,
+  `SCHEMA_VERSION` 4→5) and `src/deps.rs` — `LeafSource`/`SealedCoord`, the
+  versioned JSON `Lockfile`, XDG store-path resolution, and a *temporary*
+  hash-at-lock (`lock_package`). Until Slice 2, `deps` is a private module
   exercised only by its own unit tests.
+
+  **Narrowed 2026-07-30:** only **Slice 2** — the resolver's import→coordinate
+  lookup and the parse leaf's digest-from-coordinate — remains a gate item.
+  Slices 3 (provenance bit) and 4 (shared sealed tier) are **deferable**: a
+  sealed leaf without the provenance bit is simply treated as local (re-read,
+  re-hashed, watched — slower, never wrong), and the shared tier has no customer
+  yet. Slice 2's own shape is decided in [external-deps.md](external-deps.md):
+  imports spell absolute paths with duplicates rejected, and the lockfile enters
+  the graph as a `Lock` leaf plus a `LockCoord(package)` projection so a
+  one-package bump does not re-resolve every entry point.
 - [x] **Portable encoding routes through the seam.** Each answer type carries
   its own `to_portable()`/`from_portable()` (the seam from §2), so adding a real
   kind is one concrete arm, not a `portable.rs` rewrite. This is expected work
@@ -212,7 +218,8 @@ far cheaper to get right against the toy language:
   before the first real kind does. Satisfied for the kinds that exist today
   (confirmed by the same 07-22 audit); each new real kind still adds its arm.
 
-Deferable past the swap (do in the real crate): lock-free compile (17), boxed
+Deferable past the swap (do in the real crate): external-deps Slices 3–4
+(provenance bit, shared sealed tier — see above), lock-free compile (17), boxed
 recursive awaits (18) — though 18 may become *urgent* under the real language's
 deeper resolve chains and should be watched, threadpool parse (19), the
 remaining fast-mode sidecars (`refmap`/`typemap`/`docs`, the always-on
@@ -385,16 +392,26 @@ already exists as the first flavor; real targets slot into the same mechanism.
   `content-addressed-vs-verifying-trace.md`) were authoritative and stayed;
   they have since moved into the book as
   `doc/book/src/19a-compiler-internals/`, leaving redirect stubs.
-- **Whether external deps (13b) truly gates the swap** or can land in parallel
-  with S2–S3 against real code. Listed as a gate here on the conservative
-  assumption that getting it right is cheaper against the toy suite; now
-  live, since 13b is the last open gate item and S2 is a paper mapping with no
-  code dependency on sealed leaves. (The same question about concurrency/
+- **~~Whether external deps (13b) truly gates the swap~~ — RESOLVED
+  (2026-07-30): partly.** Slice 2 stays a gate (getting the import→coordinate
+  wiring right really is cheaper against the toy suite); Slices 3–4 do not, for
+  the reasons in §4 and [external-deps.md](external-deps.md). S2 is a paper
+  mapping with no code dependency on sealed leaves, so it runs *in parallel*
+  with Slice 2 rather than after it. (The same question about concurrency/
   eviction is moot — 13 landed 2026-07-22/23.)
-- **Conformance expectation format (§5).** Inline `# tel-test:` header vs a
-  sidecar `.expected` file per program; how errors are matched (exact
-  `path:line:col` vs error-kind-only, to keep tests robust to message wording);
-  whether feature-*interaction* coverage is hand-written or partly generated
-  (combinatorial), given the toy corpus already has a project generator; and
-  where the corpus + its harness physically live so one runner drives both the
-  engine's example language and the real language across every `telir` backend.
+- **Conformance expectation format (§5) — starting point decided
+  (2026-07-30), deliberately a simple placeholder to extend.** Grow the
+  existing inline `# tel-test:` header (`compiler/src/examples.rs` already skips
+  it) rather than inventing a sidecar mechanism; a sidecar `.expected` file only
+  where stdout is genuinely multi-line. Match errors by **kind plus
+  `path:line:col`, never message text**, so rewording a diagnostic does not
+  churn the corpus. Interaction coverage is hand-written first; generate
+  combinatorially only where a real gap shows up (the toy corpus's project
+  generator is there if it does).
+  Still open: where the corpus + its harness physically live so one runner
+  drives both the engine's example language and the real language across every
+  `telir` backend; and the fixture path form the import decision forces
+  (root-anchored vs a harness rewrite — see
+  [external-deps.md](external-deps.md), "Import form decision"). Root-anchored
+  is the recommendation, since a rewrite step would have to be reimplemented by
+  every non-Rust backend.
