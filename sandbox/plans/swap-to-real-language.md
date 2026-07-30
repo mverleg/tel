@@ -403,15 +403,15 @@ already exists as the first flavor; real targets slot into the same mechanism.
   (2026-07-30), deliberately a simple placeholder to extend.** Grow the
   existing inline `# tel-test:` header (`compiler/src/examples.rs` already skips
   it) rather than inventing a sidecar mechanism; a sidecar `.expected` file only
-  where stdout is genuinely multi-line. Match errors by **kind plus
-  `path:line:col`, never message text**, so rewording a diagnostic does not
-  churn the corpus. Interaction coverage is hand-written first; generate
-  combinatorially only where a real gap shows up (the toy corpus's project
-  generator is there if it does).
+  where stdout is genuinely multi-line. The **default** matcher for an error is
+  **kind plus `path:line:col`**, so rewording a diagnostic does not churn the
+  corpus — but asserting message text is allowed where a test is specifically
+  about the wording; it is a default, not a prohibition. Interaction coverage is
+  hand-written first; generate combinatorially only where a real gap shows up
+  (the toy corpus's project generator is there if it does).
+  Fixture paths are **root-anchored absolute** (decided 2026-07-30, see
+  [external-deps.md](external-deps.md), "Import form decision"), which is what
+  keeps the corpus committable and runnable by non-Rust backends.
   Still open: where the corpus + its harness physically live so one runner
   drives both the engine's example language and the real language across every
-  `telir` backend; and the fixture path form the import decision forces
-  (root-anchored vs a harness rewrite — see
-  [external-deps.md](external-deps.md), "Import form decision"). Root-anchored
-  is the recommendation, since a rewrite step would have to be reimplemented by
-  every non-Rust backend.
+  `telir` backend.

@@ -185,10 +185,15 @@ that lets us skip invalidation — orthogonal, and independently valuable.
   fetch path, or ecosystem to provide a real checksum, and inventing a package
   manager to unblock a compiler refactor is the wrong order. `lock_package` is a
   sound *pin*; what it lacks is *provenance* (a publisher-signed checksum). Two
-  hooks keep the replacement cheap: `Lockfile::version` must actually reject
-  formats this build cannot read (today it is parsed and then `#[allow(dead_code)]`),
-  and the lockfile should record which hash algorithm produced the digest, so a
-  registry checksum later is not a format break.
+  hooks land with Slice 2 so the replacement is cheap (confirmed 2026-07-30):
+  - `Lockfile::version` must actually reject formats this build cannot read —
+    today it is parsed and then `#[allow(dead_code)]`, which defeats the point
+    of versioning the format.
+  - Each entry records **which algorithm produced the digest** (`"algo":
+    "xxh3-128-tree"` for today's hash-at-lock), and an unrecognized algorithm is
+    an error rather than a digest compared across algorithms. A registry
+    checksum then arrives as a new algorithm tag, not a format break, and both
+    can coexist during a migration.
 
 ### Import form decision (2026-07-30)
 
@@ -210,21 +215,22 @@ there is no search path, no precedence, and no shadowing rule to get wrong:
   Uniqueness is *enforced*, not assumed (earlier drafts of this plan assumed
   "file paths are unique" — this is what replaces that assumption).
 
-**Consequence for fixtures — open.** A filesystem-absolute path cannot be
-committed: `examples/**.telsb` has ~41 import lines whose repo path differs per
+**Absolute against what — decided 2026-07-30: the project root.** An import
+path is absolute *within the project root* (and within a package root for a
+sealed leaf), not filesystem-absolute. This is forced by the corpus:
+`examples/**.telsb` has ~41 committed import lines whose repo path differs per
 machine, and the Rust tests write sources into a `TempDir` whose path is not
-known until runtime. Runtime-generated fixtures are fine (the absolute path is
-formatted in). The committed corpus needs one of:
+known until runtime — so a filesystem-absolute path cannot be committed at all.
+Runtime-generated fixtures would have been fine either way (the path is
+formatted in); the committed ones would not.
 
-1. **root-anchored resolution** — an import path is absolute *within the project
-   root* (and within a package root for sealed leaves), which is the only
-   absolute form that survives being committed and still has no search path; or
-2. **a harness rewrite** — commit a `@ROOT@`-style placeholder that the example
-   runner substitutes before compiling.
+The alternative — commit a `@ROOT@`-style placeholder and have the example
+runner substitute it — was rejected: every non-Rust `telir` backend would have
+to reimplement the substitution, which cuts against the corpus being
+Rust-agnostic (plans/swap-to-real-language.md §5).
 
-(1) is the recommendation: it keeps fixtures portable and the corpus
-Rust-agnostic (plans/swap-to-real-language.md §5), where (2) makes every
-non-Rust backend reimplement the substitution. Not yet decided.
+Root-anchoring changes nothing about the property that matters: still one
+candidate per import, still no search path, still no precedence.
 
 ## Invariants preserved
 
