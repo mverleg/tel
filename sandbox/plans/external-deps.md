@@ -131,10 +131,9 @@ that lets us skip invalidation — orthogonal, and independently valuable.
   leaf via this table. **[Slice 1 partial / Slice 2 wiring]** Format is
   versioned JSON (`{version, packages: {name: {hash, version}}}`, `serde_json`,
   no new dep); `Lockfile::coord(pkg, path)` returns `Some(SealedCoord)` for a
-  locked package, `None` (→ treat as local sibling) otherwise. Wiring the
-  resolver's import→coordinate lookup and the parse leaf's digest-from-coordinate
-  is Slice 2. Import *surface syntax* is deferred (design-only); for now assume
-  file paths are unique, so a lockfile hit is unambiguous.
+  locked package, `None` (→ not sealed) otherwise. Wiring the resolver's
+  import→coordinate lookup and the parse leaf's digest-from-coordinate is
+  Slice 2, under the import form decided below.
 - **Shared sealed disk tier** (later) — a read-through tier above the per-root
   cache, keyed purely on sealed content keys, safe to share across roots by
   content-addressing. **[Slice 4]**
@@ -152,6 +151,42 @@ that lets us skip invalidation — orthogonal, and independently valuable.
   package's source tree deterministically (sorted, length-prefixed `(path,
   bytes)`, xxh3-128 → hex). Stands in for a registry checksum until a real fetch
   story exists; explicitly a placeholder.
+
+### Import form decision (2026-07-30)
+
+An import must **spell an absolute path** — that is the actual surface syntax
+for now, not sugar over a search. It replaces the sandbox's bare-name sibling
+convention (`(import module_name)` → sibling `module_name.telsb`, `language.md`
+"Imports"), which has to change with Slice 2. It may be extended later (a real
+package/coordinate syntax is still open); until then there is nothing else.
+
+The point is that **an import names exactly one candidate by construction**, so
+there is no search path, no precedence, and no shadowing rule to get wrong:
+
+- No local-sibling-vs-lockfile ordering, in either direction. Precedence was
+  considered and **rejected** — it decides a language question silently, and
+  whichever side is picked becomes precedent before the real import syntax is
+  designed.
+- **Duplicates are a hard error**, not a resolved ambiguity: two imports naming
+  the same file, or one path claimed by both a local file and a locked package.
+  Uniqueness is *enforced*, not assumed (earlier drafts of this plan assumed
+  "file paths are unique" — this is what replaces that assumption).
+
+**Consequence for fixtures — open.** A filesystem-absolute path cannot be
+committed: `examples/**.telsb` has ~41 import lines whose repo path differs per
+machine, and the Rust tests write sources into a `TempDir` whose path is not
+known until runtime. Runtime-generated fixtures are fine (the absolute path is
+formatted in). The committed corpus needs one of:
+
+1. **root-anchored resolution** — an import path is absolute *within the project
+   root* (and within a package root for sealed leaves), which is the only
+   absolute form that survives being committed and still has no search path; or
+2. **a harness rewrite** — commit a `@ROOT@`-style placeholder that the example
+   runner substitutes before compiling.
+
+(1) is the recommendation: it keeps fixtures portable and the corpus
+Rust-agnostic (plans/swap-to-real-language.md §5), where (2) makes every
+non-Rust backend reimplement the substitution. Not yet decided.
 
 ## Invariants preserved
 
