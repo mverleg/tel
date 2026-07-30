@@ -122,32 +122,60 @@ impl SealedCoord {
     }
 }
 
+/// The only lockfile format version this build understands. A newer file is
+/// **rejected**, not read on a best-effort basis: the fields a future version
+/// adds could be exactly the ones that decide what a digest means, so guessing
+/// risks a wrong cache hit rather than a clean error.
+const FORMAT_VERSION: u32 = 1;
+
+/// The algorithm that produced a release hash. Recorded per entry so replacing
+/// today's placeholder is additive: a registry checksum arrives as a new
+/// variant, both can coexist during a migration, and no digest is ever compared
+/// across algorithms (plans/external-deps.md, "Release hash").
+const ALGO_XXH3_TREE: &str = "xxh3-128-tree";
+
 /// One package entry as written in the lockfile.
 #[derive(Debug, Clone, Deserialize)]
 struct PackageEntry {
-    /// Hex-encoded release hash (hash-at-lock output for now).
+    /// Hex-encoded release hash.
     hash: String,
+    /// Which algorithm produced `hash` — see [`ALGO_XXH3_TREE`].
+    algo: String,
     version: String,
 }
 
-/// The on-disk lockfile: `package name -> pinned (hash, version)`. A tracked,
-/// local leaf — the one file we watch and hash so a dep bump flows through the
-/// normal invalidation path while the dependency artifacts stay frozen.
+/// The on-disk lockfile: `package name -> pinned (hash, algo, version)`. A
+/// tracked, local leaf — the one file we watch and hash so a dep bump flows
+/// through the normal invalidation path while the dependency artifacts stay
+/// frozen.
 ///
 /// Format (JSON, versioned):
 /// ```json
-/// { "version": 1, "packages": { "mathlib": { "hash": "ab12…", "version": "1.4.2" } } }
+/// { "version": 1,
+///   "packages": { "mathlib": { "hash": "ab12…", "algo": "xxh3-128-tree", "version": "1.4.2" } } }
 /// ```
 #[derive(Debug, Clone, Deserialize)]
 pub struct Lockfile {
-    #[allow(dead_code)] // reserved: reject formats this build can't read
     version: u32,
     packages: HashMap<String, PackageEntry>,
 }
 
 impl Lockfile {
     pub fn parse(json: &str) -> Result<Lockfile, LockError> {
-        serde_json::from_str(json).map_err(|e| LockError::Parse(e.to_string()))
+        let lock: Lockfile = serde_json::from_str(json).map_err(|e| LockError::Parse(e.to_string()))?;
+        if lock.version != FORMAT_VERSION {
+            return Err(LockError::UnsupportedVersion(lock.version));
+        }
+        // Checked at load, not at lookup: an unreadable entry anywhere in the
+        // file is a broken lockfile, and finding that out only when some
+        // unrelated import happens to touch that package would make the error
+        // depend on which file was compiled.
+        for (name, entry) in &lock.packages {
+            if entry.algo != ALGO_XXH3_TREE {
+                return Err(LockError::UnknownAlgo(name.clone(), entry.algo.clone()));
+            }
+        }
+        Ok(lock)
     }
 
     pub fn load(path: &FsPath) -> Result<Lockfile, LockError> {
@@ -157,7 +185,7 @@ impl Lockfile {
 
     /// Resolve one file of a locked package to its sealed coordinate. `None`
     /// when the package is not in the lockfile — the caller then treats the
-    /// import as a local sibling, exactly as today.
+    /// import as a path under the project root.
     pub fn coord(&self, package: &str, path_within_package: &str) -> Result<Option<SealedCoord>, LockError> {
         let Some(entry) = self.packages.get(package) else {
             return Ok(None);
@@ -176,6 +204,11 @@ pub enum LockError {
     Io(String),
     Parse(String),
     BadHash(String),
+    /// The file declares a format version this build cannot read.
+    UnsupportedVersion(u32),
+    /// An entry's digest was produced by an algorithm this build does not know
+    /// (package, algorithm).
+    UnknownAlgo(String, String),
 }
 
 impl std::fmt::Display for LockError {
@@ -184,6 +217,10 @@ impl std::fmt::Display for LockError {
             LockError::Io(e) => write!(f, "lockfile IO error: {e}"),
             LockError::Parse(e) => write!(f, "lockfile parse error: {e}"),
             LockError::BadHash(e) => write!(f, "bad release hash: {e}"),
+            LockError::UnsupportedVersion(v) => write!(
+                f, "lockfile format version {v} is not supported by this build (expected {FORMAT_VERSION})"),
+            LockError::UnknownAlgo(pkg, algo) => write!(
+                f, "package {pkg:?} pins a hash from unknown algorithm {algo:?}"),
         }
     }
 }
@@ -219,7 +256,8 @@ fn cache_root() -> PathBuf {
 ///
 /// Deterministic by construction: relative file paths are sorted before
 /// folding, and each `(path, bytes)` pair is length-prefixed so no two trees
-/// can alias. Uses xxh3-128 (already the engine's hash), rendered as hex.
+/// can alias. Uses xxh3-128 (already the engine's hash), rendered as hex — the
+/// algorithm a lockfile entry names as [`lock_algo`].
 pub fn lock_package(package_dir: &FsPath) -> Result<ReleaseHash, LockError> {
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
     collect_files(package_dir, package_dir, &mut files)?;
@@ -235,6 +273,13 @@ pub fn lock_package(package_dir: &FsPath) -> Result<ReleaseHash, LockError> {
         h.update(bytes);
     }
     Ok(ReleaseHash(h.digest128().to_be_bytes().to_vec()))
+}
+
+/// The algorithm name a lockfile entry must carry for a hash produced by
+/// [`lock_package`]. Whoever writes a lockfile records this alongside the
+/// digest; a future registry checksum records its own name instead.
+pub fn lock_algo() -> &'static str {
+    ALGO_XXH3_TREE
 }
 
 fn collect_files(root: &FsPath, dir: &FsPath, out: &mut Vec<(String, Vec<u8>)>) -> Result<(), LockError> {
@@ -267,12 +312,16 @@ mod tests {
         assert!(ReleaseHash::from_hex("zz").is_err(), "non-hex must error");
     }
 
+    /// One package, spelled the way a writer would spell it.
+    fn lockfile_json(pkg: &str, hash: &str, algo: &str) -> String {
+        format!(
+            r#"{{ "version": 1, "packages": {{ "{pkg}": {{ "hash": "{hash}", "algo": "{algo}", "version": "1.4.2" }} }} }}"#
+        )
+    }
+
     #[test]
     fn lockfile_resolves_known_package_only() {
-        let lock = Lockfile::parse(
-            r#"{ "version": 1, "packages": { "mathlib": { "hash": "ab12cd", "version": "1.4.2" } } }"#,
-        )
-        .unwrap();
+        let lock = Lockfile::parse(&lockfile_json("mathlib", "ab12cd", lock_algo())).unwrap();
 
         let coord = lock.coord("mathlib", "vec.telsb").unwrap().expect("known package resolves");
         assert_eq!(coord.semver, "1.4.2");
@@ -294,17 +343,39 @@ mod tests {
     #[test]
     fn bumping_the_lockfile_rekeys_the_coordinate() {
         let coord = |hash: &str| {
-            Lockfile::parse(&format!(
-                r#"{{ "version": 1, "packages": {{ "m": {{ "hash": "{hash}", "version": "1.0.0" }} }} }}"#
-            ))
-            .unwrap()
-            .coord("m", "lib.telsb")
-            .unwrap()
-            .unwrap()
-            .digest()
+            Lockfile::parse(&lockfile_json("m", hash, lock_algo()))
+                .unwrap()
+                .coord("m", "lib.telsb")
+                .unwrap()
+                .unwrap()
+                .digest()
         };
         assert_eq!(coord("aa"), coord("aa"));
         assert_ne!(coord("aa"), coord("bb"));
+    }
+
+    /// A format this build cannot read is refused outright. Reading it
+    /// best-effort would risk a *wrong* digest (a future version's new fields
+    /// could be what decides what a hash covers), which content-addressing has
+    /// no defence against — an error is the only safe answer.
+    #[test]
+    fn unsupported_format_version_is_rejected() {
+        let newer = r#"{ "version": 2, "packages": {} }"#;
+        assert_eq!(Lockfile::parse(newer).unwrap_err(), LockError::UnsupportedVersion(2));
+        assert!(Lockfile::parse(r#"{ "version": 1, "packages": {} }"#).is_ok());
+    }
+
+    /// An unknown algorithm is an error rather than a digest silently compared
+    /// across algorithms — the property that lets a registry checksum land
+    /// later as a new tag instead of a format break.
+    #[test]
+    fn unknown_hash_algorithm_is_rejected() {
+        let err = Lockfile::parse(&lockfile_json("m", "aa", "sha256")).unwrap_err();
+        assert_eq!(err, LockError::UnknownAlgo("m".to_string(), "sha256".to_string()));
+
+        // Rejected at load, so it does not depend on which import is compiled.
+        let missing_algo = r#"{ "version": 1, "packages": { "m": { "hash": "aa", "version": "1.0.0" } } }"#;
+        assert!(matches!(Lockfile::parse(missing_algo), Err(LockError::Parse(_))));
     }
 
     #[test]
