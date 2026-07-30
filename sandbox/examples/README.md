@@ -102,7 +102,7 @@ Expected output:
 ## Language Features Demonstrated
 
 All examples demonstrate:
-- **Multi-file imports**: Files can import other files using `(import filename)`
+- **Multi-file imports**: Files can import other files using `(import /path/to/file)`, absolute against the project root
 - **Local functions**: Files can define local functions using `(function name body)`
 - **Function calls**: `(call funcname arg1 arg2)` calls functions (both imported and local)
 - **Argument access**: `(arg 1)` and `(arg 2)` access function arguments

@@ -3,7 +3,7 @@ use crate::context::ResolveContext;
 use crate::graph::ResolveId;
 use crate::types::{Expr, ExprKind, FuncId, Loc, Located, PreExpr, PreExprKind, ResolveError, ScopeId, SrcLoc, SymbolTable, VarId};
 use log::debug;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -440,13 +440,64 @@ pub(crate) fn extract_import_names(pre_expr: &PreExpr, context: &str) -> Result<
         _ => {}
     }
 
-    for import_name in &imports {
-        if import_name.contains('.') {
-            return Err(ResolveError::InvalidImportPath(context.to_string(), import_name.clone()));
+    let mut seen_paths = HashSet::with_capacity(imports.len());
+    let mut seen_names = HashMap::with_capacity(imports.len());
+    for import_path in &imports {
+        check_import_path(import_path, context)?;
+        if !seen_paths.insert(import_path.as_str()) {
+            return Err(ResolveError::DuplicateImport(context.to_string(), import_path.clone()));
+        }
+        // Two distinct files whose last segment matches would both want the
+        // same callable name. Rejected rather than ordered: picking a winner
+        // is the shadowing rule this design does not have.
+        let name = import_callable_name(import_path);
+        if let Some(previous) = seen_names.insert(name, import_path.as_str()) {
+            return Err(ResolveError::ImportNameCollision(
+                context.to_string(), name.to_string(), previous.to_string(), import_path.clone()));
         }
     }
 
     Ok(imports)
+}
+
+/// An import path is **absolute against the project root** and names exactly
+/// one file: `/lib/vec` is `<root>/lib/vec.telsb`, or the sealed equivalent
+/// when `lib` is a locked package (plans/external-deps.md, "Import form
+/// decision"). There is no search path and no relative form, so an import has
+/// one candidate by construction — nothing to disambiguate, and no precedence
+/// rule that would silently decide which of two files wins.
+///
+/// The extension is *not* written: it is the language's, not the author's.
+fn check_import_path(path: &str, context: &str) -> Result<(), ResolveError> {
+    let invalid = |why: &str| {
+        Err(ResolveError::InvalidImportPath(
+            context.to_string(), format!("{path} ({why})")))
+    };
+    let Some(rest) = path.strip_prefix('/') else {
+        return invalid("import paths are absolute against the project root, so must start with '/'");
+    };
+    if rest.is_empty() {
+        return invalid("names no file");
+    }
+    for segment in rest.split('/') {
+        match segment {
+            "" => return invalid("has an empty path segment"),
+            // Rejected because they are the relative forms in disguise: they
+            // would reintroduce importer-relative resolution, and `..` could
+            // escape the root entirely.
+            "." | ".." => return invalid("must not contain '.' or '..' segments"),
+            s if s.contains('.') => return invalid("must not contain '.' (the file extension is implied)"),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// The name an imported file is callable by: its last path segment. `/lib/vec`
+/// is called as `vec` — the same "filename without extension" rule the
+/// bare-name form used, now read off an absolute path.
+pub(crate) fn import_callable_name(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
 }
 
 /// Resolve a parsed file body, with its imports already resolved and their

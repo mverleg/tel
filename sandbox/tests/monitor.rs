@@ -64,7 +64,7 @@ fn hot_cold_project(dir: &Path) -> (String, std::path::PathBuf) {
     let main = dir.join("main.telsb");
     let hot = dir.join("hot.telsb");
     let cold = dir.join("cold.telsb");
-    fs::write(&main, "(import hot)\n(import cold)\n(print (+ (call hot 1) (call cold 1)))\n").unwrap();
+    fs::write(&main, "(import /hot)\n(import /cold)\n(print (+ (call hot 1) (call cold 1)))\n").unwrap();
     fs::write(&hot, "(+ (arg 1) 10)\n").unwrap();
     fs::write(&cold, "(+ (arg 1) 100)\n").unwrap();
     (main.to_str().unwrap().to_string(), hot)

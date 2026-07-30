@@ -39,7 +39,7 @@ async fn run_program(files: &[(&str, &str)]) -> (Result<(), String>, Vec<String>
 #[tokio::test]
 async fn generic_function_monomorphises_to_both_types() {
     let (result, printed) = run_program(&[
-        ("main.telsb", "(import double)\n(print (call double 21))\n(print (call double 21i32))\n"),
+        ("main.telsb", "(import /double)\n(print (call double 21))\n(print (call double 21i32))\n"),
         ("double.telsb", "(* (arg 1) 2)\n"),
     ]).await;
     assert!(result.is_ok(), "expected success, got: {:?}", result.err());
@@ -49,7 +49,7 @@ async fn generic_function_monomorphises_to_both_types() {
 #[tokio::test]
 async fn recursion_works_in_both_instances() {
     let (result, printed) = run_program(&[
-        ("main.telsb", "(import fact)\n(print (call fact 5))\n(print (call fact 5i32))\n"),
+        ("main.telsb", "(import /fact)\n(print (call fact 5))\n(print (call fact 5i32))\n"),
         ("fact.telsb", "(let n (arg 1))\n(if (< n 2) (return n) (return (* n (call fact (- n 1)))))\n"),
     ]).await;
     assert!(result.is_ok(), "expected success, got: {:?}", result.err());

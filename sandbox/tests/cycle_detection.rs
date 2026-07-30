@@ -38,7 +38,7 @@ async fn run_expecting_cycle(path: &str) -> String {
 async fn self_import_is_reported_as_cycle() {
     let dir = TempDir::new().unwrap();
     let main = dir.path().join("main.telsb");
-    fs::write(&main, "(import main)\n(print 1)\n").unwrap();
+    fs::write(&main, "(import /main)\n(print 1)\n").unwrap();
 
     let msg = run_expecting_cycle(main.to_str().unwrap()).await;
     // The chain is main -> main: the path must name the file at both ends.
@@ -50,9 +50,9 @@ async fn self_import_is_reported_as_cycle() {
 async fn direct_two_node_cycle_is_reported() {
     let dir = TempDir::new().unwrap();
     let main = dir.path().join("main.telsb");
-    fs::write(&main, "(import a)\n(print (call a))\n").unwrap();
-    fs::write(dir.path().join("a.telsb"), "(import b)\n(call b)\n").unwrap();
-    fs::write(dir.path().join("b.telsb"), "(import a)\n(call a)\n").unwrap();
+    fs::write(&main, "(import /a)\n(print (call a))\n").unwrap();
+    fs::write(dir.path().join("a.telsb"), "(import /b)\n(call b)\n").unwrap();
+    fs::write(dir.path().join("b.telsb"), "(import /a)\n(call a)\n").unwrap();
 
     let msg = run_expecting_cycle(main.to_str().unwrap()).await;
     // The reported chain starts at the first repeated node, so it is exactly
@@ -66,10 +66,10 @@ async fn direct_two_node_cycle_is_reported() {
 async fn transitive_three_node_cycle_is_reported() {
     let dir = TempDir::new().unwrap();
     let main = dir.path().join("main.telsb");
-    fs::write(&main, "(import a)\n(print (call a))\n").unwrap();
-    fs::write(dir.path().join("a.telsb"), "(import b)\n(call b)\n").unwrap();
-    fs::write(dir.path().join("b.telsb"), "(import c)\n(call c)\n").unwrap();
-    fs::write(dir.path().join("c.telsb"), "(import a)\n(call a)\n").unwrap();
+    fs::write(&main, "(import /a)\n(print (call a))\n").unwrap();
+    fs::write(dir.path().join("a.telsb"), "(import /b)\n(call b)\n").unwrap();
+    fs::write(dir.path().join("b.telsb"), "(import /c)\n(call c)\n").unwrap();
+    fs::write(dir.path().join("c.telsb"), "(import /a)\n(call a)\n").unwrap();
 
     let msg = run_expecting_cycle(main.to_str().unwrap()).await;
     for module in ["a.telsb", "b.telsb", "c.telsb"] {
@@ -84,9 +84,9 @@ async fn transitive_three_node_cycle_is_reported() {
 async fn diamond_imports_are_not_flagged_as_cycle() {
     let dir = TempDir::new().unwrap();
     let main = dir.path().join("main.telsb");
-    fs::write(&main, "(import b)\n(import c)\n(print (+ (call b) (call c)))\n").unwrap();
-    fs::write(dir.path().join("b.telsb"), "(import d)\n(call d)\n").unwrap();
-    fs::write(dir.path().join("c.telsb"), "(import d)\n(call d)\n").unwrap();
+    fs::write(&main, "(import /b)\n(import /c)\n(print (+ (call b) (call c)))\n").unwrap();
+    fs::write(dir.path().join("b.telsb"), "(import /d)\n(call d)\n").unwrap();
+    fs::write(dir.path().join("c.telsb"), "(import /d)\n(call d)\n").unwrap();
     fs::write(dir.path().join("d.telsb"), "21\n").unwrap();
 
     let mut compiler = noop_compiler();
@@ -103,12 +103,12 @@ async fn diamond_imports_are_not_flagged_as_cycle() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_compiles_of_a_cycle_all_error_without_hanging() {
     let dir = TempDir::new().unwrap();
-    fs::write(dir.path().join("x.telsb"), "(import y)\n(call y)\n").unwrap();
-    fs::write(dir.path().join("y.telsb"), "(import x)\n(call x)\n").unwrap();
+    fs::write(dir.path().join("x.telsb"), "(import /y)\n(call y)\n").unwrap();
+    fs::write(dir.path().join("y.telsb"), "(import /x)\n(call x)\n").unwrap();
     let entry1 = dir.path().join("main1.telsb");
     let entry2 = dir.path().join("main2.telsb");
-    fs::write(&entry1, "(import x)\n(print (call x))\n").unwrap();
-    fs::write(&entry2, "(import y)\n(print (call y))\n").unwrap();
+    fs::write(&entry1, "(import /x)\n(print (call x))\n").unwrap();
+    fs::write(&entry2, "(import /y)\n(print (call y))\n").unwrap();
 
     let (msg1, msg2) = tokio::join!(
         run_expecting_cycle(entry1.to_str().unwrap()),
@@ -126,13 +126,13 @@ async fn concurrent_compiles_of_a_cycle_all_error_without_hanging() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_diamond_compiles_succeed() {
     let dir = TempDir::new().unwrap();
-    fs::write(dir.path().join("b.telsb"), "(import d)\n(call d)\n").unwrap();
-    fs::write(dir.path().join("c.telsb"), "(import d)\n(call d)\n").unwrap();
+    fs::write(dir.path().join("b.telsb"), "(import /d)\n(call d)\n").unwrap();
+    fs::write(dir.path().join("c.telsb"), "(import /d)\n(call d)\n").unwrap();
     fs::write(dir.path().join("d.telsb"), "21\n").unwrap();
     let entry1 = dir.path().join("main1.telsb");
     let entry2 = dir.path().join("main2.telsb");
-    fs::write(&entry1, "(import b)\n(import c)\n(print (+ (call b) (call c)))\n").unwrap();
-    fs::write(&entry2, "(import c)\n(import b)\n(print (+ (call c) (call b)))\n").unwrap();
+    fs::write(&entry1, "(import /b)\n(import /c)\n(print (+ (call b) (call c)))\n").unwrap();
+    fs::write(&entry2, "(import /c)\n(import /b)\n(print (+ (call c) (call b)))\n").unwrap();
 
     let mut compiler1 = noop_compiler();
     let mut compiler2 = noop_compiler();

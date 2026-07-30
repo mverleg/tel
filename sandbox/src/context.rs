@@ -10,6 +10,7 @@ use std::collections::HashSet;
 use std::future::Future;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::pin::Pin;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -112,6 +113,15 @@ pub struct Global {
     computed_resolves: AtomicUsize,
     /// Mono checks actually executed (content-store misses).
     computed_monos: AtomicUsize,
+    /// The project root every absolute import path resolves against
+    /// (plans/external-deps.md, "Import form decision"). Session state, set
+    /// from the entry file at the start of each wave — runs are serialized by
+    /// `&mut Compiler`, so no wave ever observes another wave's root.
+    ///
+    /// It is deliberately *not* a content-key ingredient: the root only decides
+    /// which bytes an import names, and those bytes are already what the parse
+    /// leaf keys on.
+    root: Mutex<PathBuf>,
     /// Test support: when set, resolving a file whose path contains this
     /// needle panics at the recompute boundary. The least invasive way to
     /// exercise the panic-safety path (`catch_unwind` + node-stays-dirty)
@@ -219,6 +229,7 @@ impl Global {
             computed_parses: AtomicUsize::new(0),
             computed_resolves: AtomicUsize::new(0),
             computed_monos: AtomicUsize::new(0),
+            root: Mutex::new(PathBuf::from(".")),
             panic_on_resolve: Mutex::new(None),
             trace: crate::trace::StepTrace::new(),
             flavors,
@@ -308,6 +319,17 @@ impl Global {
     /// [`PullMode::TrustClean`]).
     pub fn leaf_read_count(&self) -> usize {
         self.leaf_reads.load(Ordering::Relaxed)
+    }
+
+    /// Point this session's import resolution at `root` — see the `root`
+    /// field. Called once per wave, before any query runs.
+    pub fn set_root(&self, root: PathBuf) {
+        *self.root.lock().unwrap() = root;
+    }
+
+    /// The project root absolute import paths resolve against.
+    pub fn root(&self) -> PathBuf {
+        self.root.lock().unwrap().clone()
     }
 
     /// Test support — see the `panic_on_resolve` field.
@@ -656,19 +678,21 @@ impl Global {
                 }
             };
 
-            // Map import names to their file-level resolutions, as
-            // process_imports did: sibling `.telsb` files, callable by name.
-            let base_dir = std::path::Path::new(fq.path_str(&this.interner))
-                .parent()
-                .unwrap_or(std::path::Path::new("."))
-                .to_path_buf();
+            // Map each import to the one file it names. The path is absolute
+            // against the project root — *not* relative to the importing file
+            // — so the same import text names the same file no matter which
+            // file wrote it (plans/external-deps.md, "Import form decision").
+            let root = this.root();
             let mut import_ids = Vec::with_capacity(imports.len());
             let mut import_funcs = Vec::with_capacity(imports.len());
-            for name in &imports {
-                let full_path = base_dir.join(format!("{}.telsb", name));
+            for path in &imports {
+                // Validated by `extract_import_names`: leading '/', no empty
+                // or dotted segments.
+                let full_path = root.join(format!("{}.telsb", path.trim_start_matches('/')));
+                let name = crate::resolve::import_callable_name(path);
                 let import_fq = FQ::intern(&this.interner, &full_path.to_string_lossy(), name);
                 import_ids.push(ResolveId { func_loc: import_fq });
-                import_funcs.push((name.clone(), FuncId(import_fq)));
+                import_funcs.push((name.to_string(), FuncId(import_fq)));
             }
 
             // The dep set just re-derived from the *current* content replaces

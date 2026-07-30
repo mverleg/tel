@@ -116,8 +116,23 @@ Example:
 
 **Import** a file-function from another file:
 ```lisp
-(import module_name)  # Automatically appends .telsb extension
+(import /lib/module_name)  # <root>/lib/module_name.telsb
 ```
+
+An import path is **absolute against the project root** — the directory of the
+innermost `tel.toml` above the entry file, or the entry's own directory when
+there is no marker. It is never relative to the importing file, so the same
+import text names the same file wherever it is written. The `.telsb` extension
+is implied and must not be written.
+
+There is no search path and no shadowing rule: an import names one file by
+construction. Consequently these are errors, not ambiguities to resolve:
+
+- a bare or relative path (`module_name`, `./module_name`), or one containing
+  `.` or `..` segments;
+- the same path imported twice;
+- two different paths whose last segment matches — both would be callable by
+  that one name (`/a/util` and `/b/util`).
 
 **Define** a local function (within a file):
 ```lisp
@@ -163,7 +178,8 @@ This will cause a compilation error if reached during resolution. Use this to ma
 - Functions can take any number of arguments (0, 1, 2, 3, etc.)
 - Arity is determined by the highest `(arg N)` used in the function body
 - All arguments from 1 to N must be used (no gaps allowed)
-- File-function names are derived from the imported filename (without extension)
+- File-function names are the import path's last segment (`/lib/vec` is called
+  as `vec`)
 
 ### I/O
 

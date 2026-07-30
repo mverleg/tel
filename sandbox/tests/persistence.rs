@@ -45,7 +45,7 @@ fn computed(compiler: &Compiler) -> (usize, usize, usize) {
 fn write_project(dir: &Path) -> String {
     let main = dir.join("main.telsb");
     let dep = dir.join("dep.telsb");
-    fs::write(&main, "(import dep)\n(print (call dep 20))\n").unwrap();
+    fs::write(&main, "(import /dep)\n(print (call dep 20))\n").unwrap();
     fs::write(&dep, "(+ (arg 1) 1)\n").unwrap();
     main.to_str().unwrap().to_string()
 }

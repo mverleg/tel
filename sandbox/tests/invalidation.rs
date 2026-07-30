@@ -60,7 +60,7 @@ async fn invalidate_recomputes_only_the_affected_cone() {
     let hot = dir.path().join("hot.telsb");
     let cold = dir.path().join("cold.telsb");
     let path = main.to_str().unwrap();
-    fs::write(&main, "(import hot)\n(import cold)\n(print (+ (call hot 1) (call cold 1)))\n").unwrap();
+    fs::write(&main, "(import /hot)\n(import /cold)\n(print (+ (call hot 1) (call cold 1)))\n").unwrap();
     fs::write(&hot, "(+ (arg 1) 10)\n").unwrap();
     fs::write(&cold, "(+ (arg 1) 100)\n").unwrap();
 
@@ -95,7 +95,7 @@ async fn formatting_only_change_undirties_via_cutoff() {
     let main = dir.path().join("main.telsb");
     let dep = dir.path().join("dep.telsb");
     let path = main.to_str().unwrap();
-    fs::write(&main, "(import dep)\n(print (call dep 2))\n").unwrap();
+    fs::write(&main, "(import /dep)\n(print (call dep 2))\n").unwrap();
     fs::write(&dep, "(* (arg 1) 21)\n").unwrap();
 
     let (mut compiler, out) = recording_compiler();
@@ -136,7 +136,7 @@ async fn spurious_invalidations_are_harmless() {
     let main = dir.path().join("main.telsb");
     let dep = dir.path().join("dep.telsb");
     let path = main.to_str().unwrap();
-    fs::write(&main, "(import dep)\n(print (call dep 5))\n").unwrap();
+    fs::write(&main, "(import /dep)\n(print (call dep 5))\n").unwrap();
     fs::write(&dep, "(+ (arg 1) 2)\n").unwrap();
 
     let (mut compiler, out) = recording_compiler();
@@ -170,7 +170,7 @@ async fn panicking_recompute_leaves_node_dirty_and_caches_unpoisoned() {
     let main = dir.path().join("main.telsb");
     let dep = dir.path().join("dep.telsb");
     let path = main.to_str().unwrap();
-    fs::write(&main, "(import dep)\n(print (call dep 1))\n").unwrap();
+    fs::write(&main, "(import /dep)\n(print (call dep 1))\n").unwrap();
     fs::write(&dep, "(+ (arg 1) 1)\n").unwrap();
 
     let (mut compiler, out) = recording_compiler();
@@ -221,8 +221,8 @@ async fn import_restructure_under_push_invalidation() {
     let b = dir.path().join("b.telsb");
     let path = main.to_str().unwrap();
 
-    let v1_main = "(import a)\n(print (call a 1))\n";
-    let v1_a = "(import b)\n(+ (call b (arg 1)) 1)\n";
+    let v1_main = "(import /a)\n(print (call a 1))\n";
+    let v1_a = "(import /b)\n(+ (call b (arg 1)) 1)\n";
     let v1_b = "(* (arg 1) 10)\n";
     fs::write(&main, v1_main).unwrap();
     fs::write(&a, v1_a).unwrap();
@@ -233,8 +233,8 @@ async fn import_restructure_under_push_invalidation() {
     assert_eq!(last_output(&out), "11");
 
     // Invert the relationship: main -> b -> a. All three files change.
-    fs::write(&main, "(import b)\n(print (call b 1))\n").unwrap();
-    fs::write(&b, "(import a)\n(+ (call a (arg 1)) 1)\n").unwrap();
+    fs::write(&main, "(import /b)\n(print (call b 1))\n").unwrap();
+    fs::write(&b, "(import /a)\n(+ (call a (arg 1)) 1)\n").unwrap();
     fs::write(&a, "(* (arg 1) 10)\n").unwrap();
     compiler.invalidate(main.to_str().unwrap());
     compiler.invalidate(a.to_str().unwrap());
@@ -271,7 +271,7 @@ async fn local_function_instances_are_in_their_files_marking_cone() {
     let main = dir.path().join("main.telsb");
     let dep = dir.path().join("dep.telsb");
     let path = main.to_str().unwrap();
-    fs::write(&main, "(import dep)\n(print (call dep 3))\n").unwrap();
+    fs::write(&main, "(import /dep)\n(print (call dep 3))\n").unwrap();
     // `helper` is a local function: its FQ names dep.telsb but not the
     // file-level resolve unit.
     fs::write(&dep, "(function helper (* (arg 1) 2))\n(call helper (arg 1))\n").unwrap();
@@ -303,7 +303,7 @@ async fn watch_revert_recomputes_nothing() {
     let dep = dir.path().join("dep.telsb");
     let path = main.to_str().unwrap();
     let original = "(* (arg 1) 21)\n";
-    fs::write(&main, "(import dep)\n(print (call dep 2))\n").unwrap();
+    fs::write(&main, "(import /dep)\n(print (call dep 2))\n").unwrap();
     fs::write(&dep, original).unwrap();
 
     let (mut compiler, out) = recording_compiler();
@@ -347,8 +347,8 @@ async fn edit_during_error_period_is_not_lost_when_chain_heals() {
     let mid = dir.path().join("mid.telsb");
     let leaf = dir.path().join("leaf.telsb");
     let path = main.to_str().unwrap();
-    let mid_good = "(import leaf)\n(+ (call leaf (arg 1)) 1)\n";
-    fs::write(&main, "(import mid)\n(print (call mid 10))\n").unwrap();
+    let mid_good = "(import /leaf)\n(+ (call leaf (arg 1)) 1)\n";
+    fs::write(&main, "(import /mid)\n(print (call mid 10))\n").unwrap();
     fs::write(&mid, mid_good).unwrap();
     fs::write(&leaf, "(* (arg 1) 2)\n").unwrap();
 
@@ -358,7 +358,7 @@ async fn edit_during_error_period_is_not_lost_when_chain_heals() {
 
     // Break the middle of the chain: undefined variable, a deterministic
     // (and cacheable) resolve error.
-    fs::write(&mid, "(import leaf)\n(+ (call leaf (arg 1)) undefined_var)\n").unwrap();
+    fs::write(&mid, "(import /leaf)\n(+ (call leaf (arg 1)) undefined_var)\n").unwrap();
     compiler.invalidate(mid.to_str().unwrap());
     compiler.run_watch(path, false).await
         .expect_err("the broken mid-chain file must fail the wave");

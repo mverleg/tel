@@ -500,6 +500,12 @@ pub enum ResolveError {
     UndefinedVariable(String, String),
     UndefinedFunction(String, String),
     InvalidImportPath(String, String),
+    /// The same import path listed twice in one file (context, path).
+    DuplicateImport(String, String),
+    /// Two different import paths whose last segment — the name the file is
+    /// callable by — is the same (context, name, first path, second path).
+    /// An error rather than a precedence rule: see `check_import_path`.
+    ImportNameCollision(String, String, String, String),
     VariableAlreadyDefined(String, String),
     ArgOutsideFunction(String),
     InvalidArgNumber(String, u8),
@@ -528,6 +534,9 @@ impl fmt::Display for ResolveError {
             ResolveError::UndefinedVariable(ctx, name) => write!(f, "Undefined variable in {}: {}", ctx, name),
             ResolveError::UndefinedFunction(ctx, name) => write!(f, "Undefined function in {}: {}", ctx, name),
             ResolveError::InvalidImportPath(ctx, name) => write!(f, "Invalid import in {}: {}", ctx, name),
+            ResolveError::DuplicateImport(ctx, path) => write!(f, "Duplicate import in {}: {}", ctx, path),
+            ResolveError::ImportNameCollision(ctx, name, first, second) => write!(
+                f, "Imports {} and {} in {} are both callable as '{}'", first, second, ctx, name),
             ResolveError::VariableAlreadyDefined(ctx, name) => write!(f, "Variable already defined in {}: {}", ctx, name),
             ResolveError::ArgOutsideFunction(ctx) => write!(f, "Arg used outside of function in {}", ctx),
             ResolveError::InvalidArgNumber(ctx, n) => write!(f, "Invalid arg number in {}: {}", ctx, n),

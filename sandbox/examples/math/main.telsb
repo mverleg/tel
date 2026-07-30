@@ -1,6 +1,6 @@
-(import max)
-(import min)
-(import abs)
+(import /max)
+(import /min)
+(import /abs)
 
 # UNUSED FUNCTIONS - defined but never called
 (function double (* (arg 1) 2))

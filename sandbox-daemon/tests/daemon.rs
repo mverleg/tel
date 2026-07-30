@@ -20,7 +20,7 @@ fn hot_cold_project(dir: &Path) -> (PathBuf, PathBuf) {
     fs::write(dir.join(ROOT_MARKER), "").unwrap();
     let main = dir.join("main.telsb");
     let hot = dir.join("hot.telsb");
-    fs::write(&main, "(import hot)\n(import cold)\n(print (+ (call hot 1) (call cold 1)))\n").unwrap();
+    fs::write(&main, "(import /hot)\n(import /cold)\n(print (+ (call hot 1) (call cold 1)))\n").unwrap();
     fs::write(&hot, "(+ (arg 1) 10)\n").unwrap();
     fs::write(dir.join("cold.telsb"), "(+ (arg 1) 100)\n").unwrap();
     (main, hot)

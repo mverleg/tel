@@ -85,7 +85,7 @@ async fn mono_cache_follows_content_per_file() {
     let (mut compiler, out) = recording_compiler();
 
     // Run 1: two instances get checked and cached: main @ i64 and dbl @ i64.
-    fs::write(&main, "(import dbl)\n(print (call dbl 21))\n").unwrap();
+    fs::write(&main, "(import /dbl)\n(print (call dbl 21))\n").unwrap();
     fs::write(&dbl, "(* (arg 1) 2)\n").unwrap();
     compiler.run(path, false).await.unwrap();
     assert_eq!(last_output(&out), "42");
@@ -123,7 +123,7 @@ async fn mono_cache_follows_content_per_file() {
 async fn identical_content_at_two_paths_shares_parse_but_not_mono() {
     let dir = TempDir::new().unwrap();
     let main = dir.path().join("main.telsb");
-    fs::write(&main, "(import dbl)\n(import dup)\n(print (+ (call dbl 10) (call dup 11)))\n").unwrap();
+    fs::write(&main, "(import /dbl)\n(import /dup)\n(print (+ (call dbl 10) (call dup 11)))\n").unwrap();
     // dbl and dup are byte-identical but live at different paths.
     fs::write(dir.path().join("dbl.telsb"), "(* (arg 1) 2)\n").unwrap();
     fs::write(dir.path().join("dup.telsb"), "(* (arg 1) 2)\n").unwrap();
@@ -194,7 +194,7 @@ async fn unchanged_recompile_recomputes_no_cached_phase() {
     let main = dir.path().join("main.telsb");
     let dbl = dir.path().join("dbl.telsb");
     let path = main.to_str().unwrap();
-    fs::write(&main, "(import dbl)\n(print (call dbl 21))\n").unwrap();
+    fs::write(&main, "(import /dbl)\n(print (call dbl 21))\n").unwrap();
     fs::write(&dbl, "(* (arg 1) 2)\n").unwrap();
 
     let (mut compiler, out) = recording_compiler();
@@ -224,7 +224,7 @@ async fn changed_import_recomputes_only_its_chain() {
     let dir = TempDir::new().unwrap();
     let main = dir.path().join("main.telsb");
     let path = main.to_str().unwrap();
-    fs::write(&main, "(import stable)\n(import edited)\n(print (+ (call stable 1) (call edited 1)))\n").unwrap();
+    fs::write(&main, "(import /stable)\n(import /edited)\n(print (+ (call stable 1) (call edited 1)))\n").unwrap();
     fs::write(dir.path().join("stable.telsb"), "(+ (arg 1) 10)\n").unwrap();
     fs::write(dir.path().join("edited.telsb"), "(+ (arg 1) 100)\n").unwrap();
 
@@ -265,8 +265,8 @@ async fn whitespace_only_edit_reparses_one_file_and_nothing_else() {
     let main = dir.path().join("main.telsb");
     let path = main.to_str().unwrap();
     // Three levels deep so the cutoff is visibly transitive: main -> mid -> leaf.
-    fs::write(&main, "(import mid)\n(print (call mid 40))\n").unwrap();
-    fs::write(dir.path().join("mid.telsb"), "(import leaf)\n(+ (call leaf (arg 1)) 1)\n").unwrap();
+    fs::write(&main, "(import /mid)\n(print (call mid 40))\n").unwrap();
+    fs::write(dir.path().join("mid.telsb"), "(import /leaf)\n(+ (call leaf (arg 1)) 1)\n").unwrap();
     fs::write(dir.path().join("leaf.telsb"), "(* (arg 1) 2)\n").unwrap();
 
     let (mut compiler, out) = recording_compiler();
@@ -298,8 +298,8 @@ async fn semantic_edit_recomputes_exactly_the_affected_cone() {
     let dir = TempDir::new().unwrap();
     let main = dir.path().join("main.telsb");
     let path = main.to_str().unwrap();
-    fs::write(&main, "(import mid)\n(print (call mid 40))\n").unwrap();
-    fs::write(dir.path().join("mid.telsb"), "(import leaf)\n(+ (call leaf (arg 1)) 1)\n").unwrap();
+    fs::write(&main, "(import /mid)\n(print (call mid 40))\n").unwrap();
+    fs::write(dir.path().join("mid.telsb"), "(import /leaf)\n(+ (call leaf (arg 1)) 1)\n").unwrap();
     fs::write(dir.path().join("leaf.telsb"), "(* (arg 1) 2)\n").unwrap();
 
     let (mut compiler, out) = recording_compiler();
@@ -336,7 +336,7 @@ async fn editing_one_function_leaves_sibling_functions_cached() {
     let dir = TempDir::new().unwrap();
     let main = dir.path().join("main.telsb");
     let path = main.to_str().unwrap();
-    fs::write(&main, "(import lib)\n(print (call lib 7))\n").unwrap();
+    fs::write(&main, "(import /lib)\n(print (call lib 7))\n").unwrap();
     fs::write(
         dir.path().join("lib.telsb"),
         "(function double (* (arg 1) 2))\n(function triple (* (arg 1) 3))\n(+ (call double (arg 1)) (call triple (arg 1)))\n",
@@ -371,7 +371,7 @@ async fn importer_of_stably_erroring_import_is_cached() {
     let dir = TempDir::new().unwrap();
     let main = dir.path().join("main.telsb");
     let path = main.to_str().unwrap();
-    fs::write(&main, "(import broken)\n(print (call broken))\n").unwrap();
+    fs::write(&main, "(import /broken)\n(print (call broken))\n").unwrap();
     fs::write(dir.path().join("broken.telsb"), "(print undefined_variable)\n").unwrap();
 
     let (mut compiler, _out) = recording_compiler();
@@ -404,8 +404,8 @@ async fn identical_panic_files_report_their_own_path() {
     fs::write(dir.path().join("panb.telsb"), "(panic)\n").unwrap();
     let main_a = dir.path().join("main_a.telsb");
     let main_b = dir.path().join("main_b.telsb");
-    fs::write(&main_a, "(import pana)\n(call pana)\n").unwrap();
-    fs::write(&main_b, "(import panb)\n(call panb)\n").unwrap();
+    fs::write(&main_a, "(import /pana)\n(call pana)\n").unwrap();
+    fs::write(&main_b, "(import /panb)\n(call panb)\n").unwrap();
 
     let (mut compiler, _out) = recording_compiler();
 
@@ -453,8 +453,8 @@ async fn shared_import_is_served_from_cache_across_entry_points() {
     fs::write(dir.path().join("lib.telsb"), "(* (arg 1) 2)\n").unwrap();
     let entry1 = dir.path().join("one.telsb");
     let entry2 = dir.path().join("two.telsb");
-    fs::write(&entry1, "(import lib)\n(print (call lib 21))\n").unwrap();
-    fs::write(&entry2, "(import lib)\n(print (call lib 50))\n").unwrap();
+    fs::write(&entry1, "(import /lib)\n(print (call lib 21))\n").unwrap();
+    fs::write(&entry2, "(import /lib)\n(print (call lib 50))\n").unwrap();
 
     let (mut compiler, out) = recording_compiler();
     compiler.run(entry1.to_str().unwrap(), false).await.unwrap();

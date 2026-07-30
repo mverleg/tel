@@ -1,4 +1,4 @@
-(import fib)
+(import /fib)
 
 # UNUSED FUNCTIONS - helper functions that are never called
 (function triple (* (arg 1) 3))

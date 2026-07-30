@@ -75,7 +75,7 @@ impl ProjectGenerator {
             let base_idx = self.rng.gen_range(0..self.config.num_base_modules);
             let func_idx = self.rng.gen_range(0..self.config.funcs_per_module);
             let func_name = format!("func_{}_{}", base_idx, func_idx);
-            content.push_str(&format!("(import {})\n", func_name));
+            content.push_str(&format!("(import /{})\n", func_name));
             imported_funcs.push((base_idx, func_idx));
         }
         content.push('\n');
@@ -106,7 +106,7 @@ impl ProjectGenerator {
             let base_idx = self.rng.gen_range(0..self.config.num_base_modules);
             let func_idx = self.rng.gen_range(0..self.config.funcs_per_module);
             let func_name = format!("func_{}_{}", base_idx, func_idx);
-            content.push_str(&format!("(import {})\n", func_name));
+            content.push_str(&format!("(import /{})\n", func_name));
             imported_funcs.push((base_idx, func_idx));
         }
 
@@ -116,7 +116,7 @@ impl ProjectGenerator {
                 let mid_idx = self.config.num_base_modules + self.rng.gen_range(0..self.config.num_mid_modules);
                 let func_idx = self.rng.gen_range(0..self.config.funcs_per_module);
                 let func_name = format!("func_{}_{}", mid_idx, func_idx);
-                content.push_str(&format!("(import {})\n", func_name));
+                content.push_str(&format!("(import /{})\n", func_name));
                 imported_funcs.push((mid_idx, func_idx));
             }
         }
@@ -153,7 +153,7 @@ impl ProjectGenerator {
         for &module_idx in all_module_indices.iter().take(num_imports) {
             let func_idx = self.rng.gen_range(0..self.config.funcs_per_module);
             let func_name = format!("func_{}_{}", module_idx, func_idx);
-            content.push_str(&format!("(import {})\n", func_name));
+            content.push_str(&format!("(import /{})\n", func_name));
             imported_funcs.push((module_idx, func_idx));
         }
         content.push('\n');

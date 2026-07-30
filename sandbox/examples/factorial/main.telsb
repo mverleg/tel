@@ -1,4 +1,4 @@
-(import fact_helper)
+(import /fact_helper)
 
 # UNUSED FUNCTIONS - these helper functions are never called
 (function inc (+ (arg 1) 1))

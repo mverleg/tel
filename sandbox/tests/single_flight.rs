@@ -45,9 +45,9 @@ async fn diamond_import_resolves_shared_dep_once() {
     let c = dir.path().join("c.telsb");
     let path = main.to_str().unwrap();
 
-    fs::write(&main, "(import a)\n(import b)\n(print (+ (call a 1) (call b 1)))\n").unwrap();
-    fs::write(&a, "(import c)\n(+ (call c (arg 1)) 1)\n").unwrap();
-    fs::write(&b, "(import c)\n(+ (call c (arg 1)) 2)\n").unwrap();
+    fs::write(&main, "(import /a)\n(import /b)\n(print (+ (call a 1) (call b 1)))\n").unwrap();
+    fs::write(&a, "(import /c)\n(+ (call c (arg 1)) 1)\n").unwrap();
+    fs::write(&b, "(import /c)\n(+ (call c (arg 1)) 2)\n").unwrap();
     fs::write(&c, "(* (arg 1) 10)\n").unwrap();
 
     let (mut compiler, out) = recording_compiler();

@@ -51,7 +51,7 @@ async fn scenario_a_revert_recomputes_nothing() {
     let main = dir.path().join("main.telsb");
     let dep = dir.path().join("dep.telsb");
     let path = main.to_str().unwrap();
-    fs::write(&main, "(import dep)\n(print (call dep 20))\n").unwrap();
+    fs::write(&main, "(import /dep)\n(print (call dep 20))\n").unwrap();
     fs::write(&dep, "(+ (arg 1) 1)\n").unwrap();
 
     let (mut compiler, out) = recording_compiler();
@@ -86,7 +86,7 @@ async fn file_dropped_from_import_graph_is_not_demanded() {
     let main = dir.path().join("main.telsb");
     let helper = dir.path().join("helper.telsb");
     let path = main.to_str().unwrap();
-    fs::write(&main, "(import helper)\n(print (call helper 1))\n").unwrap();
+    fs::write(&main, "(import /helper)\n(print (call helper 1))\n").unwrap();
     fs::write(&helper, "(+ (arg 1) 41)\n").unwrap();
 
     let (mut compiler, out) = recording_compiler();
@@ -116,7 +116,7 @@ async fn dropped_compiler_leaves_no_shared_state_behind() {
     let main = dir.path().join("main.telsb");
     let dep = dir.path().join("dep.telsb");
     let path = main.to_str().unwrap();
-    fs::write(&main, "(import dep)\n(print (call dep 6))\n").unwrap();
+    fs::write(&main, "(import /dep)\n(print (call dep 6))\n").unwrap();
     fs::write(&dep, "(* (arg 1) 7)\n").unwrap();
 
     let (mut first, out1) = recording_compiler();
@@ -152,8 +152,8 @@ async fn import_restructure_leaves_no_zombie_edges() {
     let path = main.to_str().unwrap();
 
     // Run 1: main -> a -> b.
-    fs::write(&main, "(import a)\n(print (call a 1))\n").unwrap();
-    fs::write(&a, "(import b)\n(+ (call b (arg 1)) 1)\n").unwrap();
+    fs::write(&main, "(import /a)\n(print (call a 1))\n").unwrap();
+    fs::write(&a, "(import /b)\n(+ (call b (arg 1)) 1)\n").unwrap();
     fs::write(&b, "(* (arg 1) 10)\n").unwrap();
 
     let (mut compiler, out) = recording_compiler();
@@ -162,8 +162,8 @@ async fn import_restructure_leaves_no_zombie_edges() {
 
     // Run 2: main -> b -> a; a is now the leaf. With stale edges this graph
     // would read a -> b -> a.
-    fs::write(&main, "(import b)\n(print (call b 1))\n").unwrap();
-    fs::write(&b, "(import a)\n(+ (call a (arg 1)) 1)\n").unwrap();
+    fs::write(&main, "(import /b)\n(print (call b 1))\n").unwrap();
+    fs::write(&b, "(import /a)\n(+ (call a (arg 1)) 1)\n").unwrap();
     fs::write(&a, "(* (arg 1) 10)\n").unwrap();
     compiler.run(path, false).await
         .expect("an inverted (acyclic) import graph must compile — a phantom cycle means stale edges survived");

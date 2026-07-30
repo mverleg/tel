@@ -1,8 +1,8 @@
 # Numeric types demo: the same functions are monomorphised at i64 and i32.
 # Unsuffixed literals are inferred (defaulting to the enclosing instance's
 # type); suffixed literals like 21i32 pin a type. No implicit conversions.
-(import double)
-(import fact)
+(import /double)
+(import /fact)
 
 (function add1 (+ (arg 1) 1))
 

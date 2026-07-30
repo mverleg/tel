@@ -22,7 +22,7 @@ async fn trace_records_steps_cache_outcomes_and_ages() {
 
     let main = dir.path().join("main.telsb");
     let dep = dir.path().join("dep.telsb");
-    fs::write(&main, "(import dep)\n(print (call dep 20))\n").unwrap();
+    fs::write(&main, "(import /dep)\n(print (call dep 20))\n").unwrap();
     fs::write(&dep, "(+ (arg 1) 1)\n").unwrap();
 
     let mut compiler = Compiler::new(Arc::new(NoopPrinter));

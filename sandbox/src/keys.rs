@@ -931,6 +931,18 @@ impl StableHash for crate::types::ResolveError {
                 out.write_u32(16);
                 msg.stable_hash(ctx, out);
             }
+            DuplicateImport(c, path) => {
+                out.write_u32(17);
+                c.stable_hash(ctx, out);
+                path.stable_hash(ctx, out);
+            }
+            ImportNameCollision(c, name, first, second) => {
+                out.write_u32(18);
+                c.stable_hash(ctx, out);
+                name.stable_hash(ctx, out);
+                first.stable_hash(ctx, out);
+                second.stable_hash(ctx, out);
+            }
             // A panic is not an answer (invariant 6): control flow returns it
             // as a non-terminal failure before any fingerprint or cache write
             // can happen, so hashing one is a bug by construction.

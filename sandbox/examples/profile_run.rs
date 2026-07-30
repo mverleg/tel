@@ -51,7 +51,7 @@ impl ProjectGenerator {
 
         for _ in 0..num_imports {
             let base_idx = self.rng.gen_range(0..self.config.num_base_funcs);
-            content.push_str(&format!("(import base_{})\n", base_idx));
+            content.push_str(&format!("(import /base_{})\n", base_idx));
             imported_funcs.push(base_idx);
         }
         content.push('\n');
@@ -68,7 +68,7 @@ impl ProjectGenerator {
 
         for _ in 0..num_base {
             let base_idx = self.rng.gen_range(0..self.config.num_base_funcs);
-            content.push_str(&format!("(import base_{})\n", base_idx));
+            content.push_str(&format!("(import /base_{})\n", base_idx));
             imported_funcs.push(("base", base_idx));
         }
 
@@ -76,7 +76,7 @@ impl ProjectGenerator {
             let num_mid = self.rng.gen_range(1..=2.min(self.config.num_mid_funcs));
             for _ in 0..num_mid {
                 let mid_idx = self.rng.gen_range(0..self.config.num_mid_funcs);
-                content.push_str(&format!("(import mid_{})\n", mid_idx));
+                content.push_str(&format!("(import /mid_{})\n", mid_idx));
                 imported_funcs.push(("mid", mid_idx));
             }
         }
@@ -94,7 +94,7 @@ impl ProjectGenerator {
         let num_base = (self.config.num_base_funcs / 2).max(1).min(5);
         for i in 0..num_base {
             let base_idx = i % self.config.num_base_funcs;
-            content.push_str(&format!("(import base_{})\n", base_idx));
+            content.push_str(&format!("(import /base_{})\n", base_idx));
             imported_funcs.push(("base", base_idx));
         }
 
@@ -102,7 +102,7 @@ impl ProjectGenerator {
             let num_mid = (self.config.num_mid_funcs / 3).max(1).min(5);
             for i in 0..num_mid {
                 let mid_idx = i % self.config.num_mid_funcs;
-                content.push_str(&format!("(import mid_{})\n", mid_idx));
+                content.push_str(&format!("(import /mid_{})\n", mid_idx));
                 imported_funcs.push(("mid", mid_idx));
             }
         }
@@ -111,7 +111,7 @@ impl ProjectGenerator {
             let num_leaf = (self.config.num_leaf_funcs / 5).max(1).min(5);
             for i in 0..num_leaf {
                 let leaf_idx = i % self.config.num_leaf_funcs;
-                content.push_str(&format!("(import leaf_{})\n", leaf_idx));
+                content.push_str(&format!("(import /leaf_{})\n", leaf_idx));
                 imported_funcs.push(("leaf", leaf_idx));
             }
         }

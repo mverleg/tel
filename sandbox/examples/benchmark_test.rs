@@ -128,7 +128,7 @@ impl ProjectGenerator {
                 let num_imports = self.rng.gen_range((*range.start()).max(1)..=(*range.end()).min(count));
                 for _ in 0..num_imports {
                     let idx = self.rng.gen_range(0..count);
-                    content.push_str(&format!("(import l{}_{})\n", prev_level, idx));
+                    content.push_str(&format!("(import /l{}_{})\n", prev_level, idx));
                     imported_funcs.push((prev_level, idx));
                 }
             }
@@ -201,7 +201,7 @@ impl ProjectGenerator {
                 let num = num_to_import.min(count).min(3);
                 for i in 0..num {
                     let idx = (i * count / num.max(1)) % count;
-                    content.push_str(&format!("(import l{}_{})\n", level, idx));
+                    content.push_str(&format!("(import /l{}_{})\n", level, idx));
                     imported_funcs.push((level, idx));
                 }
             }

@@ -1,5 +1,5 @@
 # Test the divide function with panic on zero
-(import divide)
+(import /divide)
 
 (print (call divide 10 2))  # Should print 5
 (print (call divide 100 5)) # Should print 20

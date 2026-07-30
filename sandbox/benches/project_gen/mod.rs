@@ -214,8 +214,17 @@ impl ProjectGenerator {
             if count > 0 {
                 let num_imports = self.rng.random_range((*range.start()).max(1)..=(*range.end()).min(count));
                 for _ in 0..num_imports {
+                    // Drawn with replacement, so the same module can come up
+                    // twice; importing it twice is a `DuplicateImport` error
+                    // (one import names one file — plans/external-deps.md), so
+                    // a repeat is skipped. The draw itself still happens, which
+                    // keeps the RNG stream — and every generated body — the
+                    // same as before this dedup.
                     let idx = self.rng.random_range(0..count);
-                    content.push_str(&format!("(import l{}_{})\n", prev_level, idx));
+                    if imported_funcs.contains(&(prev_level, idx)) {
+                        continue;
+                    }
+                    content.push_str(&format!("(import /l{}_{})\n", prev_level, idx));
                     imported_funcs.push((prev_level, idx));
                 }
             }
@@ -295,7 +304,7 @@ impl ProjectGenerator {
                 let num = num_to_import.min(count).min(3);
                 for i in 0..num {
                     let idx = (i * count / num.max(1)) % count;
-                    content.push_str(&format!("(import l{}_{})\n", level, idx));
+                    content.push_str(&format!("(import /l{}_{})\n", level, idx));
                     imported_funcs.push((level, idx));
                 }
             }

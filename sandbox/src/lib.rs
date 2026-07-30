@@ -304,6 +304,11 @@ impl Compiler {
         // the budget trim below — that drop, plus the join of every spawned
         // task inside `execute`, is what re-establishes the sole-owner `&mut`
         // window `compact_to_budget` needs.
+        // Import resolution is root-anchored, so the wave needs its root before
+        // any query runs. Derived from the entry file each time rather than
+        // fixed at construction: one `Compiler` may be asked to compile entries
+        // in different workspaces, and the root must follow the entry.
+        self.core.set_root(project_root(std::path::Path::new(path)));
         let outcome = {
             let ctx = RootContext::new(self.core.clone());
             let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
@@ -336,6 +341,7 @@ impl Compiler {
     /// (`src/codegen.rs`) instead of the interpreter, so this produces source
     /// text and runs none of the program's side effects.
     pub async fn codegen_python(&mut self, path: &str) -> Result<String, Error> {
+        self.core.set_root(project_root(std::path::Path::new(path)));
         let outcome = {
             let ctx = RootContext::new(self.core.clone());
             let exec_id = ExecId { main_loc: FQ::intern(ctx.interner(), path, "main") };
@@ -418,6 +424,32 @@ impl Compiler {
 /// The daemon opens this for its root; `--no-daemon` runs never touch it.
 pub fn default_cache_dir(root: &std::path::Path) -> std::path::PathBuf {
     root.join("out").join("cache")
+}
+
+/// The workspace-root marker: the same `tel.toml` the daemon discovers a root
+/// by (`sandbox-daemon/src/discovery.rs`), so a compile resolves imports
+/// against exactly the tree its daemon owns.
+pub const ROOT_MARKER: &str = "tel.toml";
+
+/// The project root `entry` is compiled in — what an absolute import path is
+/// absolute *against* (plans/external-deps.md, "Import form decision").
+///
+/// Walks up from the entry file looking for [`ROOT_MARKER`], innermost wins.
+/// With no marker anywhere the entry's own directory is the root, which is what
+/// makes a single-directory program (every example under `examples/`) work with
+/// no configuration at all.
+pub fn project_root(entry: &std::path::Path) -> std::path::PathBuf {
+    let start = if entry.is_dir() { Some(entry) } else { entry.parent() };
+    let mut dir = start;
+    while let Some(d) = dir {
+        if d.join(ROOT_MARKER).is_file() {
+            return d.to_path_buf();
+        }
+        dir = d.parent();
+    }
+    // No marker: the entry's own directory. `""` (a bare filename) means the
+    // current directory, which `Path::join` handles as a relative path.
+    start.map(|d| d.to_path_buf()).unwrap_or_else(|| std::path::PathBuf::from("."))
 }
 
 pub async fn run_file(path: &str, show_deps: bool) -> Result<(), Error> {

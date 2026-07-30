@@ -1,5 +1,5 @@
-(import add)
-(import sub)
+(import /add)
+(import /sub)
 
 (let n (arg 1))
 
