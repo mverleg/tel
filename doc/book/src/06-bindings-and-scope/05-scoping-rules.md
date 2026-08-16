@@ -12,9 +12,12 @@ keyword says otherwise.
 ### Reading a name
 
 To resolve a name being *read*, Tel looks outward: the innermost enclosing
-scope that declares the name wins. Because [shadowing](04-shadowing.md) is
-forbidden, at most one enclosing scope can declare any given name, so this
-lookup is unambiguous.
+scope that declares the name wins. Several enclosing scopes *may* declare the
+same name — [shadowing](04-shadowing.md) allows it at an explicit binding site
+— and the innermost declaration is the one in effect. The lookup is still
+unambiguous, and it stays readable because the only thing that can re-introduce
+a visible name is a `let`, a parameter, or a pattern, which is right there in
+the source above the use.
 
 ### Writing a name
 
