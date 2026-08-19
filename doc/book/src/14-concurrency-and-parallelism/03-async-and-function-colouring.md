@@ -69,7 +69,7 @@ fiber-capable host can run concurrently, and a sequential host can run as-is.
 fn enrich(id: Id[Order], store: Store) -> Order {
     let order = store.fetch(id)        # may block; that is fine
     let cust  = store.fetch(order.customer)
-    order.with(customer_name = cust.name)
+    order with { customer_name = cust.name }
 }
 ```
 
