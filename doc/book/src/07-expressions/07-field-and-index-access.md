@@ -37,7 +37,7 @@ deliberate consequence is that a stored field can be replaced by a computed
 function of the same name without breaking callers.
 
 TODO(open): the field-vs-getter resolution is the same open question raised in
-[Function Application](06-function-application.md#the-field-vs-getter-ambiguity)
+[Function Application](06-function-application.md#parentheses-are-required)
 — resolve in one place. Until then, treat `value.name` as "access member
 `name`", whether that member is stored or computed.
 
