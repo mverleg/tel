@@ -28,10 +28,6 @@ through a `uniq` binding and is always explicit (see
 [Mutability](../06-bindings-and-scope/02-mutability.md)); the immutable way to
 "change" a field is a [`with`-copy](../06-bindings-and-scope/06-destructuring.md).
 
-TODO(open): `a.x = 1` as possible sugar for
-`let a = a with { x = 1 }`. Whether Tel adopts that rebinding-style assignment
-is unresolved and belongs with the mutability decision.
-
 ## Field access versus function call
 
 Tel lets a zero-argument function be called without `()`
