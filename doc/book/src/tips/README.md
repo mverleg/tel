@@ -139,3 +139,14 @@ moves into the relevant chapters and the TIP is marked *Accepted* (or
   process tree to attach to, so the offline half is the safe half) and defers
   transport, query set, schema stability, and whether live introspection
   happens at all. **Draft.**
+- [`0014-nested-copy-update.md`](0014-nested-copy-update.md)
+  — updating a field two levels down forces `with` to nest and the path to be
+  written twice, so depth (not breadth) is the whole problem. Proposes a
+  package: **`with` chains left-associatively**; **dotted paths on the left of
+  `=`** (`context with { user.last_active = now }`) desugaring with **one
+  rebuild — and so one invariant check — per level**, restricted to stored
+  record fields with visibility checked at every hop; and **`it` as the source
+  binding** for relative updates, chosen over field-scoping because that would
+  turn every pun into an identity no-op. Keeps an inner `with` in the block as
+  the fallback, and rejects bare-`{}` right-hand sides, first-class optics,
+  string paths, setter sugar, and Elm's "flatten your records". **Draft.**
