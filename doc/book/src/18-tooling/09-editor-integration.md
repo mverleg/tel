@@ -225,7 +225,10 @@ LSP/playground side stands on its own, but live cell *evaluation* waits on that.
   reader-side use does have a home already: re-checking the
   [review invariants](07-linter.md#review-invariants--unprovable-re-checked-on-change)
   on a touched function, where the obligation is explicit and the LLM is
-  verifying rather than authoring.
+  verifying rather than authoring. The *reader*-side counterpart — letting a
+  program ask this server (or the CLI) the questions an editor asks, and get a
+  parseable answer — is a separate goal, written up in
+  [TIP-0013](../tips/0013-machine-facing-toolchain-surface.md).
 - TODO(open): **Plugin model.** Beyond the deprecation-rewrite mechanism
   the linter already has, is there a path for editor plugins to add LSP
   capabilities (extra hovers, extra code lenses)? Lean: keep it minimal —

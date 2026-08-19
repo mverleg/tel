@@ -129,3 +129,13 @@ moves into the relevant chapters and the TIP is marked *Accepted* (or
   sanctioned discard-skip); **detached tasks block shutdown** like every task
   (dropping a handle ≠ leaving the tree). Unstoppable work is a **bug**, not a
   force-kill case. **Draft.**
+- [`0013-machine-facing-toolchain-surface.md`](0013-machine-facing-toolchain-surface.md)
+  — the toolchain already computes resolved APIs, diagnostics, fix-its,
+  dependency-graph diffs, and full-step traces, but every one of them is
+  specified as something a *person* reads in an *editor*. Records the goal —
+  **a program should be able to ask the same questions over a documented,
+  parseable interface** — with the bounds that look settled (reader-side only,
+  one source of truth, headless, and the embedding constraint: a guest has no
+  process tree to attach to, so the offline half is the safe half) and defers
+  transport, query set, schema stability, and whether live introspection
+  happens at all. **Draft.**
