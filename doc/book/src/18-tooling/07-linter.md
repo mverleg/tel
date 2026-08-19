@@ -61,9 +61,9 @@ The checks fall into three buckets:
    dead code, unused imports, suspicious patterns (`expect` outside a test, a
    `must` on a value statically provable to be present).
 2. **Deprecation and migration (compiler warnings).** A stdlib item marked
-   deprecated triggers a warning with a fix-it that rewrites the call to the
-   replacement. The same mechanism is available to third-party crates via a
-   deprecation attribute.
+   deprecated triggers a warning, carrying a fix-it that rewrites the call to
+   the replacement wherever the replacement is mechanical. The same mechanism
+   is available to third-party crates via a deprecation attribute.
 3. **Structural / project rules (custom build-tool lints).** Rules declared by
    the project itself — see below.
 
@@ -249,13 +249,20 @@ both; staleness mirrors the review-invariant fingerprint machinery.`
 
 ## Integration with deprecation
 
-When `std` deprecates a name, it ships a paired *rewrite* — a
-structured transformation from the old call to the new one. The
-linter applies the rewrite as a fix-it in the editor and as a
+When `std` deprecates a name it ships, **where possible**, a paired
+*rewrite* — a structured transformation from the old call to the new
+one. The linter applies the rewrite as a fix-it in the editor and as a
 `tel fix` batch transform. This is how the *stability commitment* and
 the *library is allowed to grow* commitment coexist: scripts using a
 deprecated name keep working, the linter nudges, and an automated
-rewrite is one keystroke away. See
+rewrite is one keystroke away.
+
+Not every deprecation can offer one. A replacement that changes
+behaviour, or that needs a judgement the tool cannot make (which of two
+successors, what to do with an argument that no longer exists), ships
+with prose in the deprecation instead, and the migration stays manual.
+The rule is that a *mechanical* migration must not be left to the
+reader — not that every migration is mechanical. See
 [`../17-standard-library/01-stdlib-organisation.md`](../17-standard-library/01-stdlib-organisation.md)
 for the deprecation model and
 [`04-package-manager.md`](04-package-manager.md) for how third-party
