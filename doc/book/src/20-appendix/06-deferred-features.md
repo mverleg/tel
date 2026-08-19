@@ -450,6 +450,29 @@ picker; old versions stay fetchable forever, matching the
 [registry](../11-modules-and-packages/09-package-registry.md) — part of the
 stability commitment.
 
+### Finding a name across the ecosystem
+
+A per-crate site is only half of the want. The other half is that a name can be
+**looked up at a pinned version, from outside a browser**: every published
+crate's generated docs hosted alongside the
+[registry](../11-modules-and-packages/09-package-registry.md), searchable per
+version, and answerable from the toolchain rather than from a web search that
+indexed some other release. The structured **JSON** output of the same pipeline
+is what makes this cheap — it is the form a script, a CI job, or an assistant
+reads, and it is the same resolved API the HTML renders, so the two cannot
+disagree.
+
+Elixir's HexDocs is the model to beat here: one place that holds every version's
+docs, with a search index, reachable from the command line. The value is
+sharpest exactly where guessing is worst — an old version, a rarely-used
+function, a reader who has no memory of this library at all. How the docs are
+queried, and whether that shares a surface with the toolchain's other
+machine-readable outputs, is the subject of
+[TIP-0013](../tips/0013-machine-facing-toolchain-surface.md).
+`TODO(open): is doc hosting the registry's job or a separate service? Lean:
+hosted with the registry, since the retention promise is already the registry's
+and old versions must stay browsable for as long as they stay fetchable.`
+
 ### What the generator does *not* do
 
 Not a **website builder** (reference docs, not marketing — project sites embed

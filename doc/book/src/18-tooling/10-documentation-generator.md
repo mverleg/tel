@@ -22,6 +22,8 @@ questions — now lives in
 
 - [Deferred Features](../20-appendix/06-deferred-features.md#documentation-generator-tel-doc)
   — the deferred design in full.
+- [Finding a name across the ecosystem](../20-appendix/06-deferred-features.md#finding-a-name-across-the-ecosystem)
+  — version-pinned, registry-hosted docs and the structured JSON a tool reads.
 - [Testing](../14-testing/01-testing.md) — examples as tests share the test runner.
 - [Comments](../03-lexical-structure/07-comments.md) — the `##` doc-comment
   language feature that survives independently of the generator.
